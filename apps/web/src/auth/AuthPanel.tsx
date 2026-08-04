@@ -8,8 +8,8 @@ import {
   signIn,
   signOut,
 } from '../api/client'
-import { TeacherCases } from '../teacher/TeacherCases'
 import { StudentAssignments } from '../student/StudentAssignments'
+import { TeacherWorkspace } from '../teacher/TeacherWorkspace'
 
 type Mode = 'login' | 'register'
 
@@ -95,7 +95,7 @@ export function AuthPanel() {
           {error && <p className="form-error">{error}</p>}
         </section>
         {user.roles.some((role) => role === 'teacher' || role === 'administrator') ? (
-          <TeacherCases />
+          <TeacherWorkspace />
         ) : (
           <StudentAssignments />
         )}

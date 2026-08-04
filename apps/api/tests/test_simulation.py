@@ -133,6 +133,11 @@ def test_teacher_assignment_snapshots_roster_and_student_response_hides_answers(
     teacher_response = client.get(reverse("teacher-assignment-list"))
     assert teacher_response.status_code == 200
     assert teacher_response.json()[0]["student_count"] == 1
+    assert teacher_response.json()[0]["not_started_count"] == 1
+    assert teacher_response.json()[0]["active_count"] == 0
+
+    assignment.class_group.memberships.filter(student=student).delete()
+    assert AssignmentStudent.objects.filter(assignment=assignment, student=student).exists()
 
 
 @pytest.mark.django_db
@@ -346,3 +351,25 @@ def test_student_api_runs_idempotent_interview_exchange():
     assert second.status_code == 200
     assert second.json()["reused"] is True
     assert second.json()["patient_message"]["id"] == first.json()["patient_message"]["id"]
+
+
+@pytest.mark.django_db
+def test_assignment_options_only_include_teachers_published_cases_and_classes():
+    teacher, _, assignment = make_exam_data(suffix="0")
+    client = APIClient()
+    client.force_authenticate(teacher)
+
+    response = client.get(reverse("teacher-assignment-options"))
+
+    assert response.status_code == 200
+    assert response.json()["case_versions"] == [
+        {
+            "id": str(assignment.case_version_id),
+            "case_code": "SIM-0",
+            "title": "牙龈疼痛标准病例",
+            "version_number": 1,
+            "suggested_duration_minutes": 20,
+        }
+    ]
+    assert response.json()["class_groups"][0]["id"] == str(assignment.class_group_id)
+    assert response.json()["class_groups"][0]["student_count"] == 1

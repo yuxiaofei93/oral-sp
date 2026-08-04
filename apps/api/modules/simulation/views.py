@@ -6,11 +6,14 @@ from rest_framework.views import APIView
 
 from modules.accounts.models import RoleCode
 from modules.accounts.permissions import IsStudent, IsTeacherOrAdministrator
+from modules.cases.models import CaseVersion, VersionStatus
+from modules.teaching.models import ClassGroup
 
 from .models import CaseAssignment, SimulationSession
 from .serializers import (
     AskPatientSerializer,
     AssignmentCreateSerializer,
+    AssignmentOptionSerializer,
     ExchangeSerializer,
     FeedbackSerializer,
     SessionSerializer,
@@ -61,11 +64,23 @@ def teacher_assignment_queryset(user):
     queryset = CaseAssignment.objects.select_related(
         "case_version",
         "class_group",
+        "class_group__course",
     ).annotate(
         student_count=Count("student_links", distinct=True),
+        session_count=Count("sessions", distinct=True),
+        active_count=Count(
+            "sessions",
+            filter=Q(sessions__status="active"),
+            distinct=True,
+        ),
         submitted_count=Count(
             "sessions",
             filter=Q(sessions__status="completed"),
+            distinct=True,
+        ),
+        expired_count=Count(
+            "sessions",
+            filter=Q(sessions__status="expired"),
             distinct=True,
         ),
     )
@@ -119,6 +134,48 @@ class TeacherAssignmentListCreateView(APIView):
             TeacherAssignmentSerializer(assignment).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class TeacherAssignmentOptionView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def get(self, request):
+        case_versions = CaseVersion.objects.filter(
+            status=VersionStatus.PUBLISHED,
+            case__is_active=True,
+        ).select_related("case")
+        class_groups = ClassGroup.objects.filter(is_active=True).select_related("course").annotate(
+            student_count=Count("memberships", distinct=True)
+        )
+        if not (request.user.is_superuser or request.user.has_role(RoleCode.ADMINISTRATOR)):
+            case_versions = case_versions.filter(case__created_by=request.user)
+            class_groups = class_groups.filter(
+                course__teacher_links__teacher=request.user,
+                course__is_active=True,
+            ).distinct()
+
+        data = {
+            "case_versions": [
+                {
+                    "id": str(version.id),
+                    "case_code": version.case.code,
+                    "title": version.title_internal,
+                    "version_number": version.version_number,
+                    "suggested_duration_minutes": version.time_limit_minutes,
+                }
+                for version in case_versions.order_by("case__code", "-version_number")
+            ],
+            "class_groups": [
+                {
+                    "id": str(class_group.id),
+                    "course_name": class_group.course.name,
+                    "class_name": class_group.name,
+                    "student_count": class_group.student_count,
+                }
+                for class_group in class_groups.order_by("course__code", "code")
+            ],
+        }
+        return Response(AssignmentOptionSerializer(data).data)
 
 
 class TeacherAssignmentCloseView(APIView):

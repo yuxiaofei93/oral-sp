@@ -206,6 +206,71 @@ export type SessionFeedback = {
   ai_feedback: string
 }
 
+export type RosterStudent = {
+  id: string
+  phone: string
+  display_name: string
+  created_at: string
+}
+
+export type TeachingClass = {
+  id: string
+  code: string
+  name: string
+  is_active: boolean
+  student_count: number
+  students: RosterStudent[]
+  created_at: string
+}
+
+export type TeachingCourse = {
+  id: string
+  code: string
+  name: string
+  is_active: boolean
+  classes: TeachingClass[]
+  created_at: string
+  updated_at: string
+}
+
+export type TeacherAssignment = {
+  id: string
+  title: string
+  case_version_id: string
+  class_group_id: string
+  case_title: string
+  case_version_number: number
+  course_name: string
+  class_name: string
+  duration_minutes: number
+  opens_at: string
+  deadline_at: string
+  status: 'open' | 'closed'
+  feedback_released_at: string | null
+  student_count: number
+  not_started_count: number
+  active_count: number
+  submitted_count: number
+  expired_count: number
+  created_at: string
+}
+
+export type AssignmentOptions = {
+  case_versions: Array<{
+    id: string
+    case_code: string
+    title: string
+    version_number: number
+    suggested_duration_minutes: number
+  }>
+  class_groups: Array<{
+    id: string
+    course_name: string
+    class_name: string
+    student_count: number
+  }>
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -241,7 +306,11 @@ async function getCsrfToken(): Promise<string> {
   return data.csrf_token
 }
 
-async function mutate<T>(method: 'POST' | 'PATCH', path: string, payload?: unknown): Promise<T> {
+async function mutate<T>(
+  method: 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  payload?: unknown,
+): Promise<T> {
   const csrfToken = await getCsrfToken()
   const response = await fetch(path, {
     method,
@@ -347,4 +416,70 @@ export async function getSessionFeedback(sessionId: string): Promise<SessionFeed
     credentials: 'same-origin',
   })
   return parseResponse<SessionFeedback>(response)
+}
+
+export async function listTeachingCourses(): Promise<TeachingCourse[]> {
+  const response = await fetch('/api/teacher/teaching/courses/', {
+    credentials: 'same-origin',
+  })
+  return parseResponse<TeachingCourse[]>(response)
+}
+
+export function createTeachingCourse(payload: {
+  code: string
+  name: string
+}): Promise<TeachingCourse> {
+  return mutate('POST', '/api/teacher/teaching/courses/', payload)
+}
+
+export function createTeachingClass(payload: {
+  course_id: string
+  code: string
+  name: string
+}): Promise<TeachingCourse> {
+  return mutate('POST', '/api/teacher/teaching/classes/', payload)
+}
+
+export function addClassStudents(
+  classId: string,
+  phones: string[],
+): Promise<{ created_count: number; existing_count: number }> {
+  return mutate('POST', `/api/teacher/teaching/classes/${classId}/students/`, { phones })
+}
+
+export function removeClassStudent(classId: string, studentId: string): Promise<void> {
+  return mutate('DELETE', `/api/teacher/teaching/classes/${classId}/students/${studentId}/`)
+}
+
+export async function listTeacherAssignments(): Promise<TeacherAssignment[]> {
+  const response = await fetch('/api/teacher/assignments/', { credentials: 'same-origin' })
+  return parseResponse<TeacherAssignment[]>(response)
+}
+
+export async function getAssignmentOptions(): Promise<AssignmentOptions> {
+  const response = await fetch('/api/teacher/assignments/options/', {
+    credentials: 'same-origin',
+  })
+  return parseResponse<AssignmentOptions>(response)
+}
+
+export function createTeacherAssignment(payload: {
+  title: string
+  case_version_id: string
+  class_group_id: string
+  duration_minutes: number
+  opens_at: string
+  deadline_at: string
+}): Promise<TeacherAssignment> {
+  return mutate('POST', '/api/teacher/assignments/', payload)
+}
+
+export function closeTeacherAssignment(assignmentId: string): Promise<TeacherAssignment> {
+  return mutate('POST', `/api/teacher/assignments/${assignmentId}/close/`)
+}
+
+export function releaseTeacherAssignmentFeedback(
+  assignmentId: string,
+): Promise<TeacherAssignment> {
+  return mutate('POST', `/api/teacher/assignments/${assignmentId}/release-feedback/`)
 }

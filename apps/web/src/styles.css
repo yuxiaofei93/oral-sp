@@ -147,6 +147,36 @@ h1 {
   gap: 28px;
 }
 
+.teacher-area {
+  display: grid;
+  gap: 14px;
+}
+
+.teacher-tabs {
+  display: flex;
+  gap: 6px;
+  width: fit-content;
+  padding: 5px;
+  border: 1px solid rgb(25 80 71 / 10%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 72%);
+}
+
+.teacher-tabs button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 16px;
+  color: #526b66;
+  background: transparent;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.teacher-tabs button.is-active {
+  color: #fff;
+  background: #176f60;
+}
+
 .auth-card--account {
   display: flex;
   align-items: center;
@@ -257,6 +287,15 @@ h1 {
 .form-error {
   margin: 0;
   color: #a64034;
+  font-size: 14px;
+}
+
+.form-success {
+  margin: 0;
+  padding: 12px 15px;
+  border-radius: 11px;
+  color: #126047;
+  background: #daf4e8;
   font-size: 14px;
 }
 
@@ -465,6 +504,226 @@ h1 {
   display: grid;
   gap: 10px;
   padding-top: 8px;
+}
+
+.management-forms {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.compact-form,
+.assignment-form,
+.roster-card {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid #dbe7e3;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.compact-form h3,
+.roster-card h3,
+.roster-card p {
+  margin: 0;
+}
+
+.compact-form label,
+.assignment-form label {
+  display: grid;
+  gap: 7px;
+  color: #334d48;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.compact-form input,
+.compact-form select,
+.assignment-form input,
+.assignment-form select,
+.roster-card textarea {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #cbd9d6;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #19332f;
+  background: #fff;
+  outline: none;
+}
+
+.compact-form input:focus,
+.compact-form select:focus,
+.assignment-form input:focus,
+.assignment-form select:focus,
+.roster-card textarea:focus {
+  border-color: #16816d;
+  box-shadow: 0 0 0 3px rgb(22 129 109 / 12%);
+}
+
+.compact-form .button,
+.assignment-form .button {
+  justify-self: start;
+}
+
+.assignment-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.assignment-form > .button,
+.assignment-form > .section-help {
+  align-self: end;
+}
+
+.course-list,
+.exam-list {
+  display: grid;
+  gap: 14px;
+}
+
+.course-list > article,
+.exam-list > article {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #dbe7e3;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.course-list header h3,
+.course-list header span,
+.course-list > article > p,
+.exam-list h3,
+.exam-list p {
+  margin: 3px 0 0;
+}
+
+.course-list header span,
+.course-list > article > p,
+.exam-list__header span,
+.exam-list p,
+.exam-list__actions > span,
+.roster-card > div > p,
+.roster-list span {
+  color: #647a75;
+  font-size: 13px;
+}
+
+.class-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.class-chips button {
+  display: flex;
+  gap: 8px;
+  border: 1px solid #cfe0dc;
+  border-radius: 999px;
+  padding: 9px 13px;
+  color: #334d48;
+  background: #f3f8f6;
+  cursor: pointer;
+}
+
+.class-chips button span {
+  color: #6b817c;
+}
+
+.class-chips button.is-active {
+  border-color: #176f60;
+  color: #fff;
+  background: #176f60;
+}
+
+.class-chips button.is-active span {
+  color: #d8eee8;
+}
+
+.roster-card form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.roster-card textarea {
+  resize: vertical;
+}
+
+.roster-list {
+  display: grid;
+  gap: 8px;
+}
+
+.roster-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  background: #f4f8f7;
+}
+
+.roster-list article > div {
+  display: grid;
+  gap: 3px;
+}
+
+.text-button--danger {
+  color: #a64034;
+}
+
+.exam-list__header,
+.exam-list__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.task-state {
+  padding: 7px 11px;
+  border-radius: 999px;
+  color: #126047 !important;
+  background: #daf4e8;
+  white-space: nowrap;
+}
+
+.task-state--closed {
+  color: #526b66 !important;
+  background: #e8efed;
+}
+
+.progress-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.progress-grid div {
+  display: grid;
+  gap: 3px;
+  padding: 12px;
+  border-radius: 11px;
+  background: #eef5f2;
+  text-align: center;
+}
+
+.progress-grid strong {
+  font-size: 22px;
+}
+
+.progress-grid span {
+  color: #647a75;
+  font-size: 12px;
+}
+
+.exam-list__actions {
+  justify-content: flex-end;
 }
 
 .new-case-form,
@@ -733,7 +992,10 @@ h1 {
 
   .new-case-form,
   .form-grid,
-  .publish-summary {
+  .publish-summary,
+  .management-forms,
+  .assignment-form,
+  .progress-grid {
     grid-template-columns: 1fr;
   }
 
@@ -755,5 +1017,24 @@ h1 {
 
   .question-form > div {
     grid-template-columns: 1fr;
+  }
+
+  .teacher-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+  }
+
+  .teacher-tabs button {
+    padding-inline: 8px;
+  }
+
+  .roster-card form,
+  .exam-list__header,
+  .exam-list__actions,
+  .roster-list article {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 }

@@ -34,22 +34,34 @@ class AssignmentCreateSerializer(serializers.Serializer):
 
 
 class TeacherAssignmentSerializer(serializers.ModelSerializer):
+    case_version_id = serializers.UUIDField(read_only=True)
+    class_group_id = serializers.UUIDField(read_only=True)
     case_title = serializers.CharField(source="case_version.title_internal", read_only=True)
     case_version_number = serializers.IntegerField(
         source="case_version.version_number",
         read_only=True,
     )
     class_name = serializers.CharField(source="class_group.name", read_only=True)
+    course_name = serializers.CharField(source="class_group.course.name", read_only=True)
     student_count = serializers.IntegerField(read_only=True)
     submitted_count = serializers.IntegerField(read_only=True)
+    active_count = serializers.IntegerField(read_only=True)
+    expired_count = serializers.IntegerField(read_only=True)
+    not_started_count = serializers.SerializerMethodField()
+
+    def get_not_started_count(self, assignment):
+        return max(0, assignment.student_count - assignment.session_count)
 
     class Meta:
         model = CaseAssignment
         fields = [
             "id",
             "title",
+            "case_version_id",
+            "class_group_id",
             "case_title",
             "case_version_number",
+            "course_name",
             "class_name",
             "duration_minutes",
             "opens_at",
@@ -57,9 +69,17 @@ class TeacherAssignmentSerializer(serializers.ModelSerializer):
             "status",
             "feedback_released_at",
             "student_count",
+            "not_started_count",
+            "active_count",
             "submitted_count",
+            "expired_count",
             "created_at",
         ]
+
+
+class AssignmentOptionSerializer(serializers.Serializer):
+    case_versions = serializers.ListField(child=serializers.DictField())
+    class_groups = serializers.ListField(child=serializers.DictField())
 
 
 class StudentAssignmentSerializer(serializers.ModelSerializer):

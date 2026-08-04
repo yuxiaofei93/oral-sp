@@ -9,6 +9,7 @@ from .views import (
     StudentSessionSubmissionView,
     TeacherAssignmentCloseView,
     TeacherAssignmentListCreateView,
+    TeacherAssignmentOptionView,
     TeacherAssignmentReleaseFeedbackView,
 )
 
@@ -17,6 +18,11 @@ urlpatterns = [
         "teacher/assignments/",
         TeacherAssignmentListCreateView.as_view(),
         name="teacher-assignment-list",
+    ),
+    path(
+        "teacher/assignments/options/",
+        TeacherAssignmentOptionView.as_view(),
+        name="teacher-assignment-options",
     ),
     path(
         "teacher/assignments/<uuid:assignment_id>/close/",

@@ -93,6 +93,10 @@ def create_assignment(
 ) -> CaseAssignment:
     if case_version.status != VersionStatus.PUBLISHED:
         raise AssignmentUnavailableError("只能发布已经生成版本号的病例。")
+    if not case_version.case.is_active:
+        raise AssignmentUnavailableError("该病例已经停用，不能发布新任务。")
+    if not class_group.is_active or not class_group.course.is_active:
+        raise AssignmentUnavailableError("该课程或班级已经停用，不能发布新任务。")
     can_use_case = case_version.case.created_by_id == user.id
     can_manage_course = CourseTeacher.objects.filter(
         course=class_group.course,
