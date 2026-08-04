@@ -6,6 +6,8 @@ from modules.teaching.models import ClassGroup
 from .models import (
     CaseAssignment,
     Message,
+    ScoreResult,
+    SessionAssessment,
     SimulationSession,
     StageSubmission,
     SubmissionType,
@@ -202,5 +204,126 @@ class FeedbackSerializer(serializers.Serializer):
     session_id = serializers.UUIDField()
     standard_diagnoses = serializers.ListField(child=serializers.DictField())
     standard_tests = serializers.ListField(child=serializers.DictField())
-    score = serializers.FloatField(allow_null=True)
-    ai_feedback = serializers.CharField()
+    score = serializers.DictField()
+    scoring_items = serializers.ListField(child=serializers.DictField())
+    omissions = serializers.ListField(child=serializers.DictField())
+    errors = serializers.ListField(child=serializers.DictField())
+    feedback_summary = serializers.CharField()
+    ai_feedback = serializers.CharField(allow_null=True, allow_blank=True)
+
+
+class ScoreResultSerializer(serializers.ModelSerializer):
+    automatic_score = serializers.FloatField(allow_null=True)
+    max_score = serializers.FloatField()
+    confidence = serializers.FloatField(allow_null=True)
+
+    class Meta:
+        model = ScoreResult
+        fields = [
+            "id",
+            "code",
+            "label",
+            "dimension",
+            "evaluation_method",
+            "automatic_score",
+            "max_score",
+            "decision",
+            "confidence",
+            "evidence_message_ids",
+            "evidence_submission_ids",
+            "evidence_excerpt",
+            "standard_answer",
+            "reason",
+            "is_student_visible",
+            "rule_version",
+            "model_version",
+        ]
+
+
+class AssessmentSerializer(serializers.ModelSerializer):
+    automatic_score = serializers.FloatField()
+    scored_maximum = serializers.FloatField()
+    maximum_score = serializers.FloatField()
+    scoring_items = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SessionAssessment
+        fields = [
+            "automatic_score",
+            "scored_maximum",
+            "maximum_score",
+            "provisional",
+            "omissions",
+            "errors",
+            "feedback_summary",
+            "ai_feedback",
+            "scoring_version",
+            "generated_at",
+            "scoring_items",
+        ]
+
+    def get_scoring_items(self, assessment):
+        results = assessment.session.score_results.all()
+        if self.context.get("student_visible_only"):
+            results = results.filter(is_student_visible=True)
+        return ScoreResultSerializer(results, many=True).data
+
+
+class TeacherResponseRowSerializer(serializers.Serializer):
+    student_id = serializers.UUIDField()
+    display_name = serializers.CharField()
+    phone = serializers.CharField()
+    attempt_status = serializers.CharField()
+    session_id = serializers.UUIDField(allow_null=True)
+    started_at = serializers.DateTimeField(allow_null=True)
+    completed_at = serializers.DateTimeField(allow_null=True)
+    elapsed_seconds = serializers.IntegerField(allow_null=True)
+    score = serializers.DictField(allow_null=True)
+
+
+class TeacherSessionRecordSerializer(SessionSerializer):
+    student_id = serializers.UUIDField(read_only=True)
+    student_name = serializers.CharField(source="student.display_name", read_only=True)
+    student_phone = serializers.CharField(source="student.phone", read_only=True)
+    assessment = serializers.SerializerMethodField()
+    standard_diagnoses = serializers.SerializerMethodField()
+    standard_tests = serializers.SerializerMethodField()
+
+    class Meta(SessionSerializer.Meta):
+        fields = [
+            *SessionSerializer.Meta.fields,
+            "student_id",
+            "student_name",
+            "student_phone",
+            "assessment",
+            "standard_diagnoses",
+            "standard_tests",
+        ]
+
+    def get_assessment(self, session):
+        try:
+            assessment = session.assessment
+        except SessionAssessment.DoesNotExist:
+            return None
+        return AssessmentSerializer(assessment).data
+
+    def get_standard_diagnoses(self, session):
+        return [
+            {
+                "type": rule.diagnosis_type,
+                "name": rule.name,
+                "supporting_evidence": rule.supporting_evidence,
+            }
+            for rule in session.case_version.diagnosis_rules.all()
+        ]
+
+    def get_standard_tests(self, session):
+        return [
+            {
+                "code": test.code,
+                "name": test.name,
+                "result": test.result_text,
+                "interpretation": test.teacher_interpretation,
+            }
+            for test in session.case_version.tests.all()
+        ]

@@ -99,4 +99,76 @@ describe('StudentAssignments', () => {
     await waitFor(() => expect(screen.getByText('差不多三年。')).toBeInTheDocument())
     expect(fetchMock).toHaveBeenCalled()
   })
+
+  it('shows released score, omissions and standard answers only from feedback API', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input)
+      if (url.endsWith('/student/assignments/')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              {
+                id: 'assignment-1',
+                title: '牙周问诊练习',
+                case_title: '口腔不适病例',
+                difficulty: 'intermediate',
+                duration_minutes: 20,
+                opens_at: '2026-08-04T00:00:00Z',
+                deadline_at: '2026-08-04T02:00:00Z',
+                status: 'closed',
+                feedback_released_at: '2026-08-04T03:00:00Z',
+                attempt_status: 'completed',
+                session_id: 'session-1',
+              },
+            ]),
+            { status: 200 },
+          ),
+        )
+      }
+      if (url.endsWith('/student/sessions/session-1/feedback/')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              session_id: 'session-1',
+              score: { automatic_score: 6, scored_maximum: 8, maximum_score: 9, provisional: true },
+              scoring_items: [
+                { code: 'score.final', label: '最终诊断', automatic_score: 0, max_score: 3, decision: 'missed', reason: '未命中标准诊断。', evidence_excerpt: '未明确', standard_answer: '慢性牙周炎' },
+              ],
+              omissions: [{ code: 'score.final', label: '最终诊断', reason: '未命中标准诊断。', standard_answer: '慢性牙周炎' }],
+              errors: [],
+              feedback_summary: '发现 1 个遗漏项。',
+              ai_feedback: null,
+              standard_diagnoses: [{ type: 'final', name: '慢性牙周炎', supporting_evidence: [] }],
+              standard_tests: [{ code: 'probe', name: '牙周探诊', result: '探诊深度增加', interpretation: '支持诊断' }],
+            }),
+            { status: 200 },
+          ),
+        )
+      }
+      if (url.endsWith('/student/sessions/session-1/')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ...session,
+              status: 'completed',
+              stage: 'completed',
+              remaining_seconds: 0,
+            }),
+            { status: 200 },
+          ),
+        )
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<StudentAssignments />)
+    await waitFor(() => screen.getByRole('button', { name: '查看记录' }))
+    fireEvent.click(screen.getByRole('button', { name: '查看记录' }))
+    await waitFor(() => screen.getByRole('button', { name: '查看教师已发布反馈' }))
+    fireEvent.click(screen.getByRole('button', { name: '查看教师已发布反馈' }))
+
+    await waitFor(() => expect(screen.getByText('6')).toBeInTheDocument())
+    expect(screen.getAllByText(/慢性牙周炎/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/发现 1 个遗漏项/)).toBeInTheDocument()
+  })
 })

@@ -10,6 +10,7 @@ import {
   listTeacherAssignments,
   releaseTeacherAssignmentFeedback,
 } from '../api/client'
+import { TeacherResponses } from './TeacherResponses'
 
 function datetimeLocal(date: Date) {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -23,6 +24,7 @@ export function TeacherAssignments() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [reviewing, setReviewing] = useState<TeacherAssignment | null>(null)
 
   async function loadData() {
     setLoading(true)
@@ -106,6 +108,18 @@ export function TeacherAssignments() {
     }
   }
 
+  if (reviewing) {
+    return (
+      <TeacherResponses
+        assignment={reviewing}
+        onClose={() => {
+          setReviewing(null)
+          void loadData()
+        }}
+      />
+    )
+  }
+
   return (
     <section className="teacher-workspace" aria-labelledby="teacher-assignments-title">
       <header className="workspace-header">
@@ -164,6 +178,7 @@ export function TeacherAssignments() {
             </div>
             <div className="exam-list__actions">
               <span>截止：{new Date(assignment.deadline_at).toLocaleString('zh-CN')}</span>
+              <button className="button button--secondary" type="button" onClick={() => setReviewing(assignment)}>查看学生答卷</button>
               {assignment.status === 'open' && <button className="button button--secondary" type="button" disabled={loading} onClick={() => closeAssignment(assignment)}>统一收卷</button>}
               {assignment.status === 'closed' && !assignment.feedback_released_at && <button className="button" type="button" disabled={loading} onClick={() => releaseFeedback(assignment)}>发布反馈</button>}
             </div>

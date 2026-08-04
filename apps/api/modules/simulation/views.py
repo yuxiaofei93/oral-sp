@@ -1,5 +1,6 @@
 from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,6 +11,7 @@ from modules.cases.models import CaseVersion, VersionStatus
 from modules.teaching.models import ClassGroup
 
 from .models import CaseAssignment, SimulationSession
+from .scoring import generate_assessment
 from .serializers import (
     AskPatientSerializer,
     AssignmentCreateSerializer,
@@ -21,6 +23,8 @@ from .serializers import (
     StudentAssignmentSerializer,
     SubmissionCreateSerializer,
     TeacherAssignmentSerializer,
+    TeacherResponseRowSerializer,
+    TeacherSessionRecordSerializer,
 )
 from .services import (
     AssignmentUnavailableError,
@@ -115,6 +119,27 @@ def student_session_queryset(user):
     )
 
 
+def teacher_session_queryset(user):
+    queryset = (
+        SimulationSession.objects.select_related(
+            "assignment",
+            "student",
+            "case_version",
+            "case_version__patient_profile",
+        )
+        .prefetch_related(
+            "messages",
+            "submissions",
+            "score_results",
+            "case_version__diagnosis_rules",
+            "case_version__tests",
+        )
+    )
+    if user.is_superuser or user.has_role(RoleCode.ADMINISTRATOR):
+        return queryset
+    return queryset.filter(assignment__created_by=user)
+
+
 class TeacherAssignmentListCreateView(APIView):
     permission_classes = [IsTeacherOrAdministrator]
 
@@ -205,6 +230,68 @@ class TeacherAssignmentReleaseFeedbackView(APIView):
             return simulation_error_response(error)
         refreshed = teacher_assignment_queryset(request.user).get(pk=assignment.pk)
         return Response(TeacherAssignmentSerializer(refreshed).data)
+
+
+class TeacherAssignmentResponseListView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def get(self, request, assignment_id):
+        assignment = get_object_or_404(
+            teacher_assignment_queryset(request.user),
+            pk=assignment_id,
+        )
+        sessions = {
+            session.student_id: session
+            for session in teacher_session_queryset(request.user).filter(assignment=assignment)
+        }
+        rows = []
+        for link in assignment.student_links.select_related("student").order_by(
+            "student__display_name",
+            "student__phone",
+        ):
+            session = sessions.get(link.student_id)
+            assessment = None
+            if session and session.status != "active":
+                assessment = generate_assessment(session)
+            end_time = session.completed_at if session else None
+            elapsed_seconds = None
+            if session:
+                end_time = end_time or timezone.now()
+                elapsed_seconds = max(0, int((end_time - session.started_at).total_seconds()))
+            rows.append(
+                {
+                    "student_id": link.student_id,
+                    "display_name": link.student.display_name,
+                    "phone": link.student.phone,
+                    "attempt_status": session.status if session else "not_started",
+                    "session_id": session.id if session else None,
+                    "started_at": session.started_at if session else None,
+                    "completed_at": session.completed_at if session else None,
+                    "elapsed_seconds": elapsed_seconds,
+                    "score": (
+                        {
+                            "automatic_score": float(assessment.automatic_score),
+                            "scored_maximum": float(assessment.scored_maximum),
+                            "maximum_score": float(assessment.maximum_score),
+                            "provisional": assessment.provisional,
+                        }
+                        if assessment
+                        else None
+                    ),
+                }
+            )
+        return Response(TeacherResponseRowSerializer(rows, many=True).data)
+
+
+class TeacherSessionRecordView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def get(self, request, session_id):
+        session = get_object_or_404(teacher_session_queryset(request.user), pk=session_id)
+        if session.status != "active":
+            generate_assessment(session)
+            session = teacher_session_queryset(request.user).get(pk=session_id)
+        return Response(TeacherSessionRecordSerializer(session).data)
 
 
 class StudentAssignmentListView(APIView):

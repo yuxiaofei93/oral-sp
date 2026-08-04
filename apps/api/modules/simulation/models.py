@@ -317,3 +317,92 @@ class ModelCall(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+
+
+class ScoreDecision(models.TextChoices):
+    ACHIEVED = "achieved", "已完成"
+    PARTIAL = "partial", "部分完成"
+    MISSED = "missed", "未完成"
+    PENDING = "pending", "待评价"
+
+
+class SessionAssessment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.OneToOneField(
+        SimulationSession,
+        on_delete=models.CASCADE,
+        related_name="assessment",
+    )
+    automatic_score = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    scored_maximum = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    maximum_score = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    provisional = models.BooleanField(default=False)
+    omissions = models.JSONField(default=list)
+    errors = models.JSONField(default=list)
+    feedback_summary = models.TextField(blank=True)
+    ai_feedback = models.TextField(blank=True)
+    scoring_version = models.CharField(max_length=40, default="rules-v1")
+    generated_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("会话自动评分结果不可覆盖。")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("会话自动评分结果不可删除。")
+
+
+class ScoreResult(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        SimulationSession,
+        on_delete=models.CASCADE,
+        related_name="score_results",
+    )
+    scoring_item = models.ForeignKey(
+        "cases.ScoringItem",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="score_results",
+    )
+    code = models.CharField(max_length=160)
+    label = models.CharField(max_length=240)
+    dimension = models.CharField(max_length=40)
+    evaluation_method = models.CharField(max_length=24)
+    automatic_score = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    max_score = models.DecimalField(max_digits=8, decimal_places=2)
+    decision = models.CharField(max_length=16, choices=ScoreDecision.choices)
+    confidence = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        null=True,
+        blank=True,
+    )
+    evidence_message_ids = models.JSONField(default=list)
+    evidence_submission_ids = models.JSONField(default=list)
+    evidence_excerpt = models.TextField(blank=True)
+    standard_answer = models.TextField(blank=True)
+    reason = models.TextField()
+    is_student_visible = models.BooleanField(default=True)
+    rule_version = models.CharField(max_length=40, default="rules-v1")
+    model_version = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["dimension", "code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "code"],
+                name="unique_session_score_code",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("自动评分证据不可覆盖。")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("自动评分证据不可删除。")

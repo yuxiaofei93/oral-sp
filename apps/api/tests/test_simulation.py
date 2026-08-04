@@ -14,7 +14,11 @@ from modules.simulation.gateways import GatewayResult, PatientGateway
 from modules.simulation.models import (
     AssignmentStudent,
     Message,
+    MessageRole,
     ModelCallStatus,
+    ResponseStatus,
+    ScoreDecision,
+    SessionAssessment,
     SessionStage,
     SessionStatus,
     SubmissionType,
@@ -84,6 +88,52 @@ def make_exam_data(*, suffix="1"):
                     "result_text": "探诊深度增加",
                     "teacher_interpretation": "支持牙周组织破坏",
                 }
+            ],
+            "scoring_items": [
+                {
+                    "code": "score.summary",
+                    "dimension": "summary",
+                    "label": "病史摘要关键要素",
+                    "max_score": "1.00",
+                    "evaluation_method": "rule",
+                    "matching_config": {
+                        "source": "submission_keywords",
+                        "submission_type": "history_summary",
+                        "keywords": ["牙龈疼痛", "三年"],
+                        "match": "all",
+                    },
+                },
+                {
+                    "code": "score.tests",
+                    "dimension": "test_plan",
+                    "label": "检查选择",
+                    "max_score": "2.00",
+                    "evaluation_method": "rule",
+                    "matching_config": {
+                        "source": "tests",
+                        "test_codes": ["periodontal.probe"],
+                    },
+                },
+                {
+                    "code": "score.final",
+                    "dimension": "final_reasoning",
+                    "label": "最终诊断",
+                    "max_score": "3.00",
+                    "evaluation_method": "rule",
+                    "matching_config": {
+                        "source": "diagnoses",
+                        "diagnosis_names": ["慢性牙周炎"],
+                    },
+                },
+                {
+                    "code": "score.communication",
+                    "dimension": "communication",
+                    "label": "沟通质量",
+                    "max_score": "1.00",
+                    "evaluation_method": "ai",
+                    "matching_config": {},
+                    "is_student_visible": False,
+                },
             ],
         },
     )
@@ -373,3 +423,153 @@ def test_assignment_options_only_include_teachers_published_cases_and_classes():
     ]
     assert response.json()["class_groups"][0]["id"] == str(assignment.class_group_id)
     assert response.json()["class_groups"][0]["student_count"] == 1
+
+
+def complete_scored_session(*, session, student, correct: bool):
+    if correct:
+        ask_patient(
+            session=session,
+            student=student,
+            content="牙龈疼痛有多久了？",
+            client_message_id="scoring_question_01",
+        )
+    answers = {
+        SubmissionType.HISTORY_SUMMARY: "牙龈疼痛已有三年",
+        SubmissionType.INITIAL_REASONING: "考虑牙周组织疾病",
+        SubmissionType.TEST_SELECTION: "申请牙周探诊",
+        SubmissionType.FINAL_REASONING: "最终诊断为慢性牙周炎",
+    }
+    for submission_type in (
+        SubmissionType.HISTORY_SUMMARY,
+        SubmissionType.INITIAL_REASONING,
+        SubmissionType.TEST_SELECTION,
+        SubmissionType.FINAL_REASONING,
+    ):
+        submit_stage(
+            session=session,
+            student=student,
+            submission_type=submission_type,
+            payload={"text": answers[submission_type] if correct else "未明确判断"},
+        )
+
+
+@pytest.mark.django_db
+def test_rule_scoring_is_traceable_and_marks_non_rule_items_pending():
+    _, student, assignment = make_exam_data(suffix="1")
+    session = start_session(assignment=assignment, student=student).session
+    complete_scored_session(session=session, student=student, correct=True)
+
+    assessment = SessionAssessment.objects.get(session=session)
+    assert assessment.automatic_score == 8
+    assert assessment.scored_maximum == 8
+    assert assessment.maximum_score == 9
+    assert assessment.provisional is True
+    assert assessment.omissions == []
+    assert assessment.errors == []
+
+    fact_result = session.score_results.get(code="fact:history.duration")
+    assert fact_result.decision == ScoreDecision.ACHIEVED
+    assert len(fact_result.evidence_message_ids) == 2
+    assert "牙龈疼痛有多久了" in fact_result.evidence_excerpt
+    assert session.score_results.get(code="score.communication").decision == ScoreDecision.PENDING
+
+    assessment.feedback_summary = "试图覆盖"
+    with pytest.raises(ValidationError):
+        assessment.save()
+
+
+@pytest.mark.django_db
+def test_missing_answers_generate_omissions_errors_and_teacher_record():
+    teacher, student, assignment = make_exam_data(suffix="2")
+    session = start_session(assignment=assignment, student=student).session
+    complete_scored_session(session=session, student=student, correct=False)
+    assessment = SessionAssessment.objects.get(session=session)
+
+    assert assessment.automatic_score == 0
+    assert assessment.scored_maximum == 8
+    assert len(assessment.omissions) == 4
+    assert len(assessment.errors) == 2
+
+    client = APIClient()
+    client.force_authenticate(teacher)
+    rows = client.get(
+        reverse("teacher-assignment-responses", kwargs={"assignment_id": assignment.id})
+    )
+    assert rows.status_code == 200
+    assert rows.json()[0]["display_name"] == RoleCode.STUDENT
+    assert rows.json()[0]["score"]["automatic_score"] == 0
+
+    record = client.get(reverse("teacher-session-record", kwargs={"session_id": session.id}))
+    assert record.status_code == 200
+    assert record.json()["student_phone"] == student.phone
+    assert len(record.json()["messages"]) == 0
+    assert len(record.json()["submissions"]) == 4
+    assert len(record.json()["assessment"]["scoring_items"]) == 5
+    assert record.json()["standard_diagnoses"][0]["name"] == "慢性牙周炎"
+
+    outsider = make_user("13999999992", RoleCode.TEACHER)
+    client.force_authenticate(outsider)
+    assert (
+        client.get(reverse("teacher-session-record", kwargs={"session_id": session.id})).status_code
+        == 404
+    )
+
+    client.force_authenticate(student)
+    assert (
+        client.get(reverse("teacher-session-record", kwargs={"session_id": session.id})).status_code
+        == 403
+    )
+
+
+@pytest.mark.django_db
+def test_student_feedback_contains_only_visible_scoring_details_after_release():
+    teacher, student, assignment = make_exam_data(suffix="3")
+    session = start_session(assignment=assignment, student=student).session
+    complete_scored_session(session=session, student=student, correct=True)
+    client = APIClient()
+    client.force_authenticate(teacher)
+    client.post(reverse("teacher-assignment-close", kwargs={"assignment_id": assignment.id}))
+    client.post(
+        reverse(
+            "teacher-assignment-release-feedback",
+            kwargs={"assignment_id": assignment.id},
+        )
+    )
+
+    client.force_authenticate(student)
+    feedback = client.get(
+        reverse("student-session-feedback", kwargs={"session_id": session.id})
+    )
+    assert feedback.status_code == 200
+    assert feedback.json()["score"] == {
+        "automatic_score": 8.0,
+        "scored_maximum": 8.0,
+        "maximum_score": 8.0,
+        "provisional": False,
+    }
+    codes = [item["code"] for item in feedback.json()["scoring_items"]]
+    assert "score.communication" not in codes
+    assert "score.final" in codes
+    assert feedback.json()["ai_feedback"] is None
+
+
+@pytest.mark.django_db
+def test_interview_cannot_finish_while_patient_answer_is_processing():
+    _, student, assignment = make_exam_data(suffix="4")
+    session = start_session(assignment=assignment, student=student).session
+    Message.objects.create(
+        session=session,
+        sequence=1,
+        role=MessageRole.STUDENT,
+        content="仍在等待回答的问题",
+        client_message_id="processing_question_01",
+        response_status=ResponseStatus.PROCESSING,
+    )
+
+    with pytest.raises(StageLockedError, match="正在生成"):
+        submit_stage(
+            session=session,
+            student=student,
+            submission_type=SubmissionType.HISTORY_SUMMARY,
+            payload={"text": "尝试提前结束"},
+        )

@@ -221,11 +221,30 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
             </button>
           ) : (
             <div className="feedback-content">
+              <div className="feedback-score">
+                <strong>{feedback.score.automatic_score}</strong>
+                <span>/ {feedback.score.scored_maximum} 自动评分</span>
+                {feedback.score.provisional && <small>总分 {feedback.score.maximum_score}，仍有待评价项</small>}
+              </div>
+              <p>{feedback.feedback_summary}</p>
+              <h4>分项得分</h4>
+              <div className="feedback-items">
+                {feedback.scoring_items.map((item) => (
+                  <article key={item.code}>
+                    <div><strong>{item.label}</strong><span>{item.automatic_score === null ? '待评价' : `${item.automatic_score} / ${item.max_score}`}</span></div>
+                    <p>{item.reason}</p>
+                    {item.evidence_excerpt && <small>证据：{item.evidence_excerpt}</small>}
+                    {item.standard_answer && <small>标准答案：{item.standard_answer}</small>}
+                  </article>
+                ))}
+              </div>
+              {feedback.omissions.length > 0 && <><h4>遗漏项</h4>{feedback.omissions.map((item) => <p key={item.code}>{item.label}：{item.reason}</p>)}</>}
+              {feedback.errors.length > 0 && <><h4>需关注的错误项</h4>{feedback.errors.map((item) => <p key={item.code}>{item.label}：{item.reason}</p>)}</>}
               <h4>标准诊断</h4>
               {feedback.standard_diagnoses.map((diagnosis) => <p key={`${diagnosis.type}-${diagnosis.name}`}>{diagnosis.name}</p>)}
               <h4>标准检查</h4>
               {feedback.standard_tests.map((test) => <p key={test.code}>{test.name}：{test.result}</p>)}
-              <p>{feedback.ai_feedback}</p>
+              {feedback.ai_feedback && <><h4>AI 辅助评语</h4><p>{feedback.ai_feedback}</p></>}
             </div>
           )}
         </section>

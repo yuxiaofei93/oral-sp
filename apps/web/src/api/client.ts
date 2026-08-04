@@ -202,8 +202,77 @@ export type SessionFeedback = {
     result: string
     interpretation: string
   }>
-  score: number | null
+  score: AssessmentScore
+  scoring_items: ScoreResult[]
+  omissions: FeedbackIssue[]
+  errors: FeedbackIssue[]
+  feedback_summary: string
+  ai_feedback: string | null
+}
+
+export type AssessmentScore = {
+  automatic_score: number
+  scored_maximum: number
+  maximum_score: number
+  provisional: boolean
+}
+
+export type FeedbackIssue = {
+  code: string
+  label: string
+  reason: string
+  standard_answer: string
+}
+
+export type ScoreResult = {
+  id?: string
+  code: string
+  label: string
+  dimension: string
+  evaluation_method?: string
+  automatic_score: number | null
+  max_score: number
+  decision: 'achieved' | 'partial' | 'missed' | 'pending'
+  confidence?: number | null
+  evidence_message_ids?: string[]
+  evidence_submission_ids?: string[]
+  evidence_excerpt: string
+  standard_answer: string
+  reason: string
+  is_student_visible?: boolean
+  rule_version?: string
+  model_version?: string
+}
+
+export type SessionAssessment = AssessmentScore & {
+  omissions: FeedbackIssue[]
+  errors: FeedbackIssue[]
+  feedback_summary: string
   ai_feedback: string
+  scoring_version: string
+  generated_at: string
+  scoring_items: ScoreResult[]
+}
+
+export type TeacherResponseRow = {
+  student_id: string
+  display_name: string
+  phone: string
+  attempt_status: AttemptStatus
+  session_id: string | null
+  started_at: string | null
+  completed_at: string | null
+  elapsed_seconds: number | null
+  score: AssessmentScore | null
+}
+
+export type TeacherSessionRecord = SimulationSession & {
+  student_id: string
+  student_name: string
+  student_phone: string
+  assessment: SessionAssessment | null
+  standard_diagnoses: SessionFeedback['standard_diagnoses']
+  standard_tests: SessionFeedback['standard_tests']
 }
 
 export type RosterStudent = {
@@ -482,4 +551,18 @@ export function releaseTeacherAssignmentFeedback(
   assignmentId: string,
 ): Promise<TeacherAssignment> {
   return mutate('POST', `/api/teacher/assignments/${assignmentId}/release-feedback/`)
+}
+
+export async function listTeacherResponses(assignmentId: string): Promise<TeacherResponseRow[]> {
+  const response = await fetch(`/api/teacher/assignments/${assignmentId}/responses/`, {
+    credentials: 'same-origin',
+  })
+  return parseResponse<TeacherResponseRow[]>(response)
+}
+
+export async function getTeacherSessionRecord(sessionId: string): Promise<TeacherSessionRecord> {
+  const response = await fetch(`/api/teacher/sessions/${sessionId}/record/`, {
+    credentials: 'same-origin',
+  })
+  return parseResponse<TeacherSessionRecord>(response)
 }

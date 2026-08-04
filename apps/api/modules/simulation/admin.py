@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import CaseAssignment, ModelCall, SimulationSession
+from .models import CaseAssignment, ModelCall, ScoreResult, SessionAssessment, SimulationSession
 
 
 @admin.register(CaseAssignment)
@@ -36,3 +36,16 @@ class ModelCallAdmin(admin.ModelAdmin):
     list_display = ("session", "provider", "model", "status", "latency_ms", "created_at")
     list_filter = ("status", "provider")
     readonly_fields = [field.name for field in ModelCall._meta.fields]
+
+
+@admin.register(SessionAssessment)
+class SessionAssessmentAdmin(admin.ModelAdmin):
+    list_display = ("session", "automatic_score", "scored_maximum", "provisional", "generated_at")
+    readonly_fields = [field.name for field in SessionAssessment._meta.fields]
+
+
+@admin.register(ScoreResult)
+class ScoreResultAdmin(admin.ModelAdmin):
+    list_display = ("session", "code", "decision", "automatic_score", "max_score")
+    list_filter = ("decision", "dimension", "evaluation_method")
+    readonly_fields = [field.name for field in ScoreResult._meta.fields]

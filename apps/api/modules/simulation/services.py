@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -32,6 +33,7 @@ from .models import (
     StageSubmission,
     SubmissionType,
 )
+from .scoring import generate_assessment
 
 RETENTION_DAYS = 180
 
@@ -137,18 +139,32 @@ def close_assignment(*, assignment: CaseAssignment) -> CaseAssignment:
     now = timezone.now()
     with transaction.atomic():
         locked = CaseAssignment.objects.select_for_update().get(pk=assignment.pk)
-        if locked.status == AssignmentStatus.CLOSED:
-            return locked
-        locked.status = AssignmentStatus.CLOSED
-        locked.save(update_fields=["status", "updated_at"])
-        SimulationSession.objects.filter(
-            assignment=locked,
-            status=SessionStatus.ACTIVE,
-        ).update(status=SessionStatus.EXPIRED, completed_at=now, updated_at=now)
-        return locked
+        if locked.status != AssignmentStatus.CLOSED:
+            locked.status = AssignmentStatus.CLOSED
+            locked.save(update_fields=["status", "updated_at"])
+            SimulationSession.objects.filter(
+                assignment=locked,
+                status=SessionStatus.ACTIVE,
+            ).update(status=SessionStatus.EXPIRED, completed_at=now, updated_at=now)
+            Message.objects.filter(
+                session__assignment=locked,
+                role=MessageRole.STUDENT,
+                response_status=ResponseStatus.PROCESSING,
+            ).update(
+                response_status=ResponseStatus.FAILED,
+                error_code="assignment_closed",
+            )
+    for session in SimulationSession.objects.filter(assignment=locked):
+        generate_assessment(session)
+    return locked
 
 
 def release_feedback(*, assignment: CaseAssignment) -> CaseAssignment:
+    current = CaseAssignment.objects.get(pk=assignment.pk)
+    if current.status != AssignmentStatus.CLOSED:
+        raise FeedbackUnavailableError("必须先收卷，才能统一发布反馈。")
+    for session in SimulationSession.objects.filter(assignment=current):
+        generate_assessment(session)
     with transaction.atomic():
         locked = CaseAssignment.objects.select_for_update().get(pk=assignment.pk)
         if locked.status != AssignmentStatus.CLOSED:
@@ -167,6 +183,7 @@ def _expire_if_needed(session: SimulationSession, *, now=None) -> bool:
         session.status = SessionStatus.EXPIRED
         session.completed_at = now
         session.save(update_fields=["status", "completed_at", "updated_at"])
+        generate_assessment(session)
         return True
     return session.status == SessionStatus.EXPIRED
 
@@ -329,6 +346,27 @@ def _save_patient_response(
         existing = Message.objects.filter(reply_to=locked_student).first()
         if existing:
             return existing
+        if (
+            locked_session.status != SessionStatus.ACTIVE
+            or locked_session.stage != SessionStage.INTERVIEW
+        ):
+            locked_student.response_status = ResponseStatus.FAILED
+            locked_student.error_code = "session_ended"
+            locked_student.save(update_fields=["response_status", "error_code"])
+            ModelCall.objects.create(
+                session=locked_session,
+                student_message=locked_student,
+                provider=result.provider,
+                model=result.model,
+                request_hash=hashed_request,
+                matched_fact_codes=result.fact_codes,
+                status=ModelCallStatus.FAILED,
+                latency_ms=result.latency_ms,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                error_code="session_ended",
+            )
+            raise SessionExpiredError("会话已结束，本次患者回答未写入考试记录。")
 
         locked_session.last_message_sequence += 1
         locked_session.save(update_fields=["last_message_sequence", "updated_at"])
@@ -476,6 +514,7 @@ def submit_stage(
 ) -> StageSubmission:
     require_active_session(session=session, student=student)
     now = timezone.now()
+    completed = False
     with transaction.atomic():
         locked = SimulationSession.objects.select_for_update().select_related("assignment").get(
             pk=session.pk
@@ -490,6 +529,15 @@ def submit_stage(
             submission_type=submission_type,
         ).exists():
             raise DuplicateSubmissionError("该阶段已经提交，不能覆盖历史内容。")
+        if (
+            locked.stage == SessionStage.INTERVIEW
+            and Message.objects.filter(
+                session=locked,
+                role=MessageRole.STUDENT,
+                response_status=ResponseStatus.PROCESSING,
+            ).exists()
+        ):
+            raise StageLockedError("仍有患者回答正在生成，请等待回答完成后再结束问诊。")
 
         submission = StageSubmission.objects.create(
             session=locked,
@@ -499,6 +547,7 @@ def submit_stage(
         previous = locked.stage
         locked.stage = expected[1]
         if locked.stage == SessionStage.COMPLETED:
+            completed = True
             locked.status = SessionStatus.COMPLETED
             locked.completed_at = now
             locked.retention_expires_at = now + timedelta(days=RETENTION_DAYS)
@@ -518,7 +567,9 @@ def submit_stage(
             from_stage=previous,
             to_stage=locked.stage,
         )
-        return submission
+    if completed:
+        generate_assessment(locked)
+    return submission
 
 
 def feedback_for_session(*, session: SimulationSession, student) -> dict:
@@ -526,6 +577,25 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
         raise AssignmentUnavailableError("无权访问该问诊反馈。")
     if session.assignment.feedback_released_at is None:
         raise FeedbackUnavailableError("教师尚未统一发布反馈。")
+    assessment = generate_assessment(session)
+    visible_results = list(session.score_results.filter(is_student_visible=True))
+    visible_automatic_score = sum(
+        (
+            result.automatic_score
+            for result in visible_results
+            if result.automatic_score is not None
+        ),
+        start=Decimal("0.00"),
+    )
+    visible_scored_maximum = sum(
+        (result.max_score for result in visible_results if result.automatic_score is not None),
+        start=Decimal("0.00"),
+    )
+    visible_maximum_score = sum(
+        (result.max_score for result in visible_results),
+        start=Decimal("0.00"),
+    )
+    visible_pending = sum(result.automatic_score is None for result in visible_results)
     return {
         "session_id": str(session.id),
         "standard_diagnoses": [
@@ -545,6 +615,36 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
             }
             for test in session.case_version.tests.all()
         ],
-        "score": None,
-        "ai_feedback": "评分功能将在下一阶段生成。",
+        "score": {
+            "automatic_score": float(visible_automatic_score),
+            "scored_maximum": float(visible_scored_maximum),
+            "maximum_score": float(visible_maximum_score),
+            "provisional": bool(visible_pending),
+        },
+        "scoring_items": [
+            {
+                "code": result.code,
+                "label": result.label,
+                "dimension": result.dimension,
+                "automatic_score": (
+                    float(result.automatic_score)
+                    if result.automatic_score is not None
+                    else None
+                ),
+                "max_score": float(result.max_score),
+                "decision": result.decision,
+                "reason": result.reason,
+                "evidence_excerpt": result.evidence_excerpt,
+                "standard_answer": result.standard_answer,
+            }
+            for result in visible_results
+        ],
+        "omissions": assessment.omissions,
+        "errors": assessment.errors,
+        "feedback_summary": (
+            f"自动规则评分覆盖 {len(visible_results) - visible_pending} 个可见评分项；"
+            f"发现 {len(assessment.omissions)} 个遗漏项和 "
+            f"{len(assessment.errors)} 个需关注项。"
+        ),
+        "ai_feedback": assessment.ai_feedback or None,
     }
