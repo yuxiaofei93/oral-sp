@@ -4,6 +4,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.db import transaction
 
 from .models import (
+    AIEvaluationStatus,
     CaseAssignment,
     ScoreDecision,
     ScoreResult,
@@ -14,6 +15,7 @@ from .models import (
 from .scoring import generate_assessment
 
 CENT = Decimal("0.01")
+NOT_PROVIDED = object()
 
 
 class TeacherReviewError(Exception):
@@ -41,21 +43,74 @@ def latest_review(session: SimulationSession) -> TeacherReview | None:
     return session.teacher_reviews.select_related("reviewer").order_by("-revision").first()
 
 
+def latest_ai_run(session: SimulationSession):
+    cached = getattr(session, "_prefetched_objects_cache", {}).get("ai_evaluation_runs")
+    if cached is not None:
+        successful = [run for run in cached if run.status == AIEvaluationStatus.SUCCEEDED]
+        return max(successful, key=lambda run: run.created_at, default=None)
+    return (
+        session.ai_evaluation_runs.filter(status=AIEvaluationStatus.SUCCEEDED)
+        .prefetch_related("results__score_result")
+        .order_by("-created_at")
+        .first()
+    )
+
+
+def latest_ai_attempt(session: SimulationSession):
+    cached = getattr(session, "_prefetched_objects_cache", {}).get("ai_evaluation_runs")
+    if cached is not None:
+        return max(cached, key=lambda run: run.created_at, default=None)
+    return (
+        session.ai_evaluation_runs.prefetch_related("results__score_result")
+        .order_by("-created_at")
+        .first()
+    )
+
+
+def ai_results_by_code(run) -> dict:
+    if run is None:
+        return {}
+    return {result.score_result.code: result for result in run.results.all()}
+
+
 def review_overrides(review: TeacherReview | None) -> dict[str, dict]:
     if review is None or not isinstance(review.score_overrides, dict):
         return {}
     return review.score_overrides
 
 
-def effective_score(result: ScoreResult, review: TeacherReview | None) -> Decimal | None:
+def effective_score(
+    result: ScoreResult,
+    review: TeacherReview | None,
+    *,
+    ai_run=NOT_PROVIDED,
+    ai_results: dict | None = None,
+) -> Decimal | None:
     override = review_overrides(review).get(result.code)
-    if not isinstance(override, dict) or override.get("score") in (None, ""):
+    if isinstance(override, dict) and override.get("score") not in (None, ""):
+        return _money(override["score"])
+    if result.automatic_score is not None:
         return result.automatic_score
-    return _money(override["score"])
+    if ai_run is NOT_PROVIDED:
+        ai_run = latest_ai_run(result.session)
+    ai_results = ai_results if ai_results is not None else ai_results_by_code(ai_run)
+    ai_result = ai_results.get(result.code)
+    return ai_result.score if ai_result else None
 
 
-def effective_decision(result: ScoreResult, review: TeacherReview | None) -> str:
-    score = effective_score(result, review)
+def effective_decision(
+    result: ScoreResult,
+    review: TeacherReview | None,
+    *,
+    ai_run=NOT_PROVIDED,
+    ai_results: dict | None = None,
+) -> str:
+    score = effective_score(
+        result,
+        review,
+        ai_run=ai_run,
+        ai_results=ai_results,
+    )
     if score is None:
         return ScoreDecision.PENDING
     if score <= 0:
@@ -76,11 +131,24 @@ def score_summary(
         results = results.filter(is_student_visible=True)
     results = list(results)
     review = review if review is not None else latest_review(session)
+    ai_run = latest_ai_run(session)
+    ai_results = ai_results_by_code(ai_run)
     automatic_score = sum(
         (result.automatic_score for result in results if result.automatic_score is not None),
         start=Decimal("0.00"),
     )
-    effective = [(result, effective_score(result, review)) for result in results]
+    effective = [
+        (
+            result,
+            effective_score(
+                result,
+                review,
+                ai_run=ai_run,
+                ai_results=ai_results,
+            ),
+        )
+        for result in results
+    ]
     final_score = sum(
         (score for _, score in effective if score is not None),
         start=Decimal("0.00"),
@@ -113,13 +181,20 @@ def unresolved_issues(
     if student_visible_only:
         results = results.filter(is_student_visible=True)
     result_by_code = {result.code: result for result in results}
+    ai_run = latest_ai_run(session)
+    ai_results = ai_results_by_code(ai_run)
     remaining = []
     for item in issues:
         result = result_by_code.get(item.get("code"))
         if result is None:
             remaining.append(item)
             continue
-        score = effective_score(result, review)
+        score = effective_score(
+            result,
+            review,
+            ai_run=ai_run,
+            ai_results=ai_results,
+        )
         if score is None or score < result.max_score:
             remaining.append(item)
     return remaining
@@ -179,12 +254,16 @@ def create_teacher_review(
             return TeacherReviewResult(review=previous, created=False)
 
         effective = []
+        ai_run = latest_ai_run(locked)
+        ai_results = ai_results_by_code(ai_run)
         for result in results.values():
             override = normalized_overrides.get(result.code)
             if override and override["score"] is not None:
                 value = _money(override["score"])
             else:
                 value = result.automatic_score
+                if value is None and result.code in ai_results:
+                    value = ai_results[result.code].score
             effective.append((result, value))
         final_score = sum(
             (value for _, value in effective if value is not None),

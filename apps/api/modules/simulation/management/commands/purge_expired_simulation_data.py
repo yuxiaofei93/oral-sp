@@ -24,7 +24,8 @@ class Command(BaseCommand):
             "关联记录："
             f"消息 {preview.messages}，阶段提交 {preview.submissions}，"
             f"模型调用 {preview.model_calls}，评分项 {preview.score_results}，"
-            f"教师复核 {preview.teacher_reviews}"
+            f"教师复核 {preview.teacher_reviews}，AI 评价运行 {preview.ai_evaluation_runs}，"
+            f"AI 分项结果 {preview.ai_score_results}"
         )
         if not options["execute"]:
             self.stdout.write(self.style.WARNING("预览模式：未修改任何数据。"))

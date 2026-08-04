@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -18,6 +19,8 @@ from .gateways import (
     request_hash,
 )
 from .models import (
+    AIEvaluationRun,
+    AIEvaluationStatus,
     AssignmentStatus,
     AssignmentStudent,
     CaseAssignment,
@@ -34,8 +37,10 @@ from .models import (
     SubmissionType,
 )
 from .reviews import (
+    ai_results_by_code,
     effective_decision,
     effective_score,
+    latest_ai_run,
     latest_review,
     review_overrides,
     score_summary,
@@ -182,6 +187,11 @@ def release_feedback(*, assignment: CaseAssignment) -> CaseAssignment:
         locked = CaseAssignment.objects.select_for_update().get(pk=assignment.pk)
         if locked.status != AssignmentStatus.CLOSED:
             raise FeedbackUnavailableError("必须先收卷，才能统一发布反馈。")
+        if AIEvaluationRun.objects.filter(
+            session__assignment=locked,
+            status=AIEvaluationStatus.RUNNING,
+        ).exists():
+            raise FeedbackUnavailableError("仍有 AI 评价正在生成，请完成后再发布反馈。")
         if locked.feedback_released_at is None:
             locked.feedback_released_at = timezone.now()
             locked.save(update_fields=["feedback_released_at", "updated_at"])
@@ -485,22 +495,29 @@ def ask_patient(
         )
         return ExchangeResult(student_message, patient_message, reused)
 
+    patient_gateway = gateway
     try:
-        patient_gateway = gateway or get_patient_gateway()
+        patient_gateway = patient_gateway or get_patient_gateway()
         result = patient_gateway.answer(question=content, facts=facts)
     except GatewayError as error:
         student_message.response_status = ResponseStatus.FAILED
-        student_message.error_code = "gateway_error"
+        student_message.error_code = error.code
         student_message.save(update_fields=["response_status", "error_code"])
+        client = getattr(patient_gateway, "client", None)
         ModelCall.objects.create(
             session=session,
             student_message=student_message,
-            provider=type(patient_gateway).__name__,
-            model="unavailable",
+            provider=(
+                getattr(client, "provider", "")
+                or os.environ.get("LLM_PROVIDER", "unavailable")
+            ),
+            model=(
+                getattr(client, "model", "") or os.environ.get("LLM_MODEL", "unavailable")
+            ),
             request_hash=request_hash(question=content, facts=facts),
             matched_fact_codes=[fact.code for fact in facts],
             status=ModelCallStatus.FAILED,
-            error_code="gateway_error",
+            error_code=error.code,
         )
         raise ModelUnavailableError("患者模型暂时不可用，请稍后重试。") from error
 
@@ -622,9 +639,17 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
     assessment = generate_assessment(session)
     visible_results = list(session.score_results.filter(is_student_visible=True))
     review = latest_review(session)
+    ai_run = latest_ai_run(session)
+    ai_results = ai_results_by_code(ai_run)
     overrides = review_overrides(review)
     effective_by_code = {
-        result.code: effective_score(result, review) for result in visible_results
+        result.code: effective_score(
+            result,
+            review,
+            ai_run=ai_run,
+            ai_results=ai_results,
+        )
+        for result in visible_results
     }
     visible_omissions = unresolved_issues(
         session,
@@ -667,6 +692,7 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
                 "code": result.code,
                 "label": result.label,
                 "dimension": result.dimension,
+                "evaluation_method": result.evaluation_method,
                 "automatic_score": (
                     float(result.automatic_score)
                     if result.automatic_score is not None
@@ -677,6 +703,27 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
                     if result.code in overrides
                     and overrides[result.code].get("score") not in (None, "")
                     else None
+                ),
+                "ai_score": (
+                    float(ai_results[result.code].score)
+                    if result.code in ai_results
+                    else None
+                ),
+                "ai_confidence": (
+                    float(ai_results[result.code].confidence)
+                    if result.code in ai_results
+                    else None
+                ),
+                "ai_reason": (
+                    ai_results[result.code].reason if result.code in ai_results else ""
+                ),
+                "ai_feedback": (
+                    ai_results[result.code].feedback if result.code in ai_results else ""
+                ),
+                "ai_evidence_excerpt": (
+                    ai_results[result.code].evidence_excerpt
+                    if result.code in ai_results
+                    else ""
                 ),
                 "effective_score": (
                     float(effective_by_code[result.code])
@@ -690,7 +737,12 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
                 ),
                 "max_score": float(result.max_score),
                 "decision": result.decision,
-                "effective_decision": effective_decision(result, review),
+                "effective_decision": effective_decision(
+                    result,
+                    review,
+                    ai_run=ai_run,
+                    ai_results=ai_results,
+                ),
                 "reason": result.reason,
                 "evidence_excerpt": result.evidence_excerpt,
                 "standard_answer": result.standard_answer,
@@ -704,6 +756,10 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
             f"发现 {len(visible_omissions)} 个遗漏项和 "
             f"{len(visible_errors)} 个需关注项。"
         ),
-        "ai_feedback": assessment.ai_feedback or None,
+        "ai_feedback": (
+            ai_run.feedback_summary
+            if ai_run and any(result.code in ai_results for result in visible_results)
+            else None
+        ),
         "teacher_comment": review.comment if review else "",
     }

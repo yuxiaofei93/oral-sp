@@ -11,16 +11,21 @@ from modules.accounts.permissions import IsStudent, IsTeacherOrAdministrator
 from modules.cases.models import CaseVersion, VersionStatus
 from modules.teaching.models import ClassGroup
 
+from .ai_evaluation import AIEvaluationError, run_ai_evaluation
 from .models import CaseAssignment, SessionAssessment, SimulationSession
 from .reporting import assignment_csv, assignment_report
 from .reviews import (
     TeacherReviewError,
     create_teacher_review,
+    latest_ai_attempt,
+    latest_ai_run,
     latest_review,
     score_summary,
 )
 from .scoring import generate_assessment
 from .serializers import (
+    AIEvaluationCreateSerializer,
+    AIEvaluationRunSerializer,
     AskPatientSerializer,
     AssignmentCreateSerializer,
     AssignmentOptionSerializer,
@@ -145,6 +150,7 @@ def teacher_session_queryset(user):
             "submissions",
             "score_results",
             "teacher_reviews__reviewer",
+            "ai_evaluation_runs__results__score_result",
             "case_version__diagnosis_rules",
             "case_version__tests",
         )
@@ -339,8 +345,70 @@ class TeacherSessionRecordView(APIView):
             generate_assessment(session)
             session = teacher_session_queryset(request.user).get(pk=session_id)
         review = latest_review(session)
+        ai_run = latest_ai_run(session)
         return Response(
-            TeacherSessionRecordSerializer(session, context={"review": review}).data
+            TeacherSessionRecordSerializer(
+                session,
+                context={
+                    "review": review,
+                    "ai_run": ai_run,
+                    "latest_ai_attempt": latest_ai_attempt(session),
+                },
+            ).data
+        )
+
+
+class TeacherSessionAIEvaluationView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def post(self, request, session_id):
+        session = get_object_or_404(teacher_session_queryset(request.user), pk=session_id)
+        serializer = AIEvaluationCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = run_ai_evaluation(
+                session=session,
+                requested_by=request.user,
+                **serializer.validated_data,
+            )
+        except AIEvaluationError as error:
+            unavailable_codes = {
+                "configuration_error",
+                "connection_error",
+                "model_not_configured",
+                "unsupported_provider",
+            }
+            invalid_provider_output_codes = {
+                "empty_response",
+                "incomplete_ai_result",
+                "invalid_ai_evidence",
+                "invalid_ai_item",
+                "invalid_ai_json",
+                "invalid_ai_reason",
+                "invalid_ai_score",
+                "invalid_json",
+                "invalid_response",
+                "missing_ai_evidence",
+                "output_truncated",
+                "unexpected_gateway_error",
+            }
+            if error.code == "http_429":
+                response_status = status.HTTP_503_SERVICE_UNAVAILABLE
+            elif error.code.startswith("http_"):
+                response_status = status.HTTP_502_BAD_GATEWAY
+            elif error.code in unavailable_codes:
+                response_status = status.HTTP_503_SERVICE_UNAVAILABLE
+            elif error.code in invalid_provider_output_codes:
+                response_status = status.HTTP_502_BAD_GATEWAY
+            else:
+                response_status = status.HTTP_409_CONFLICT
+            return Response(
+                {"detail": str(error), "code": error.code},
+                status=response_status,
+            )
+        return Response(
+            AIEvaluationRunSerializer(result.run).data,
+            status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK,
         )
 
 

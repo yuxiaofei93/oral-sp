@@ -33,6 +33,7 @@ describe('TeacherResponses', () => {
   })
 
   it('shows traceable evidence and submits a teacher review', async () => {
+    let aiGenerated = false
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input)
       if (url.endsWith('/api/auth/csrf/')) {
@@ -46,6 +47,22 @@ describe('TeacherResponses', () => {
               score_overrides: { 'fact:duration': { score: '1.00', reason: '追问深度不足' } },
               comment: '继续加强追问', final_score: 7, scored_maximum: 8, maximum_score: 9,
               provisional: true, created_at: '2026-08-04T01:00:00Z',
+            }),
+            { status: 201 },
+          ),
+        )
+      }
+      if (url.endsWith('/session-1/ai-evaluation/')) {
+        aiGenerated = true
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'ai-run-1', status: 'succeeded', provider: 'deepseek', model: 'deepseek-v4-flash',
+              requested_by_id: 'teacher-1', requested_by_name: '教师甲',
+              resolved_model: 'DeepSeek-V4-Flash-0731', prompt_version: 'assessment-v1',
+              scoring_item_codes: ['fact:duration'], feedback_summary: '提问简洁。', latency_ms: 320,
+              input_tokens: 120, output_tokens: 80, error_code: '',
+              created_at: '2026-08-04T00:20:00Z', completed_at: '2026-08-04T00:20:01Z', results: [],
             }),
             { status: 201 },
           ),
@@ -113,10 +130,10 @@ describe('TeacherResponses', () => {
               submissions: [],
               assessment: {
                 automatic_score: 8,
-                final_score: 8,
-                scored_maximum: 8,
+                final_score: aiGenerated ? 8.75 : 8,
+                scored_maximum: aiGenerated ? 9 : 8,
                 maximum_score: 9,
-                provisional: true,
+                provisional: !aiGenerated,
                 omissions: [],
                 errors: [],
                 feedback_summary: '自动规则评分覆盖 4 个评分项。',
@@ -128,10 +145,16 @@ describe('TeacherResponses', () => {
                     code: 'fact:duration',
                     label: '病程三年',
                     dimension: 'history',
-                    automatic_score: 2,
+                    evaluation_method: 'ai',
+                    automatic_score: null,
+                    ai_score: aiGenerated ? 0.75 : null,
+                    ai_confidence: aiGenerated ? 0.82 : null,
+                    ai_reason: aiGenerated ? '提问围绕病程获取了有效信息。' : '',
+                    ai_feedback: aiGenerated ? '可以先开放询问。' : '',
+                    ai_evidence_excerpt: aiGenerated ? '学生：疼了多久？' : '',
                     teacher_score: null,
-                    effective_score: 2,
-                    effective_decision: 'achieved',
+                    effective_score: aiGenerated ? 0.75 : null,
+                    effective_decision: aiGenerated ? 'partial' : 'pending',
                     adjustment_reason: '',
                     max_score: 2,
                     decision: 'achieved',
@@ -142,6 +165,14 @@ describe('TeacherResponses', () => {
                 ],
               },
               latest_review: null,
+              ai_evaluation: aiGenerated ? {
+                id: 'ai-run-1', status: 'succeeded', provider: 'deepseek', model: 'deepseek-v4-flash',
+                requested_by_id: 'teacher-1', requested_by_name: '教师甲',
+                resolved_model: 'DeepSeek-V4-Flash-0731', prompt_version: 'assessment-v1',
+                scoring_item_codes: ['fact:duration'], feedback_summary: '提问简洁。', latency_ms: 320,
+                input_tokens: 120, output_tokens: 80, error_code: '',
+                created_at: '2026-08-04T00:20:00Z', completed_at: '2026-08-04T00:20:01Z', results: [],
+              } : null,
               standard_diagnoses: [{ type: 'final', name: '慢性牙周炎', supporting_evidence: ['病程长'] }],
               standard_tests: [],
             }),
@@ -162,6 +193,10 @@ describe('TeacherResponses', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: '学生甲的答卷' })).toBeInTheDocument())
     expect(screen.getByText(/学生：疼了多久/)).toBeInTheDocument()
     expect(screen.getByText(/慢性牙周炎/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '生成 AI 辅助评价' }))
+    await waitFor(() => expect(screen.getByText('评价已生成')).toBeInTheDocument())
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/session-1/ai-evaluation/'))).toBe(true)
+    expect(screen.getByText(/DeepSeek-V4-Flash-0731/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('复核分数'), { target: { value: '1' } })
     fireEvent.change(screen.getByLabelText('改分理由（改分时必填）'), { target: { value: '追问深度不足' } })
     fireEvent.change(screen.getByLabelText('教师评语'), { target: { value: '继续加强追问' } })

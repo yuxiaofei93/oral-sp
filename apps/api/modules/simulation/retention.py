@@ -5,6 +5,8 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import (
+    AIEvaluationRun,
+    AIScoreResult,
     AssignmentStatus,
     Message,
     ModelCall,
@@ -28,6 +30,8 @@ class RetentionPreview:
     model_calls: int
     score_results: int
     teacher_reviews: int
+    ai_evaluation_runs: int
+    ai_score_results: int
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,8 @@ def retention_preview(*, now=None) -> RetentionPreview:
         model_calls=ModelCall.objects.filter(session__in=targets).count(),
         score_results=ScoreResult.objects.filter(session__in=targets).count(),
         teacher_reviews=TeacherReview.objects.filter(session__in=targets).count(),
+        ai_evaluation_runs=AIEvaluationRun.objects.filter(session__in=targets).count(),
+        ai_score_results=AIScoreResult.objects.filter(run__session__in=targets).count(),
     )
 
 
@@ -76,7 +82,10 @@ def purge_expired_sessions(*, now=None) -> RetentionResult:
 
     deleted_related = 0
     with transaction.atomic():
+        deleted, _ = AIScoreResult.objects.filter(run__session_id__in=session_ids).delete()
+        deleted_related += deleted
         for model in (
+            AIEvaluationRun,
             ScoreResult,
             SessionAssessment,
             TeacherReview,

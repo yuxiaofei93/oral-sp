@@ -445,3 +445,111 @@ class TeacherReview(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("教师复核记录不可删除。")
+
+
+class AIEvaluationStatus(models.TextChoices):
+    RUNNING = "running", "评价中"
+    SUCCEEDED = "succeeded", "成功"
+    FAILED = "failed", "失败"
+
+
+class AIEvaluationRun(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        SimulationSession,
+        on_delete=models.CASCADE,
+        related_name="ai_evaluation_runs",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="requested_ai_evaluations",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=AIEvaluationStatus.choices,
+        default=AIEvaluationStatus.RUNNING,
+    )
+    provider = models.CharField(max_length=80)
+    model = models.CharField(max_length=120)
+    resolved_model = models.CharField(max_length=120, blank=True)
+    prompt_version = models.CharField(max_length=40, default="assessment-v1")
+    request_hash = models.CharField(max_length=64)
+    scoring_item_codes = models.JSONField(default=list)
+    feedback_summary = models.TextField(blank=True)
+    latency_ms = models.PositiveIntegerField(default=0)
+    input_tokens = models.PositiveIntegerField(null=True, blank=True)
+    output_tokens = models.PositiveIntegerField(null=True, blank=True)
+    error_code = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session"],
+                condition=Q(status=AIEvaluationStatus.RUNNING),
+                name="one_running_ai_evaluation_per_session",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            original = type(self).objects.get(pk=self.pk)
+            immutable_fields = (
+                "session_id",
+                "requested_by_id",
+                "provider",
+                "model",
+                "prompt_version",
+                "request_hash",
+                "scoring_item_codes",
+                "created_at",
+            )
+            if any(getattr(self, field) != getattr(original, field) for field in immutable_fields):
+                raise ValidationError("AI 评价运行的请求信息不可覆盖。")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("AI 评价运行记录不可删除。")
+
+
+class AIScoreResult(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(
+        AIEvaluationRun,
+        on_delete=models.CASCADE,
+        related_name="results",
+    )
+    score_result = models.ForeignKey(
+        ScoreResult,
+        on_delete=models.PROTECT,
+        related_name="ai_evaluations",
+    )
+    score = models.DecimalField(max_digits=8, decimal_places=2)
+    decision = models.CharField(max_length=16, choices=ScoreDecision.choices)
+    confidence = models.DecimalField(max_digits=5, decimal_places=4)
+    evidence_message_ids = models.JSONField(default=list)
+    evidence_submission_ids = models.JSONField(default=list)
+    evidence_excerpt = models.TextField(blank=True)
+    reason = models.TextField()
+    feedback = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["score_result__dimension", "score_result__code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "score_result"],
+                name="unique_ai_result_per_run_item",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("AI 评价结果不可覆盖。")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("AI 评价结果不可删除。")

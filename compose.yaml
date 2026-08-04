@@ -41,9 +41,9 @@ services:
       MEDIA_ROOT: /app/var/private-media
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
-      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
     depends_on:
       db:
