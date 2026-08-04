@@ -1,0 +1,61 @@
+from django.urls import path
+
+from .views import (
+    StudentAssignmentListView,
+    StudentSessionDetailView,
+    StudentSessionFeedbackView,
+    StudentSessionMessageView,
+    StudentSessionStartView,
+    StudentSessionSubmissionView,
+    TeacherAssignmentCloseView,
+    TeacherAssignmentListCreateView,
+    TeacherAssignmentReleaseFeedbackView,
+)
+
+urlpatterns = [
+    path(
+        "teacher/assignments/",
+        TeacherAssignmentListCreateView.as_view(),
+        name="teacher-assignment-list",
+    ),
+    path(
+        "teacher/assignments/<uuid:assignment_id>/close/",
+        TeacherAssignmentCloseView.as_view(),
+        name="teacher-assignment-close",
+    ),
+    path(
+        "teacher/assignments/<uuid:assignment_id>/release-feedback/",
+        TeacherAssignmentReleaseFeedbackView.as_view(),
+        name="teacher-assignment-release-feedback",
+    ),
+    path(
+        "student/assignments/",
+        StudentAssignmentListView.as_view(),
+        name="student-assignment-list",
+    ),
+    path(
+        "student/assignments/<uuid:assignment_id>/session/",
+        StudentSessionStartView.as_view(),
+        name="student-session-start",
+    ),
+    path(
+        "student/sessions/<uuid:session_id>/",
+        StudentSessionDetailView.as_view(),
+        name="student-session-detail",
+    ),
+    path(
+        "student/sessions/<uuid:session_id>/messages/",
+        StudentSessionMessageView.as_view(),
+        name="student-session-message",
+    ),
+    path(
+        "student/sessions/<uuid:session_id>/submissions/",
+        StudentSessionSubmissionView.as_view(),
+        name="student-session-submission",
+    ),
+    path(
+        "student/sessions/<uuid:session_id>/feedback/",
+        StudentSessionFeedbackView.as_view(),
+        name="student-session-feedback",
+    ),
+]

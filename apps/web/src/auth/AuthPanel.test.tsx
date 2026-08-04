@@ -32,6 +32,9 @@ describe('AuthPanel', () => {
           ),
         )
       }
+      if (url.endsWith('/student/assignments/')) {
+        return Promise.resolve(new Response('[]', { status: 200 }))
+      }
       return Promise.reject(new Error(`unexpected request: ${url}`))
     })
 
@@ -44,7 +47,6 @@ describe('AuthPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '注册并登录' }))
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '欢迎，测试学生' })).toBeInTheDocument())
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
   })
 })
-

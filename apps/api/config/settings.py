@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     "modules.accounts",
     "modules.cases",
     "modules.core",
+    "modules.simulation",
     "modules.teaching",
 ]
 

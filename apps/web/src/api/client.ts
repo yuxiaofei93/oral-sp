@@ -130,6 +130,82 @@ export type CaseSummary = {
   } | null
 }
 
+export type AttemptStatus = 'not_started' | 'active' | 'completed' | 'expired'
+
+export type StudentAssignment = {
+  id: string
+  title: string
+  case_title: string
+  difficulty: 'basic' | 'intermediate' | 'advanced'
+  duration_minutes: number
+  opens_at: string
+  deadline_at: string
+  status: 'open' | 'closed'
+  feedback_released_at: string | null
+  attempt_status: AttemptStatus
+  session_id: string | null
+}
+
+export type SessionStage =
+  | 'interview'
+  | 'initial_reasoning'
+  | 'test_selection'
+  | 'final_reasoning'
+  | 'completed'
+
+export type SessionMessage = {
+  id: string
+  sequence: number
+  role: 'student' | 'patient' | 'system'
+  content: string
+  client_message_id: string
+  reply_to_id: string | null
+  response_status: 'processing' | 'completed' | 'failed' | 'not_applicable'
+  error_code: string
+  created_at: string
+}
+
+export type StageSubmission = {
+  id: string
+  submission_type: string
+  payload: Record<string, unknown>
+  submitted_at: string
+}
+
+export type SimulationSession = {
+  id: string
+  assignment_id: string
+  assignment_title: string
+  case_title: string
+  patient_name: string
+  opening_statement: string
+  status: 'active' | 'completed' | 'expired'
+  stage: SessionStage
+  started_at: string
+  deadline_at: string
+  completed_at: string | null
+  remaining_seconds: number
+  messages: SessionMessage[]
+  submissions: StageSubmission[]
+}
+
+export type SessionFeedback = {
+  session_id: string
+  standard_diagnoses: Array<{
+    type: string
+    name: string
+    supporting_evidence: string[]
+  }>
+  standard_tests: Array<{
+    code: string
+    name: string
+    result: string
+    interpretation: string
+  }>
+  score: number | null
+  ai_feedback: string
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -228,4 +304,47 @@ export function publishCase(caseId: string): Promise<{
   version: { id: string; version_number: number; published_at: string; content_hash: string }
 }> {
   return mutate('POST', `/api/teacher/cases/${caseId}/publish/`)
+}
+
+export async function listStudentAssignments(): Promise<StudentAssignment[]> {
+  const response = await fetch('/api/student/assignments/', { credentials: 'same-origin' })
+  return parseResponse<StudentAssignment[]>(response)
+}
+
+export function startStudentSession(
+  assignmentId: string,
+): Promise<{ created: boolean; session: SimulationSession }> {
+  return mutate('POST', `/api/student/assignments/${assignmentId}/session/`)
+}
+
+export async function getStudentSession(sessionId: string): Promise<SimulationSession> {
+  const response = await fetch(`/api/student/sessions/${sessionId}/`, {
+    credentials: 'same-origin',
+  })
+  return parseResponse<SimulationSession>(response)
+}
+
+export function askPatient(
+  sessionId: string,
+  payload: { content: string; client_message_id: string },
+): Promise<{
+  student_message: SessionMessage
+  patient_message: SessionMessage | null
+  reused: boolean
+}> {
+  return mutate('POST', `/api/student/sessions/${sessionId}/messages/`, payload)
+}
+
+export function submitSessionStage(
+  sessionId: string,
+  payload: { submission_type: string; payload: Record<string, unknown> },
+): Promise<StageSubmission> {
+  return mutate('POST', `/api/student/sessions/${sessionId}/submissions/`, payload)
+}
+
+export async function getSessionFeedback(sessionId: string): Promise<SessionFeedback> {
+  const response = await fetch(`/api/student/sessions/${sessionId}/feedback/`, {
+    credentials: 'same-origin',
+  })
+  return parseResponse<SessionFeedback>(response)
 }

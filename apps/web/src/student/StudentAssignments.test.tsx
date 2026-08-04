@@ -1,0 +1,102 @@
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { StudentAssignments } from './StudentAssignments'
+
+const session = {
+  id: 'session-1',
+  assignment_id: 'assignment-1',
+  assignment_title: '牙周问诊练习',
+  case_title: '口腔不适病例',
+  patient_name: '陈女士',
+  opening_statement: '医生您好，我的牙龈总是疼。',
+  status: 'active',
+  stage: 'interview',
+  started_at: '2026-08-04T01:00:00Z',
+  deadline_at: '2099-08-04T01:20:00Z',
+  completed_at: null,
+  remaining_seconds: 1200,
+  messages: [],
+  submissions: [],
+}
+
+describe('StudentAssignments', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it('starts an assigned exam and records an idempotent patient question', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input)
+      if (url.endsWith('/student/assignments/')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              {
+                id: 'assignment-1',
+                title: '牙周问诊练习',
+                case_title: '口腔不适病例',
+                difficulty: 'intermediate',
+                duration_minutes: 20,
+                opens_at: '2026-08-04T00:00:00Z',
+                deadline_at: '2099-08-04T02:00:00Z',
+                status: 'open',
+                feedback_released_at: null,
+                attempt_status: 'not_started',
+                session_id: null,
+              },
+            ]),
+            { status: 200 },
+          ),
+        )
+      }
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"student-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/assignment-1/session/')) {
+        return Promise.resolve(new Response(JSON.stringify({ created: true, session }), { status: 201 }))
+      }
+      if (url.endsWith('/session-1/messages/')) {
+        const body = JSON.parse(String(init?.body))
+        expect(body.client_message_id).toMatch(/^question_[a-f0-9]+$/)
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              reused: false,
+              student_message: { id: 'm1' },
+              patient_message: { id: 'm2' },
+            }),
+            { status: 200 },
+          ),
+        )
+      }
+      if (url.endsWith('/student/sessions/session-1/')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ...session,
+              messages: [
+                { id: 'm1', sequence: 1, role: 'student', content: '有多久了？', response_status: 'completed' },
+                { id: 'm2', sequence: 2, role: 'patient', content: '差不多三年。', response_status: 'not_applicable' },
+              ],
+            }),
+            { status: 200 },
+          ),
+        )
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<StudentAssignments />)
+    await waitFor(() => screen.getByRole('button', { name: '开始作答' }))
+    fireEvent.click(screen.getByRole('button', { name: '开始作答' }))
+    await waitFor(() => screen.getByRole('heading', { name: '牙周问诊练习' }))
+
+    fireEvent.change(screen.getByLabelText('向患者提问'), { target: { value: '有多久了？' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
+
+    await waitFor(() => expect(screen.getByText('差不多三年。')).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalled()
+  })
+})

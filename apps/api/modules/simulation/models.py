@@ -1,0 +1,319 @@
+import uuid
+
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import models
+from django.db.models import Q
+
+from modules.cases.models import CaseVersion, VersionStatus
+from modules.teaching.models import ClassGroup
+
+
+class AssignmentStatus(models.TextChoices):
+    OPEN = "open", "进行中"
+    CLOSED = "closed", "已收卷"
+
+
+class CaseAssignment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=160)
+    case_version = models.ForeignKey(
+        CaseVersion,
+        on_delete=models.PROTECT,
+        related_name="assignments",
+    )
+    class_group = models.ForeignKey(
+        ClassGroup,
+        on_delete=models.PROTECT,
+        related_name="case_assignments",
+    )
+    duration_minutes = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(240)],
+    )
+    opens_at = models.DateTimeField()
+    deadline_at = models.DateTimeField()
+    status = models.CharField(
+        max_length=16,
+        choices=AssignmentStatus.choices,
+        default=AssignmentStatus.OPEN,
+    )
+    feedback_released_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="case_assignments_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-opens_at", "title"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(deadline_at__gt=models.F("opens_at")),
+                name="assignment_deadline_after_open",
+            )
+        ]
+
+    def clean(self):
+        if self.case_version_id and self.case_version.status != VersionStatus.PUBLISHED:
+            raise ValidationError("只能把已发布病例版本分配给学生。")
+
+    def __str__(self) -> str:
+        return self.title
+
+
+class AssignmentStudent(models.Model):
+    assignment = models.ForeignKey(
+        CaseAssignment,
+        on_delete=models.CASCADE,
+        related_name="student_links",
+    )
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="assignment_links",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assignment", "student"],
+                name="unique_assignment_student",
+            )
+        ]
+
+
+class SessionStatus(models.TextChoices):
+    ACTIVE = "active", "进行中"
+    COMPLETED = "completed", "已交卷"
+    EXPIRED = "expired", "已超时"
+
+
+class SessionStage(models.TextChoices):
+    INTERVIEW = "interview", "问诊"
+    INITIAL_REASONING = "initial_reasoning", "初步判断"
+    TEST_SELECTION = "test_selection", "检查选择"
+    FINAL_REASONING = "final_reasoning", "最终判断"
+    COMPLETED = "completed", "已完成"
+
+
+class SimulationSession(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    assignment = models.ForeignKey(
+        CaseAssignment,
+        on_delete=models.PROTECT,
+        related_name="sessions",
+    )
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="simulation_sessions",
+    )
+    case_version = models.ForeignKey(
+        CaseVersion,
+        on_delete=models.PROTECT,
+        related_name="sessions",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=SessionStatus.choices,
+        default=SessionStatus.ACTIVE,
+    )
+    stage = models.CharField(
+        max_length=32,
+        choices=SessionStage.choices,
+        default=SessionStage.INTERVIEW,
+    )
+    started_at = models.DateTimeField()
+    deadline_at = models.DateTimeField()
+    completed_at = models.DateTimeField(null=True, blank=True)
+    retention_expires_at = models.DateTimeField()
+    last_message_sequence = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assignment", "student"],
+                name="one_attempt_per_assignment",
+            ),
+            models.CheckConstraint(
+                condition=Q(deadline_at__gt=models.F("started_at")),
+                name="session_deadline_after_start",
+            ),
+        ]
+
+
+class SessionStageEvent(models.Model):
+    session = models.ForeignKey(
+        SimulationSession,
+        on_delete=models.CASCADE,
+        related_name="stage_events",
+    )
+    from_stage = models.CharField(max_length=32, blank=True)
+    to_stage = models.CharField(max_length=32, choices=SessionStage.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
+class MessageRole(models.TextChoices):
+    STUDENT = "student", "学生"
+    PATIENT = "patient", "患者"
+    SYSTEM = "system", "系统"
+
+
+class ResponseStatus(models.TextChoices):
+    PROCESSING = "processing", "生成中"
+    COMPLETED = "completed", "已完成"
+    FAILED = "failed", "失败"
+    NOT_APPLICABLE = "not_applicable", "不适用"
+
+
+class Message(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        SimulationSession,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    sequence = models.PositiveIntegerField()
+    role = models.CharField(max_length=16, choices=MessageRole.choices)
+    content = models.TextField()
+    client_message_id = models.CharField(max_length=64, blank=True)
+    reply_to = models.OneToOneField(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="patient_reply",
+    )
+    response_status = models.CharField(
+        max_length=24,
+        choices=ResponseStatus.choices,
+        default=ResponseStatus.NOT_APPLICABLE,
+    )
+    error_code = models.CharField(max_length=80, blank=True)
+    input_mode = models.CharField(max_length=16, default="text")
+    transcript = models.TextField(blank=True)
+    audio_asset_id = models.CharField(max_length=120, blank=True)
+    asr_confidence = models.DecimalField(max_digits=5, decimal_places=4, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sequence"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "sequence"],
+                name="unique_message_sequence",
+            ),
+            models.UniqueConstraint(
+                fields=["session", "client_message_id"],
+                condition=~Q(client_message_id=""),
+                name="unique_session_client_message",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            original = type(self).objects.get(pk=self.pk)
+            immutable_fields = (
+                "session_id",
+                "sequence",
+                "role",
+                "content",
+                "client_message_id",
+                "reply_to_id",
+                "input_mode",
+                "transcript",
+                "audio_asset_id",
+                "asr_confidence",
+                "created_at",
+            )
+            if any(getattr(self, field) != getattr(original, field) for field in immutable_fields):
+                raise ValidationError("已发送消息不可修改。")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("已发送消息不可删除。")
+
+
+class SubmissionType(models.TextChoices):
+    HISTORY_SUMMARY = "history_summary", "病史摘要"
+    INITIAL_REASONING = "initial_reasoning", "初步诊断和鉴别诊断"
+    TEST_SELECTION = "test_selection", "检查计划"
+    FINAL_REASONING = "final_reasoning", "最终诊断和处理原则"
+
+
+class StageSubmission(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        SimulationSession,
+        on_delete=models.CASCADE,
+        related_name="submissions",
+    )
+    submission_type = models.CharField(max_length=32, choices=SubmissionType.choices)
+    payload = models.JSONField()
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["submitted_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "submission_type"],
+                name="unique_session_submission_type",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError("阶段提交不可修改。")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("阶段提交不可删除。")
+
+
+class ModelCallStatus(models.TextChoices):
+    SUCCEEDED = "succeeded", "成功"
+    FAILED = "failed", "失败"
+
+
+class ModelCall(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        SimulationSession,
+        on_delete=models.CASCADE,
+        related_name="model_calls",
+    )
+    student_message = models.ForeignKey(
+        Message,
+        on_delete=models.PROTECT,
+        related_name="model_calls",
+    )
+    patient_message = models.ForeignKey(
+        Message,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="generated_by_calls",
+    )
+    provider = models.CharField(max_length=80)
+    model = models.CharField(max_length=120)
+    prompt_version = models.CharField(max_length=40, default="patient-v1")
+    request_hash = models.CharField(max_length=64)
+    matched_fact_codes = models.JSONField(default=list)
+    status = models.CharField(max_length=16, choices=ModelCallStatus.choices)
+    latency_ms = models.PositiveIntegerField(default=0)
+    input_tokens = models.PositiveIntegerField(null=True, blank=True)
+    output_tokens = models.PositiveIntegerField(null=True, blank=True)
+    error_code = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]

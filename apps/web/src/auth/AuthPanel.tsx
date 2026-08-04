@@ -9,6 +9,7 @@ import {
   signOut,
 } from '../api/client'
 import { TeacherCases } from '../teacher/TeacherCases'
+import { StudentAssignments } from '../student/StudentAssignments'
 
 type Mode = 'login' | 'register'
 
@@ -96,7 +97,7 @@ export function AuthPanel() {
         {user.roles.some((role) => role === 'teacher' || role === 'administrator') ? (
           <TeacherCases />
         ) : (
-          <p className="empty-state">学生问诊任务将在后续阶段开放。</p>
+          <StudentAssignments />
         )}
       </div>
     )
