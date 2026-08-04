@@ -32,9 +32,25 @@ describe('TeacherResponses', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows a student record with automatic score and traceable evidence', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+  it('shows traceable evidence and submits a teacher review', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input)
+      if (url.endsWith('/api/auth/csrf/')) {
+        return Promise.resolve(new Response(JSON.stringify({ csrf_token: 'test-token' }), { status: 200 }))
+      }
+      if (url.endsWith('/session-1/reviews/')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'review-1', revision: 1, reviewer_id: 'teacher-1', reviewer_name: '教师甲',
+              score_overrides: { 'fact:duration': { score: '1.00', reason: '追问深度不足' } },
+              comment: '继续加强追问', final_score: 7, scored_maximum: 8, maximum_score: 9,
+              provisional: true, created_at: '2026-08-04T01:00:00Z',
+            }),
+            { status: 201 },
+          ),
+        )
+      }
       if (url.endsWith('/assignment-1/responses/')) {
         return Promise.resolve(
           new Response(
@@ -48,7 +64,7 @@ describe('TeacherResponses', () => {
                 started_at: '2026-08-04T00:00:00Z',
                 completed_at: '2026-08-04T00:10:00Z',
                 elapsed_seconds: 600,
-                score: { automatic_score: 8, scored_maximum: 8, maximum_score: 9, provisional: true },
+                score: { automatic_score: 8, final_score: 8, scored_maximum: 8, maximum_score: 9, provisional: true },
               },
             ]),
             { status: 200 },
@@ -81,6 +97,7 @@ describe('TeacherResponses', () => {
               submissions: [],
               assessment: {
                 automatic_score: 8,
+                final_score: 8,
                 scored_maximum: 8,
                 maximum_score: 9,
                 provisional: true,
@@ -96,6 +113,10 @@ describe('TeacherResponses', () => {
                     label: '病程三年',
                     dimension: 'history',
                     automatic_score: 2,
+                    teacher_score: null,
+                    effective_score: 2,
+                    effective_decision: 'achieved',
+                    adjustment_reason: '',
                     max_score: 2,
                     decision: 'achieved',
                     evidence_excerpt: '学生：疼了多久？\n患者：三年了。',
@@ -104,6 +125,7 @@ describe('TeacherResponses', () => {
                   },
                 ],
               },
+              latest_review: null,
               standard_diagnoses: [{ type: 'final', name: '慢性牙周炎', supporting_evidence: ['病程长'] }],
               standard_tests: [],
             }),
@@ -121,5 +143,18 @@ describe('TeacherResponses', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: '学生甲的答卷' })).toBeInTheDocument())
     expect(screen.getByText(/学生：疼了多久/)).toBeInTheDocument()
     expect(screen.getByText(/慢性牙周炎/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('复核分数'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('改分理由（改分时必填）'), { target: { value: '追问深度不足' } })
+    fireEvent.change(screen.getByLabelText('教师评语'), { target: { value: '继续加强追问' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存复核版本' }))
+
+    await waitFor(() => {
+      const reviewCall = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/session-1/reviews/'))
+      expect(reviewCall).toBeDefined()
+      expect(JSON.parse(String(reviewCall?.[1]?.body))).toEqual({
+        comment: '继续加强追问',
+        scores: [{ code: 'fact:duration', score: 1, reason: '追问深度不足' }],
+      })
+    })
   })
 })

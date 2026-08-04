@@ -824,6 +824,55 @@ h1 {
   font-size: 12px;
 }
 
+.teacher-review form,
+.teacher-review form > label {
+  display: grid;
+  gap: 12px;
+}
+
+.review-score-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.review-score-grid article {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(110px, 0.35fr) minmax(260px, 1fr);
+  align-items: end;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dbe7e3;
+  border-radius: 12px;
+  background: #fbfdfc;
+}
+
+.review-score-grid article > div,
+.review-score-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.review-score-grid small {
+  color: #647a75;
+}
+
+.review-score-grid input,
+.teacher-review textarea {
+  width: 100%;
+  border: 1px solid #cbd9d6;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #19332f;
+  background: #fff;
+}
+
+.review-frozen {
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: #6d5c3e;
+  background: #fff4d9;
+}
+
 .response-table-wrap {
   overflow-x: auto;
   border: 1px solid #dbe7e3;
@@ -1182,7 +1231,8 @@ h1 {
   .roster-card form,
   .exam-list__header,
   .exam-list__actions,
-  .roster-list article {
+  .roster-list article,
+  .review-score-grid article {
     align-items: stretch;
     grid-template-columns: 1fr;
     flex-direction: column;

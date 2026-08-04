@@ -11,7 +11,9 @@ from .models import (
     SimulationSession,
     StageSubmission,
     SubmissionType,
+    TeacherReview,
 )
+from .reviews import effective_decision, effective_score, review_overrides, score_summary
 from .services import remaining_seconds
 
 
@@ -210,12 +212,37 @@ class FeedbackSerializer(serializers.Serializer):
     errors = serializers.ListField(child=serializers.DictField())
     feedback_summary = serializers.CharField()
     ai_feedback = serializers.CharField(allow_null=True, allow_blank=True)
+    teacher_comment = serializers.CharField(allow_blank=True)
 
 
 class ScoreResultSerializer(serializers.ModelSerializer):
     automatic_score = serializers.FloatField(allow_null=True)
     max_score = serializers.FloatField()
     confidence = serializers.FloatField(allow_null=True)
+    teacher_score = serializers.SerializerMethodField()
+    effective_score = serializers.SerializerMethodField()
+    effective_decision = serializers.SerializerMethodField()
+    adjustment_reason = serializers.SerializerMethodField()
+
+    def _override(self, result):
+        return review_overrides(self.context.get("review")).get(result.code)
+
+    def get_teacher_score(self, result):
+        override = self._override(result)
+        if not isinstance(override, dict) or override.get("score") in (None, ""):
+            return None
+        return float(override["score"])
+
+    def get_effective_score(self, result):
+        score = effective_score(result, self.context.get("review"))
+        return float(score) if score is not None else None
+
+    def get_effective_decision(self, result):
+        return effective_decision(result, self.context.get("review"))
+
+    def get_adjustment_reason(self, result):
+        override = self._override(result)
+        return str(override.get("reason", "")) if isinstance(override, dict) else ""
 
     class Meta:
         model = ScoreResult
@@ -226,6 +253,10 @@ class ScoreResultSerializer(serializers.ModelSerializer):
             "dimension",
             "evaluation_method",
             "automatic_score",
+            "teacher_score",
+            "effective_score",
+            "effective_decision",
+            "adjustment_reason",
             "max_score",
             "decision",
             "confidence",
@@ -241,15 +272,44 @@ class ScoreResultSerializer(serializers.ModelSerializer):
 
 
 class AssessmentSerializer(serializers.ModelSerializer):
-    automatic_score = serializers.FloatField()
-    scored_maximum = serializers.FloatField()
-    maximum_score = serializers.FloatField()
+    automatic_score = serializers.SerializerMethodField()
+    final_score = serializers.SerializerMethodField()
+    scored_maximum = serializers.SerializerMethodField()
+    maximum_score = serializers.SerializerMethodField()
+    provisional = serializers.SerializerMethodField()
     scoring_items = serializers.SerializerMethodField()
+
+    def _summary(self, assessment):
+        cache = getattr(self, "_summary_cache", {})
+        if assessment.pk not in cache:
+            cache[assessment.pk] = score_summary(
+                assessment.session,
+                student_visible_only=self.context.get("student_visible_only", False),
+                review=self.context.get("review"),
+            )
+            self._summary_cache = cache
+        return cache[assessment.pk]
+
+    def get_automatic_score(self, assessment):
+        return self._summary(assessment)["automatic_score"]
+
+    def get_final_score(self, assessment):
+        return self._summary(assessment)["final_score"]
+
+    def get_scored_maximum(self, assessment):
+        return self._summary(assessment)["scored_maximum"]
+
+    def get_maximum_score(self, assessment):
+        return self._summary(assessment)["maximum_score"]
+
+    def get_provisional(self, assessment):
+        return self._summary(assessment)["provisional"]
 
     class Meta:
         model = SessionAssessment
         fields = [
             "automatic_score",
+            "final_score",
             "scored_maximum",
             "maximum_score",
             "provisional",
@@ -266,7 +326,56 @@ class AssessmentSerializer(serializers.ModelSerializer):
         results = assessment.session.score_results.all()
         if self.context.get("student_visible_only"):
             results = results.filter(is_student_visible=True)
-        return ScoreResultSerializer(results, many=True).data
+        return ScoreResultSerializer(
+            results,
+            many=True,
+            context={"review": self.context.get("review")},
+        ).data
+
+
+class TeacherReviewSerializer(serializers.ModelSerializer):
+    reviewer_id = serializers.UUIDField(read_only=True)
+    reviewer_name = serializers.CharField(source="reviewer.display_name", read_only=True)
+    final_score = serializers.FloatField()
+    scored_maximum = serializers.FloatField()
+    maximum_score = serializers.FloatField()
+
+    class Meta:
+        model = TeacherReview
+        fields = [
+            "id",
+            "revision",
+            "reviewer_id",
+            "reviewer_name",
+            "score_overrides",
+            "comment",
+            "final_score",
+            "scored_maximum",
+            "maximum_score",
+            "provisional",
+            "created_at",
+        ]
+
+
+class TeacherReviewScoreInputSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=160)
+    score = serializers.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        allow_null=True,
+        required=False,
+    )
+    reason = serializers.CharField(max_length=2000, trim_whitespace=True)
+
+
+class TeacherReviewCreateSerializer(serializers.Serializer):
+    comment = serializers.CharField(
+        max_length=4000,
+        allow_blank=True,
+        required=False,
+        default="",
+    )
+    scores = TeacherReviewScoreInputSerializer(many=True, required=False, default=list)
 
 
 class TeacherResponseRowSerializer(serializers.Serializer):
@@ -286,6 +395,7 @@ class TeacherSessionRecordSerializer(SessionSerializer):
     student_name = serializers.CharField(source="student.display_name", read_only=True)
     student_phone = serializers.CharField(source="student.phone", read_only=True)
     assessment = serializers.SerializerMethodField()
+    latest_review = serializers.SerializerMethodField()
     standard_diagnoses = serializers.SerializerMethodField()
     standard_tests = serializers.SerializerMethodField()
 
@@ -296,6 +406,7 @@ class TeacherSessionRecordSerializer(SessionSerializer):
             "student_name",
             "student_phone",
             "assessment",
+            "latest_review",
             "standard_diagnoses",
             "standard_tests",
         ]
@@ -305,7 +416,14 @@ class TeacherSessionRecordSerializer(SessionSerializer):
             assessment = session.assessment
         except SessionAssessment.DoesNotExist:
             return None
-        return AssessmentSerializer(assessment).data
+        return AssessmentSerializer(
+            assessment,
+            context={"review": self.context.get("review")},
+        ).data
+
+    def get_latest_review(self, session):
+        review = self.context.get("review")
+        return TeacherReviewSerializer(review).data if review else None
 
     def get_standard_diagnoses(self, session):
         return [

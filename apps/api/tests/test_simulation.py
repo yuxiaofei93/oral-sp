@@ -22,6 +22,7 @@ from modules.simulation.models import (
     SessionStage,
     SessionStatus,
     SubmissionType,
+    TeacherReview,
 )
 from modules.simulation.services import (
     AttemptAlreadyUsedError,
@@ -543,6 +544,7 @@ def test_student_feedback_contains_only_visible_scoring_details_after_release():
     assert feedback.status_code == 200
     assert feedback.json()["score"] == {
         "automatic_score": 8.0,
+        "final_score": 8.0,
         "scored_maximum": 8.0,
         "maximum_score": 8.0,
         "provisional": False,
@@ -551,6 +553,139 @@ def test_student_feedback_contains_only_visible_scoring_details_after_release():
     assert "score.communication" not in codes
     assert "score.final" in codes
     assert feedback.json()["ai_feedback"] is None
+
+
+@pytest.mark.django_db
+def test_teacher_review_is_versioned_visible_after_release_and_then_frozen():
+    teacher, student, assignment = make_exam_data(suffix="5")
+    session = start_session(assignment=assignment, student=student).session
+    complete_scored_session(session=session, student=student, correct=True)
+    client = APIClient()
+    client.force_authenticate(teacher)
+    review_url = reverse("teacher-session-review", kwargs={"session_id": session.id})
+    payload = {
+        "comment": "诊断方向正确，但表述依据还可更完整。",
+        "scores": [
+            {
+                "code": "score.final",
+                "score": "2.00",
+                "reason": "最终诊断正确，支持依据不够完整。",
+            }
+        ],
+    }
+
+    created = client.post(review_url, payload, format="json")
+    assert created.status_code == 201
+    assert created.json()["revision"] == 1
+    assert created.json()["final_score"] == 7.0
+    assert created.json()["provisional"] is True
+    assert client.post(review_url, payload, format="json").status_code == 200
+    assert TeacherReview.objects.filter(session=session).count() == 1
+    revised_comment = "诊断方向正确，请继续补充关键支持依据。"
+    revised = client.post(
+        review_url,
+        {"comment": revised_comment, "scores": []},
+        format="json",
+    )
+    assert revised.status_code == 201
+    assert revised.json()["revision"] == 2
+    assert revised.json()["final_score"] == 7.0
+    assert revised.json()["score_overrides"]["score.final"]["score"] == "2.00"
+    first_review = TeacherReview.objects.get(session=session, revision=1)
+    first_review.comment = "试图覆盖历史"
+    with pytest.raises(ValidationError):
+        first_review.save()
+
+    record = client.get(reverse("teacher-session-record", kwargs={"session_id": session.id}))
+    assert record.status_code == 200
+    assert record.json()["assessment"]["final_score"] == 7.0
+    final_item = next(
+        item
+        for item in record.json()["assessment"]["scoring_items"]
+        if item["code"] == "score.final"
+    )
+    assert final_item["automatic_score"] == 3.0
+    assert final_item["teacher_score"] == 2.0
+    assert final_item["effective_score"] == 2.0
+    assert record.json()["latest_review"]["revision"] == 2
+    assert record.json()["latest_review"]["reviewer_id"] == str(teacher.id)
+    rows = client.get(
+        reverse("teacher-assignment-responses", kwargs={"assignment_id": assignment.id})
+    )
+    assert rows.json()[0]["score"]["final_score"] == 7.0
+
+    client.post(reverse("teacher-assignment-close", kwargs={"assignment_id": assignment.id}))
+    client.post(
+        reverse(
+            "teacher-assignment-release-feedback",
+            kwargs={"assignment_id": assignment.id},
+        )
+    )
+    client.force_authenticate(student)
+    feedback = client.get(
+        reverse("student-session-feedback", kwargs={"session_id": session.id})
+    )
+    assert feedback.status_code == 200
+    assert feedback.json()["score"]["automatic_score"] == 8.0
+    assert feedback.json()["score"]["final_score"] == 7.0
+    assert feedback.json()["teacher_comment"] == revised_comment
+    final_feedback = next(
+        item for item in feedback.json()["scoring_items"] if item["code"] == "score.final"
+    )
+    assert final_feedback["effective_score"] == 2.0
+    assert final_feedback["effective_decision"] == ScoreDecision.PARTIAL
+    assert final_feedback["adjustment_reason"] == payload["scores"][0]["reason"]
+
+    client.force_authenticate(teacher)
+    frozen = client.post(
+        review_url,
+        {"comment": "尝试发布后修改", "scores": []},
+        format="json",
+    )
+    assert frozen.status_code == 409
+    assert frozen.json()["code"] == "teacher_review_frozen"
+
+
+@pytest.mark.django_db
+def test_teacher_review_rejects_active_session_invalid_scores_and_unauthorized_users():
+    teacher, student, assignment = make_exam_data(suffix="6")
+    session = start_session(assignment=assignment, student=student).session
+    review_url = reverse("teacher-session-review", kwargs={"session_id": session.id})
+    client = APIClient()
+    client.force_authenticate(teacher)
+    active = client.post(review_url, {"comment": "过早复核", "scores": []}, format="json")
+    assert active.status_code == 409
+
+    complete_scored_session(session=session, student=student, correct=True)
+    missing_reason = client.post(
+        review_url,
+        {"comment": "", "scores": [{"code": "score.final", "score": "2.00", "reason": ""}]},
+        format="json",
+    )
+    assert missing_reason.status_code == 400
+    invalid_score = client.post(
+        review_url,
+        {
+            "comment": "",
+            "scores": [
+                {"code": "score.final", "score": "4.00", "reason": "超过满分"}
+            ],
+        },
+        format="json",
+    )
+    assert invalid_score.status_code == 409
+
+    outsider = make_user("13999999996", RoleCode.TEACHER)
+    client.force_authenticate(outsider)
+    assert (
+        client.post(review_url, {"comment": "越权", "scores": []}, format="json").status_code
+        == 404
+    )
+    client.force_authenticate(student)
+    assert (
+        client.post(review_url, {"comment": "越权", "scores": []}, format="json").status_code
+        == 403
+    )
 
 
 @pytest.mark.django_db

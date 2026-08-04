@@ -208,10 +208,12 @@ export type SessionFeedback = {
   errors: FeedbackIssue[]
   feedback_summary: string
   ai_feedback: string | null
+  teacher_comment: string
 }
 
 export type AssessmentScore = {
   automatic_score: number
+  final_score: number
   scored_maximum: number
   maximum_score: number
   provisional: boolean
@@ -231,8 +233,12 @@ export type ScoreResult = {
   dimension: string
   evaluation_method?: string
   automatic_score: number | null
+  teacher_score: number | null
+  effective_score: number | null
+  adjustment_reason: string
   max_score: number
   decision: 'achieved' | 'partial' | 'missed' | 'pending'
+  effective_decision: 'achieved' | 'partial' | 'missed' | 'pending'
   confidence?: number | null
   evidence_message_ids?: string[]
   evidence_submission_ids?: string[]
@@ -266,11 +272,26 @@ export type TeacherResponseRow = {
   score: AssessmentScore | null
 }
 
+export type TeacherReview = {
+  id: string
+  revision: number
+  reviewer_id: string
+  reviewer_name: string
+  score_overrides: Record<string, { score: string | null; reason: string }>
+  comment: string
+  final_score: number
+  scored_maximum: number
+  maximum_score: number
+  provisional: boolean
+  created_at: string
+}
+
 export type TeacherSessionRecord = SimulationSession & {
   student_id: string
   student_name: string
   student_phone: string
   assessment: SessionAssessment | null
+  latest_review: TeacherReview | null
   standard_diagnoses: SessionFeedback['standard_diagnoses']
   standard_tests: SessionFeedback['standard_tests']
 }
@@ -565,4 +586,14 @@ export async function getTeacherSessionRecord(sessionId: string): Promise<Teache
     credentials: 'same-origin',
   })
   return parseResponse<TeacherSessionRecord>(response)
+}
+
+export function saveTeacherReview(
+  sessionId: string,
+  payload: {
+    comment: string
+    scores: Array<{ code: string; score: number | null; reason: string }>
+  },
+): Promise<TeacherReview> {
+  return mutate('POST', `/api/teacher/sessions/${sessionId}/reviews/`, payload)
 }

@@ -222,8 +222,9 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
           ) : (
             <div className="feedback-content">
               <div className="feedback-score">
-                <strong>{feedback.score.automatic_score}</strong>
-                <span>/ {feedback.score.scored_maximum} 自动评分</span>
+                <strong>{feedback.score.final_score}</strong>
+                <span>/ {feedback.score.scored_maximum} 当前得分</span>
+                {feedback.score.final_score !== feedback.score.automatic_score && <small>自动得分 {feedback.score.automatic_score}，已经教师复核</small>}
                 {feedback.score.provisional && <small>总分 {feedback.score.maximum_score}，仍有待评价项</small>}
               </div>
               <p>{feedback.feedback_summary}</p>
@@ -231,7 +232,8 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
               <div className="feedback-items">
                 {feedback.scoring_items.map((item) => (
                   <article key={item.code}>
-                    <div><strong>{item.label}</strong><span>{item.automatic_score === null ? '待评价' : `${item.automatic_score} / ${item.max_score}`}</span></div>
+                    <div><strong>{item.label}</strong><span>{item.effective_score === null ? '待评价' : `${item.effective_score} / ${item.max_score}`}</span></div>
+                    {item.adjustment_reason && <small>教师复核：{item.adjustment_reason}</small>}
                     <p>{item.reason}</p>
                     {item.evidence_excerpt && <small>证据：{item.evidence_excerpt}</small>}
                     {item.standard_answer && <small>标准答案：{item.standard_answer}</small>}
@@ -245,6 +247,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
               <h4>标准检查</h4>
               {feedback.standard_tests.map((test) => <p key={test.code}>{test.name}：{test.result}</p>)}
               {feedback.ai_feedback && <><h4>AI 辅助评语</h4><p>{feedback.ai_feedback}</p></>}
+              {feedback.teacher_comment && <><h4>教师评语</h4><p>{feedback.teacher_comment}</p></>}
             </div>
           )}
         </section>

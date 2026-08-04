@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import CaseAssignment, ModelCall, ScoreResult, SessionAssessment, SimulationSession
+from .models import (
+    CaseAssignment,
+    ModelCall,
+    ScoreResult,
+    SessionAssessment,
+    SimulationSession,
+    TeacherReview,
+)
 
 
 @admin.register(CaseAssignment)
@@ -49,3 +56,18 @@ class ScoreResultAdmin(admin.ModelAdmin):
     list_display = ("session", "code", "decision", "automatic_score", "max_score")
     list_filter = ("decision", "dimension", "evaluation_method")
     readonly_fields = [field.name for field in ScoreResult._meta.fields]
+
+
+@admin.register(TeacherReview)
+class TeacherReviewAdmin(admin.ModelAdmin):
+    list_display = ("session", "revision", "reviewer", "final_score", "created_at")
+    readonly_fields = [field.name for field in TeacherReview._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

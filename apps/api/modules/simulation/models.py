@@ -406,3 +406,42 @@ class ScoreResult(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("自动评分证据不可删除。")
+
+
+class TeacherReview(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        SimulationSession,
+        on_delete=models.CASCADE,
+        related_name="teacher_reviews",
+    )
+    revision = models.PositiveIntegerField()
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="simulation_reviews",
+    )
+    score_overrides = models.JSONField(default=dict)
+    comment = models.TextField(blank=True)
+    final_score = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    scored_maximum = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    maximum_score = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    provisional = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["revision"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "revision"],
+                name="unique_session_review_revision",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("教师复核记录不可覆盖，请创建新版本。")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("教师复核记录不可删除。")

@@ -94,7 +94,7 @@ export function TeacherAssignments() {
   }
 
   async function releaseFeedback(assignment: TeacherAssignment) {
-    if (!globalThis.confirm('发布后学生将看到标准诊断和标准检查。确定统一发布反馈吗？')) return
+    if (!globalThis.confirm('发布后学生将看到成绩、评语和标准答案，教师复核也会冻结。确定统一发布反馈吗？')) return
     setLoading(true)
     setError('')
     try {

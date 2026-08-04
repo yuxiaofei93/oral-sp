@@ -10,7 +10,13 @@ from modules.accounts.permissions import IsStudent, IsTeacherOrAdministrator
 from modules.cases.models import CaseVersion, VersionStatus
 from modules.teaching.models import ClassGroup
 
-from .models import CaseAssignment, SimulationSession
+from .models import CaseAssignment, SessionAssessment, SimulationSession
+from .reviews import (
+    TeacherReviewError,
+    create_teacher_review,
+    latest_review,
+    score_summary,
+)
 from .scoring import generate_assessment
 from .serializers import (
     AskPatientSerializer,
@@ -24,6 +30,8 @@ from .serializers import (
     SubmissionCreateSerializer,
     TeacherAssignmentSerializer,
     TeacherResponseRowSerializer,
+    TeacherReviewCreateSerializer,
+    TeacherReviewSerializer,
     TeacherSessionRecordSerializer,
 )
 from .services import (
@@ -114,6 +122,7 @@ def student_session_queryset(user):
             "assignment",
             "case_version",
             "case_version__patient_profile",
+            "assessment",
         )
         .prefetch_related("messages", "submissions")
     )
@@ -126,11 +135,13 @@ def teacher_session_queryset(user):
             "student",
             "case_version",
             "case_version__patient_profile",
+            "assessment",
         )
         .prefetch_related(
             "messages",
             "submissions",
             "score_results",
+            "teacher_reviews__reviewer",
             "case_version__diagnosis_rules",
             "case_version__tests",
         )
@@ -252,7 +263,11 @@ class TeacherAssignmentResponseListView(APIView):
             session = sessions.get(link.student_id)
             assessment = None
             if session and session.status != "active":
-                assessment = generate_assessment(session)
+                try:
+                    assessment = session.assessment
+                except SessionAssessment.DoesNotExist:
+                    assessment = generate_assessment(session)
+                    session._prefetched_objects_cache.pop("score_results", None)
             end_time = session.completed_at if session else None
             elapsed_seconds = None
             if session:
@@ -269,12 +284,10 @@ class TeacherAssignmentResponseListView(APIView):
                     "completed_at": session.completed_at if session else None,
                     "elapsed_seconds": elapsed_seconds,
                     "score": (
-                        {
-                            "automatic_score": float(assessment.automatic_score),
-                            "scored_maximum": float(assessment.scored_maximum),
-                            "maximum_score": float(assessment.maximum_score),
-                            "provisional": assessment.provisional,
-                        }
+                        score_summary(
+                            session,
+                            review=latest_review(session),
+                        )
                         if assessment
                         else None
                     ),
@@ -291,7 +304,34 @@ class TeacherSessionRecordView(APIView):
         if session.status != "active":
             generate_assessment(session)
             session = teacher_session_queryset(request.user).get(pk=session_id)
-        return Response(TeacherSessionRecordSerializer(session).data)
+        review = latest_review(session)
+        return Response(
+            TeacherSessionRecordSerializer(session, context={"review": review}).data
+        )
+
+
+class TeacherSessionReviewView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def post(self, request, session_id):
+        session = get_object_or_404(teacher_session_queryset(request.user), pk=session_id)
+        serializer = TeacherReviewCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = create_teacher_review(
+                session=session,
+                reviewer=request.user,
+                **serializer.validated_data,
+            )
+        except TeacherReviewError as error:
+            return Response(
+                {"detail": str(error), "code": error.code},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(
+            TeacherReviewSerializer(result.review).data,
+            status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK,
+        )
 
 
 class StudentAssignmentListView(APIView):

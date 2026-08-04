@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import timedelta
-from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -32,6 +31,13 @@ from .models import (
     SimulationSession,
     StageSubmission,
     SubmissionType,
+)
+from .reviews import (
+    effective_decision,
+    effective_score,
+    latest_review,
+    review_overrides,
+    score_summary,
 )
 from .scoring import generate_assessment
 
@@ -579,23 +585,26 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
         raise FeedbackUnavailableError("教师尚未统一发布反馈。")
     assessment = generate_assessment(session)
     visible_results = list(session.score_results.filter(is_student_visible=True))
-    visible_automatic_score = sum(
-        (
-            result.automatic_score
-            for result in visible_results
-            if result.automatic_score is not None
-        ),
-        start=Decimal("0.00"),
-    )
-    visible_scored_maximum = sum(
-        (result.max_score for result in visible_results if result.automatic_score is not None),
-        start=Decimal("0.00"),
-    )
-    visible_maximum_score = sum(
-        (result.max_score for result in visible_results),
-        start=Decimal("0.00"),
-    )
-    visible_pending = sum(result.automatic_score is None for result in visible_results)
+    review = latest_review(session)
+    overrides = review_overrides(review)
+    effective_by_code = {
+        result.code: effective_score(result, review) for result in visible_results
+    }
+    maximum_by_code = {result.code: result.max_score for result in visible_results}
+    visible_omissions = [
+        item
+        for item in assessment.omissions
+        if item["code"] not in effective_by_code
+        or effective_by_code[item["code"]] is None
+        or effective_by_code[item["code"]] < maximum_by_code[item["code"]]
+    ]
+    visible_errors = [
+        item
+        for item in assessment.errors
+        if item["code"] not in effective_by_code
+        or effective_by_code[item["code"]] is None
+        or effective_by_code[item["code"]] < maximum_by_code[item["code"]]
+    ]
     return {
         "session_id": str(session.id),
         "standard_diagnoses": [
@@ -615,12 +624,11 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
             }
             for test in session.case_version.tests.all()
         ],
-        "score": {
-            "automatic_score": float(visible_automatic_score),
-            "scored_maximum": float(visible_scored_maximum),
-            "maximum_score": float(visible_maximum_score),
-            "provisional": bool(visible_pending),
-        },
+        "score": score_summary(
+            session,
+            student_visible_only=True,
+            review=review,
+        ),
         "scoring_items": [
             {
                 "code": result.code,
@@ -631,20 +639,38 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
                     if result.automatic_score is not None
                     else None
                 ),
+                "teacher_score": (
+                    float(overrides[result.code]["score"])
+                    if result.code in overrides
+                    and overrides[result.code].get("score") not in (None, "")
+                    else None
+                ),
+                "effective_score": (
+                    float(effective_by_code[result.code])
+                    if effective_by_code[result.code] is not None
+                    else None
+                ),
+                "adjustment_reason": (
+                    str(overrides[result.code].get("reason", ""))
+                    if result.code in overrides
+                    else ""
+                ),
                 "max_score": float(result.max_score),
                 "decision": result.decision,
+                "effective_decision": effective_decision(result, review),
                 "reason": result.reason,
                 "evidence_excerpt": result.evidence_excerpt,
                 "standard_answer": result.standard_answer,
             }
             for result in visible_results
         ],
-        "omissions": assessment.omissions,
-        "errors": assessment.errors,
+        "omissions": visible_omissions,
+        "errors": visible_errors,
         "feedback_summary": (
-            f"自动规则评分覆盖 {len(visible_results) - visible_pending} 个可见评分项；"
-            f"发现 {len(assessment.omissions)} 个遗漏项和 "
-            f"{len(assessment.errors)} 个需关注项。"
+            f"当前反馈包含 {len(visible_results)} 个可见评分项；"
+            f"发现 {len(visible_omissions)} 个遗漏项和 "
+            f"{len(visible_errors)} 个需关注项。"
         ),
         "ai_feedback": assessment.ai_feedback or None,
+        "teacher_comment": review.comment if review else "",
     }

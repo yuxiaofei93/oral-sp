@@ -130,14 +130,15 @@ describe('StudentAssignments', () => {
           new Response(
             JSON.stringify({
               session_id: 'session-1',
-              score: { automatic_score: 6, scored_maximum: 8, maximum_score: 9, provisional: true },
+              score: { automatic_score: 6, final_score: 7, scored_maximum: 8, maximum_score: 9, provisional: true },
               scoring_items: [
-                { code: 'score.final', label: '最终诊断', automatic_score: 0, max_score: 3, decision: 'missed', reason: '未命中标准诊断。', evidence_excerpt: '未明确', standard_answer: '慢性牙周炎' },
+                { code: 'score.final', label: '最终诊断', automatic_score: 0, teacher_score: 1, effective_score: 1, adjustment_reason: '诊断方向基本正确。', max_score: 3, decision: 'missed', effective_decision: 'partial', reason: '未命中标准诊断。', evidence_excerpt: '未明确', standard_answer: '慢性牙周炎' },
               ],
               omissions: [{ code: 'score.final', label: '最终诊断', reason: '未命中标准诊断。', standard_answer: '慢性牙周炎' }],
               errors: [],
               feedback_summary: '发现 1 个遗漏项。',
               ai_feedback: null,
+              teacher_comment: '建议补充诊断依据。',
               standard_diagnoses: [{ type: 'final', name: '慢性牙周炎', supporting_evidence: [] }],
               standard_tests: [{ code: 'probe', name: '牙周探诊', result: '探诊深度增加', interpretation: '支持诊断' }],
             }),
@@ -167,8 +168,9 @@ describe('StudentAssignments', () => {
     await waitFor(() => screen.getByRole('button', { name: '查看教师已发布反馈' }))
     fireEvent.click(screen.getByRole('button', { name: '查看教师已发布反馈' }))
 
-    await waitFor(() => expect(screen.getByText('6')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('7')).toBeInTheDocument())
     expect(screen.getAllByText(/慢性牙周炎/).length).toBeGreaterThan(0)
     expect(screen.getByText(/发现 1 个遗漏项/)).toBeInTheDocument()
+    expect(screen.getByText('建议补充诊断依据。')).toBeInTheDocument()
   })
 })
