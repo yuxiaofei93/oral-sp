@@ -1,8 +1,10 @@
 from datetime import timedelta
+from io import StringIO
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -24,10 +26,12 @@ from modules.simulation.models import (
     SubmissionType,
     TeacherReview,
 )
+from modules.simulation.reviews import create_teacher_review
 from modules.simulation.services import (
     AttemptAlreadyUsedError,
     StageLockedError,
     ask_patient,
+    close_assignment,
     create_assignment,
     start_session,
     submit_stage,
@@ -747,6 +751,64 @@ def test_assignment_statistics_and_csv_export_use_latest_review_safely():
     client.force_authenticate(student)
     assert client.get(statistics_url).status_code == 403
     assert client.get(export_url).status_code == 403
+
+
+@pytest.mark.django_db
+def test_forced_collection_starts_retention_period_at_session_end():
+    _, student, assignment = make_exam_data(suffix="8")
+    session = start_session(assignment=assignment, student=student).session
+
+    close_assignment(assignment=assignment)
+
+    session.refresh_from_db()
+    assert session.status == SessionStatus.EXPIRED
+    assert session.completed_at is not None
+    assert session.retention_expires_at == session.completed_at + timedelta(days=180)
+
+
+@pytest.mark.django_db
+def test_retention_command_previews_then_deletes_only_safe_expired_data():
+    teacher, student, assignment = make_exam_data(suffix="8")
+    completed = start_session(assignment=assignment, student=student).session
+    complete_scored_session(session=completed, student=student, correct=True)
+    create_teacher_review(
+        session=completed,
+        reviewer=teacher,
+        comment="清理测试评语",
+        scores=[],
+    )
+    now = timezone.now()
+    type(assignment).objects.filter(pk=assignment.pk).update(deadline_at=now - timedelta(seconds=1))
+    type(completed).objects.filter(pk=completed.pk).update(
+        retention_expires_at=now - timedelta(seconds=1)
+    )
+
+    _, stale_student, stale_assignment = make_exam_data(suffix="9")
+    stale = start_session(assignment=stale_assignment, student=stale_student).session
+    type(stale).objects.filter(pk=stale.pk).update(
+        started_at=now - timedelta(minutes=2),
+        deadline_at=now - timedelta(minutes=1),
+        retention_expires_at=now - timedelta(seconds=1),
+    )
+
+    preview_output = StringIO()
+    call_command("purge_expired_simulation_data", stdout=preview_output)
+    assert "待落库的超时会话：1" in preview_output.getvalue()
+    assert "可清理会话：1" in preview_output.getvalue()
+    assert "预览模式：未修改任何数据" in preview_output.getvalue()
+    assert type(completed).objects.filter(pk=completed.pk).exists()
+    stale.refresh_from_db()
+    assert stale.status == SessionStatus.ACTIVE
+
+    execute_output = StringIO()
+    call_command("purge_expired_simulation_data", execute=True, stdout=execute_output)
+    assert "已落库超时会话 1 个" in execute_output.getvalue()
+    assert "已删除会话 1 个" in execute_output.getvalue()
+    assert not type(completed).objects.filter(pk=completed.pk).exists()
+    assert not TeacherReview.objects.filter(session_id=completed.id).exists()
+    stale.refresh_from_db()
+    assert stale.status == SessionStatus.EXPIRED
+    assert stale.retention_expires_at == stale.completed_at + timedelta(days=180)
 
 
 @pytest.mark.django_db

@@ -4,7 +4,7 @@
 
 ## 当前进度
 
-当前已完成阶段 0–7 的基础闭环：
+当前已完成阶段 0–8 的基础闭环：
 
 - React + TypeScript 前端。
 - Django + Django REST Framework 后端。
@@ -31,8 +31,9 @@
 - 每次复核生成不可覆盖的审计版本；反馈发布后成绩和评语冻结。
 - 教师答卷页按考试任务展示完成率、平均得分率、平均分、平均用时、高频遗漏和常见错误。
 - 教师可导出带 UTF-8 BOM 的 CSV 名单与成绩明细，导出内容采用表格公式注入防护。
+- 会话从交卷或超时结束时保留 180 天，并提供默认只预览、显式确认才删除的清理命令。
 
-尚未实现 AI 辅助沟通/推理评语、图片资料上传与受控查看、跨任务统计筛选和数据清理任务。规则无法可靠判定的评分项会明确标记为“待评价”，教师可以复核赋分；系统不会伪造自动得分。
+尚未实现 AI 辅助沟通/推理评语、图片资料上传与受控查看和跨任务统计筛选。规则无法可靠判定的评分项会明确标记为“待评价”，教师可以复核赋分；系统不会伪造自动得分。
 
 产品需求见 [oral-clinic-ai-product-design.md](./oral-clinic-ai-product-design.md)。已确认当前项目没有 `AGENTS.md`。
 
@@ -111,3 +112,19 @@ LLM_TIMEOUT_SECONDS=30
 1 核 1 GB 主机只运行一个 API worker，并把 PostgreSQL 最大连接数限制为 30。MVP 不在同一台机器运行 MinIO、Redis、Celery或本地大模型。建议配置 1–2 GB swap，并在真实课堂前用预期人数进行一次并发测试。
 
 外部模型密钥只能通过服务端环境变量提供，不能提交到 Git、返回给浏览器或记录到日志。
+
+## 数据保留清理
+
+先预览超过半年保留期的数据范围：
+
+```bash
+.venv/bin/python apps/api/manage.py purge_expired_simulation_data
+```
+
+确认预览范围并完成数据库备份后，显式执行：
+
+```bash
+.venv/bin/python apps/api/manage.py purge_expired_simulation_data --execute
+```
+
+详细边界和定时运行建议见 [数据保留与清理说明](./docs/data-retention.md)。

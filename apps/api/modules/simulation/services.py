@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from modules.accounts.models import RoleCode
@@ -152,7 +153,12 @@ def close_assignment(*, assignment: CaseAssignment) -> CaseAssignment:
             SimulationSession.objects.filter(
                 assignment=locked,
                 status=SessionStatus.ACTIVE,
-            ).update(status=SessionStatus.EXPIRED, completed_at=now, updated_at=now)
+            ).update(
+                status=SessionStatus.EXPIRED,
+                completed_at=now,
+                retention_expires_at=now + timedelta(days=RETENTION_DAYS),
+                updated_at=now,
+            )
             Message.objects.filter(
                 session__assignment=locked,
                 role=MessageRole.STUDENT,
@@ -189,10 +195,39 @@ def _expire_if_needed(session: SimulationSession, *, now=None) -> bool:
     ):
         session.status = SessionStatus.EXPIRED
         session.completed_at = now
-        session.save(update_fields=["status", "completed_at", "updated_at"])
+        session.retention_expires_at = now + timedelta(days=RETENTION_DAYS)
+        session.save(
+            update_fields=[
+                "status",
+                "completed_at",
+                "retention_expires_at",
+                "updated_at",
+            ]
+        )
         generate_assessment(session)
         return True
     return session.status == SessionStatus.EXPIRED
+
+
+def expire_overdue_sessions(*, now=None) -> int:
+    now = now or timezone.now()
+    session_ids = list(
+        SimulationSession.objects.filter(status=SessionStatus.ACTIVE)
+        .filter(Q(deadline_at__lte=now) | Q(assignment__status=AssignmentStatus.CLOSED))
+        .values_list("id", flat=True)
+    )
+    expired_count = 0
+    for session_id in session_ids:
+        with transaction.atomic():
+            session = (
+                SimulationSession.objects.select_for_update()
+                .select_related("assignment")
+                .get(pk=session_id)
+            )
+            was_active = session.status == SessionStatus.ACTIVE
+            if _expire_if_needed(session, now=now) and was_active:
+                expired_count += 1
+    return expired_count
 
 
 def start_session(*, assignment: CaseAssignment, student) -> StartSessionResult:
