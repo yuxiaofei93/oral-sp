@@ -1,4 +1,5 @@
 from django.db.models import Count, Prefetch, Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -11,6 +12,7 @@ from modules.cases.models import CaseVersion, VersionStatus
 from modules.teaching.models import ClassGroup
 
 from .models import CaseAssignment, SessionAssessment, SimulationSession
+from .reporting import assignment_csv, assignment_report
 from .reviews import (
     TeacherReviewError,
     create_teacher_review,
@@ -22,6 +24,7 @@ from .serializers import (
     AskPatientSerializer,
     AssignmentCreateSerializer,
     AssignmentOptionSerializer,
+    AssignmentStatisticsSerializer,
     ExchangeSerializer,
     FeedbackSerializer,
     SessionSerializer,
@@ -294,6 +297,37 @@ class TeacherAssignmentResponseListView(APIView):
                 }
             )
         return Response(TeacherResponseRowSerializer(rows, many=True).data)
+
+
+class TeacherAssignmentStatisticsView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def get(self, request, assignment_id):
+        assignment = get_object_or_404(
+            teacher_assignment_queryset(request.user),
+            pk=assignment_id,
+        )
+        report = assignment_report(assignment)
+        return Response(AssignmentStatisticsSerializer(report).data)
+
+
+class TeacherAssignmentCsvExportView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def get(self, request, assignment_id):
+        assignment = get_object_or_404(
+            teacher_assignment_queryset(request.user),
+            pk=assignment_id,
+        )
+        response = HttpResponse(
+            assignment_csv(assignment),
+            content_type="text/csv; charset=utf-8",
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="assignment-{assignment.id}.csv"'
+        )
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
 
 class TeacherSessionRecordView(APIView):

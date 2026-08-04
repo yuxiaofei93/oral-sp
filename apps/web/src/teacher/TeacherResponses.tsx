@@ -2,12 +2,15 @@ import { type FormEvent, useEffect, useState } from 'react'
 
 import {
   ApiError,
+  AssignmentStatistics,
   TeacherAssignment,
   TeacherResponseRow,
   TeacherSessionRecord,
   getTeacherSessionRecord,
+  getTeacherAssignmentStatistics,
   listTeacherResponses,
   saveTeacherReview,
+  teacherAssignmentCsvUrl,
 } from '../api/client'
 
 const attemptNames = {
@@ -45,6 +48,7 @@ export function TeacherResponses({
   onClose: () => void
 }) {
   const [rows, setRows] = useState<TeacherResponseRow[]>([])
+  const [statistics, setStatistics] = useState<AssignmentStatistics | null>(null)
   const [record, setRecord] = useState<TeacherSessionRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [savingReview, setSavingReview] = useState(false)
@@ -54,8 +58,14 @@ export function TeacherResponses({
   const [teacherComment, setTeacherComment] = useState('')
 
   useEffect(() => {
-    listTeacherResponses(assignment.id)
-      .then(setRows)
+    Promise.all([
+      listTeacherResponses(assignment.id),
+      getTeacherAssignmentStatistics(assignment.id),
+    ])
+      .then(([nextRows, nextStatistics]) => {
+        setRows(nextRows)
+        setStatistics(nextStatistics)
+      })
       .catch((requestError: unknown) => {
         setError(requestError instanceof ApiError ? requestError.message : '学生答卷列表加载失败。')
       })
@@ -109,12 +119,14 @@ export function TeacherResponses({
     setError('')
     try {
       await saveTeacherReview(record.id, { comment: teacherComment, scores })
-      const [nextRecord, nextRows] = await Promise.all([
+      const [nextRecord, nextRows, nextStatistics] = await Promise.all([
         getTeacherSessionRecord(record.id),
         listTeacherResponses(assignment.id),
+        getTeacherAssignmentStatistics(assignment.id),
       ])
       setRecord(nextRecord)
       setRows(nextRows)
+      setStatistics(nextStatistics)
       loadReviewDraft(nextRecord)
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '教师复核保存失败。')
@@ -250,9 +262,31 @@ export function TeacherResponses({
           <h2 id="assignment-responses-title">{assignment.title}答卷</h2>
           <p>{assignment.course_name} / {assignment.class_name} · {assignment.student_count} 人</p>
         </div>
+        <a className="button button--secondary" href={teacherAssignmentCsvUrl(assignment.id)}>导出 CSV</a>
       </header>
       {error && <p className="form-error">{error}</p>}
       {loading && rows.length === 0 && <p className="empty-state">正在加载学生答卷…</p>}
+      {statistics && (
+        <section className="assignment-statistics" aria-label="班级统计">
+          <div className="statistics-summary">
+            <article><strong>{statistics.summary.completion_rate}%</strong><span>完成率（{statistics.summary.completed_count}/{statistics.summary.student_count}）</span></article>
+            <article><strong>{statistics.summary.average_score_percentage === null ? '—' : `${statistics.summary.average_score_percentage}%`}</strong><span>平均得分率</span></article>
+            <article><strong>{statistics.summary.average_score ?? '—'}</strong><span>平均当前得分</span></article>
+            <article><strong>{elapsed(statistics.summary.average_duration_seconds)}</strong><span>平均用时</span></article>
+            <article><strong>{statistics.summary.assessed_count}</strong><span>已生成评分</span></article>
+          </div>
+          <div className="statistics-issues">
+            <article>
+              <h3>高频遗漏</h3>
+              {statistics.frequent_omissions.length === 0 ? <p>暂无遗漏数据</p> : statistics.frequent_omissions.map((item) => <p key={item.code}>{item.label}<span>{item.count} 人 · {item.rate}%</span></p>)}
+            </article>
+            <article>
+              <h3>常见错误</h3>
+              {statistics.common_errors.length === 0 ? <p>暂无错误数据</p> : statistics.common_errors.map((item) => <p key={item.code}>{item.label}<span>{item.count} 人 · {item.rate}%</span></p>)}
+            </article>
+          </div>
+        </section>
+      )}
       <div className="response-table-wrap">
         <table className="response-table">
           <thead><tr><th>学生</th><th>状态</th><th>用时</th><th>当前得分</th><th /></tr></thead>

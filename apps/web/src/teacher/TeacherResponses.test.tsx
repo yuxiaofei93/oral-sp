@@ -51,6 +51,22 @@ describe('TeacherResponses', () => {
           ),
         )
       }
+      if (url.endsWith('/assignment-1/statistics/')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              summary: {
+                student_count: 1, started_count: 1, completed_count: 1, expired_count: 0,
+                assessed_count: 1, completion_rate: 100, average_score: 8,
+                average_score_percentage: 88.89, average_duration_seconds: 600,
+              },
+              frequent_omissions: [{ code: 'fact:site', label: '疼痛部位', count: 1, rate: 100 }],
+              common_errors: [],
+            }),
+            { status: 200 },
+          ),
+        )
+      }
       if (url.endsWith('/assignment-1/responses/')) {
         return Promise.resolve(
           new Response(
@@ -138,6 +154,9 @@ describe('TeacherResponses', () => {
 
     render(<TeacherResponses assignment={assignment} onClose={vi.fn()} />)
     await waitFor(() => screen.getByText('学生甲'))
+    expect(screen.getByText('88.89%')).toBeInTheDocument()
+    expect(screen.getByText('疼痛部位')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '导出 CSV' })).toHaveAttribute('href', '/api/teacher/assignments/assignment-1/export.csv')
     fireEvent.click(screen.getByRole('button', { name: '查看答卷' }))
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '学生甲的答卷' })).toBeInTheDocument())

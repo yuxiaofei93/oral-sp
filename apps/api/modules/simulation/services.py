@@ -38,6 +38,7 @@ from .reviews import (
     latest_review,
     review_overrides,
     score_summary,
+    unresolved_issues,
 )
 from .scoring import generate_assessment
 
@@ -590,21 +591,18 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
     effective_by_code = {
         result.code: effective_score(result, review) for result in visible_results
     }
-    maximum_by_code = {result.code: result.max_score for result in visible_results}
-    visible_omissions = [
-        item
-        for item in assessment.omissions
-        if item["code"] not in effective_by_code
-        or effective_by_code[item["code"]] is None
-        or effective_by_code[item["code"]] < maximum_by_code[item["code"]]
-    ]
-    visible_errors = [
-        item
-        for item in assessment.errors
-        if item["code"] not in effective_by_code
-        or effective_by_code[item["code"]] is None
-        or effective_by_code[item["code"]] < maximum_by_code[item["code"]]
-    ]
+    visible_omissions = unresolved_issues(
+        session,
+        assessment.omissions,
+        review=review,
+        student_visible_only=True,
+    )
+    visible_errors = unresolved_issues(
+        session,
+        assessment.errors,
+        review=review,
+        student_visible_only=True,
+    )
     return {
         "session_id": str(session.id),
         "standard_diagnoses": [

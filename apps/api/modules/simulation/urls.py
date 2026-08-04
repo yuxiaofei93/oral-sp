@@ -8,10 +8,12 @@ from .views import (
     StudentSessionStartView,
     StudentSessionSubmissionView,
     TeacherAssignmentCloseView,
+    TeacherAssignmentCsvExportView,
     TeacherAssignmentListCreateView,
     TeacherAssignmentOptionView,
     TeacherAssignmentReleaseFeedbackView,
     TeacherAssignmentResponseListView,
+    TeacherAssignmentStatisticsView,
     TeacherSessionRecordView,
     TeacherSessionReviewView,
 )
@@ -41,6 +43,16 @@ urlpatterns = [
         "teacher/assignments/<uuid:assignment_id>/responses/",
         TeacherAssignmentResponseListView.as_view(),
         name="teacher-assignment-responses",
+    ),
+    path(
+        "teacher/assignments/<uuid:assignment_id>/statistics/",
+        TeacherAssignmentStatisticsView.as_view(),
+        name="teacher-assignment-statistics",
+    ),
+    path(
+        "teacher/assignments/<uuid:assignment_id>/export.csv",
+        TeacherAssignmentCsvExportView.as_view(),
+        name="teacher-assignment-export-csv",
     ),
     path(
         "teacher/sessions/<uuid:session_id>/record/",

@@ -390,6 +390,31 @@ class TeacherResponseRowSerializer(serializers.Serializer):
     score = serializers.DictField(allow_null=True)
 
 
+class AssignmentStatisticsSummarySerializer(serializers.Serializer):
+    student_count = serializers.IntegerField()
+    started_count = serializers.IntegerField()
+    completed_count = serializers.IntegerField()
+    expired_count = serializers.IntegerField()
+    assessed_count = serializers.IntegerField()
+    completion_rate = serializers.FloatField()
+    average_score = serializers.FloatField(allow_null=True)
+    average_score_percentage = serializers.FloatField(allow_null=True)
+    average_duration_seconds = serializers.IntegerField(allow_null=True)
+
+
+class AssignmentStatisticsIssueSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    label = serializers.CharField()
+    count = serializers.IntegerField()
+    rate = serializers.FloatField()
+
+
+class AssignmentStatisticsSerializer(serializers.Serializer):
+    summary = AssignmentStatisticsSummarySerializer()
+    frequent_omissions = AssignmentStatisticsIssueSerializer(many=True)
+    common_errors = AssignmentStatisticsIssueSerializer(many=True)
+
+
 class TeacherSessionRecordSerializer(SessionSerializer):
     student_id = serializers.UUIDField(read_only=True)
     student_name = serializers.CharField(source="student.display_name", read_only=True)

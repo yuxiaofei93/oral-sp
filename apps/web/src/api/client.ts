@@ -272,6 +272,32 @@ export type TeacherResponseRow = {
   score: AssessmentScore | null
 }
 
+export type AssignmentStatistics = {
+  summary: {
+    student_count: number
+    started_count: number
+    completed_count: number
+    expired_count: number
+    assessed_count: number
+    completion_rate: number
+    average_score: number | null
+    average_score_percentage: number | null
+    average_duration_seconds: number | null
+  }
+  frequent_omissions: Array<{
+    code: string
+    label: string
+    count: number
+    rate: number
+  }>
+  common_errors: Array<{
+    code: string
+    label: string
+    count: number
+    rate: number
+  }>
+}
+
 export type TeacherReview = {
   id: string
   revision: number
@@ -579,6 +605,19 @@ export async function listTeacherResponses(assignmentId: string): Promise<Teache
     credentials: 'same-origin',
   })
   return parseResponse<TeacherResponseRow[]>(response)
+}
+
+export async function getTeacherAssignmentStatistics(
+  assignmentId: string,
+): Promise<AssignmentStatistics> {
+  const response = await fetch(`/api/teacher/assignments/${assignmentId}/statistics/`, {
+    credentials: 'same-origin',
+  })
+  return parseResponse<AssignmentStatistics>(response)
+}
+
+export function teacherAssignmentCsvUrl(assignmentId: string): string {
+  return `/api/teacher/assignments/${assignmentId}/export.csv`
 }
 
 export async function getTeacherSessionRecord(sessionId: string): Promise<TeacherSessionRecord> {

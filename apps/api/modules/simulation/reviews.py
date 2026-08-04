@@ -102,6 +102,29 @@ def score_summary(
     }
 
 
+def unresolved_issues(
+    session: SimulationSession,
+    issues: list[dict],
+    *,
+    review: TeacherReview | None = None,
+    student_visible_only: bool = False,
+) -> list[dict]:
+    results = session.score_results.all()
+    if student_visible_only:
+        results = results.filter(is_student_visible=True)
+    result_by_code = {result.code: result for result in results}
+    remaining = []
+    for item in issues:
+        result = result_by_code.get(item.get("code"))
+        if result is None:
+            remaining.append(item)
+            continue
+        score = effective_score(result, review)
+        if score is None or score < result.max_score:
+            remaining.append(item)
+    return remaining
+
+
 def create_teacher_review(
     *,
     session: SimulationSession,

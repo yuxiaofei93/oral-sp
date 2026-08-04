@@ -689,6 +689,67 @@ def test_teacher_review_rejects_active_session_invalid_scores_and_unauthorized_u
 
 
 @pytest.mark.django_db
+def test_assignment_statistics_and_csv_export_use_latest_review_safely():
+    teacher, student, assignment = make_exam_data(suffix="7")
+    student.display_name = "=SUM(1,1)"
+    student.save(update_fields=["display_name"])
+    session = start_session(assignment=assignment, student=student).session
+    complete_scored_session(session=session, student=student, correct=False)
+    client = APIClient()
+    client.force_authenticate(teacher)
+    client.post(
+        reverse("teacher-session-review", kwargs={"session_id": session.id}),
+        {
+            "comment": "+需要重点复习诊断依据",
+            "scores": [
+                {
+                    "code": "score.final",
+                    "score": "2.00",
+                    "reason": "诊断方向接近，但依据不完整。",
+                }
+            ],
+        },
+        format="json",
+    )
+
+    statistics_url = reverse(
+        "teacher-assignment-statistics",
+        kwargs={"assignment_id": assignment.id},
+    )
+    export_url = reverse(
+        "teacher-assignment-export-csv",
+        kwargs={"assignment_id": assignment.id},
+    )
+    statistics = client.get(statistics_url)
+    assert statistics.status_code == 200
+    assert statistics.json()["summary"]["completion_rate"] == 100.0
+    assert statistics.json()["summary"]["average_score"] == 2.0
+    assert statistics.json()["summary"]["average_score_percentage"] == 22.22
+    assert statistics.json()["summary"]["assessed_count"] == 1
+    assert statistics.json()["frequent_omissions"][0]["count"] == 1
+    assert statistics.json()["common_errors"][0]["count"] == 1
+
+    exported = client.get(export_url)
+    assert exported.status_code == 200
+    assert exported["Content-Type"].startswith("text/csv")
+    assert exported.content.startswith("\ufeff".encode())
+    csv_text = exported.content.decode("utf-8-sig")
+    assert "学生姓名,手机号,作答状态" in csv_text
+    assert "'=SUM(1,1)" in csv_text
+    assert "'+8613800000007" in csv_text
+    assert "'+需要重点复习诊断依据" in csv_text
+    assert ",0.0,2.0,8.0,9.0,是," in csv_text
+
+    outsider = make_user("13999999997", RoleCode.TEACHER)
+    client.force_authenticate(outsider)
+    assert client.get(statistics_url).status_code == 404
+    assert client.get(export_url).status_code == 404
+    client.force_authenticate(student)
+    assert client.get(statistics_url).status_code == 403
+    assert client.get(export_url).status_code == 403
+
+
+@pytest.mark.django_db
 def test_interview_cannot_finish_while_patient_answer_is_processing():
     _, student, assignment = make_exam_data(suffix="4")
     session = start_session(assignment=assignment, student=student).session
