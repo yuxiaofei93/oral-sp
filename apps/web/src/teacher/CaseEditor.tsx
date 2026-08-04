@@ -382,11 +382,11 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                       <textarea rows={2} value={fact.patient_expression} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, patient_expression: event.target.value } : item))} />
                     </label>
                     <label>
-                      语义标签（逗号分隔）
+                      语义路由提示词（可选，逗号分隔）
                       <DelimitedListInput value={fact.semantic_tags} onChange={(value) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, semantic_tags: value } : item))} />
                     </label>
                     <label>
-                      同义问法（逗号分隔）
+                      典型同义问法（可选，逗号分隔）
                       <DelimitedListInput value={fact.synonyms} onChange={(value) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, synonyms: value } : item))} />
                     </label>
                     <label>
@@ -485,7 +485,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                       评价方式
                       <select value={item.evaluation_method} onChange={(event) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, evaluation_method: event.target.value } : score))}>
                         <option value="rule">确定性规则</option>
-                        <option value="ai">AI 辅助评价（暂标记待评价）</option>
+                        <option value="ai">AI 辅助评价</option>
                         <option value="teacher">教师评价（暂标记待评价）</option>
                       </select>
                     </label>

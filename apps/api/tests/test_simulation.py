@@ -18,7 +18,11 @@ from modules.simulation.ai_evaluation import (
     AIGatewayResponse,
     run_ai_evaluation,
 )
-from modules.simulation.gateways import GatewayResult, PatientGateway
+from modules.simulation.gateways import (
+    GatewayResult,
+    PatientGateway,
+    RoutingResult,
+)
 from modules.simulation.models import (
     AIEvaluationRun,
     AIEvaluationStatus,
@@ -321,8 +325,8 @@ def test_question_matches_legacy_tags_joined_with_chinese_delimiters():
 
 
 class DiagnosisLeakingGateway(PatientGateway):
-    def answer(self, *, question, facts):
-        del question
+    def answer(self, *, question, facts, history):
+        del question, history
         return GatewayResult(
             answer="医生，我这就是慢性牙周炎。",
             fact_codes=[facts[0].code],
@@ -346,9 +350,84 @@ def test_diagnosis_leak_is_replaced_by_safe_fact_response_and_audited():
     )
 
     assert exchange.patient_message.content == "差不多有三年了。"
-    call = session.model_calls.get()
+    call = session.model_calls.get(patient_message__isnull=False)
     assert call.status == ModelCallStatus.FAILED
     assert call.error_code == "response_validation_failed"
+
+
+class SemanticRoutingGateway(PatientGateway):
+    def __init__(self):
+        self.histories = []
+
+    def route(self, *, question, facts, history):
+        assert question == "不舒服从什么时候开始的？"
+        self.histories.append(history)
+        return RoutingResult(
+            fact_codes=["history.duration"],
+            confidence=0.96,
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            latency_ms=20,
+            input_tokens=40,
+            output_tokens=8,
+        )
+
+    def answer(self, *, question, facts, history):
+        del question
+        assert history == self.histories[-1]
+        return GatewayResult(
+            answer=facts[0].patient_expression,
+            fact_codes=[facts[0].code],
+            provider="deepseek",
+            model="deepseek-v4-flash",
+            latency_ms=25,
+            input_tokens=30,
+            output_tokens=10,
+        )
+
+
+@pytest.mark.django_db
+def test_semantic_router_maps_natural_question_without_teacher_keyword():
+    _, student, assignment = make_exam_data(suffix="0")
+    assignment.case_version.facts.filter(code="history.duration").update(
+        semantic_tags=[],
+        synonyms=[],
+    )
+    session = start_session(assignment=assignment, student=student).session
+
+    exchange = ask_patient(
+        session=session,
+        student=student,
+        content="不舒服从什么时候开始的？",
+        client_message_id="semantic_route_question_01",
+        gateway=SemanticRoutingGateway(),
+    )
+
+    assert exchange.patient_message.content == "差不多有三年了。"
+    route_call = session.model_calls.get(prompt_version="patient-route-v1")
+    assert route_call.provider == "deepseek"
+    assert route_call.matched_fact_codes == ["history.duration"]
+    answer_call = session.model_calls.get(patient_message__isnull=False)
+    assert answer_call.matched_fact_codes == ["history.duration"]
+
+
+@pytest.mark.django_db
+def test_unrelated_question_uses_unknown_response_after_empty_route():
+    _, student, assignment = make_exam_data(suffix="0")
+    session = start_session(assignment=assignment, student=student).session
+
+    exchange = ask_patient(
+        session=session,
+        student=student,
+        content="你今天坐什么交通工具来的？",
+        client_message_id="unrelated_question_01",
+    )
+
+    assert exchange.patient_message.content == "这个我不太清楚。"
+    assert session.model_calls.filter(prompt_version="patient-route-v1").count() == 1
+    answer_call = session.model_calls.get(patient_message__isnull=False)
+    assert answer_call.provider == "rules"
+    assert answer_call.matched_fact_codes == []
 
 
 @pytest.mark.django_db

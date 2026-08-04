@@ -1,5 +1,4 @@
 import os
-import re
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -16,6 +15,7 @@ from .gateways import (
     GatewayResult,
     PatientFact,
     PatientGateway,
+    RoutingResult,
     get_patient_gateway,
     request_hash,
 )
@@ -320,24 +320,30 @@ def refresh_session_status(*, session: SimulationSession, student) -> Simulation
         return locked
 
 
-def _select_facts(session: SimulationSession, question: str):
-    normalized_question = question.casefold()
-    candidates = session.case_version.facts.exclude(disclosure_mode=DisclosureMode.NEVER)
-    selected = []
-    for fact in candidates:
-        triggers = [
-            term.strip()
-            for value in [*fact.semantic_tags, *fact.synonyms]
-            for term in re.split(r"[,，、;；\n]", str(value))
-            if term.strip()
-        ]
-        if any(
-            str(trigger).casefold() in normalized_question
-            for trigger in triggers
-            if str(trigger).strip()
-        ):
-            selected.append(fact)
-    return selected
+def _patient_facts(session: SimulationSession) -> list[PatientFact]:
+    return [
+        PatientFact(
+            code=fact.code,
+            standard_fact=fact.standard_fact,
+            patient_expression=fact.patient_expression,
+            category=fact.category,
+            semantic_tags=tuple(fact.semantic_tags),
+            synonyms=tuple(fact.synonyms),
+            disclosure_mode=fact.disclosure_mode,
+            certainty=fact.certainty,
+        )
+        for fact in session.case_version.facts.exclude(disclosure_mode=DisclosureMode.NEVER)
+    ]
+
+
+def _recent_conversation(*, session: SimulationSession, current_message: Message) -> list[dict]:
+    recent = list(
+        session.messages.exclude(pk=current_message.pk).order_by("-sequence")[:12]
+    )
+    return [
+        {"role": message.role, "content": message.content}
+        for message in reversed(recent)
+    ]
 
 
 def _diagnosis_leaked(session: SimulationSession, answer: str) -> bool:
@@ -455,6 +461,30 @@ def _save_patient_response(
         return patient_message
 
 
+def _save_routing_call(
+    *,
+    student_message: Message,
+    result: RoutingResult,
+    hashed_request: str,
+    status: str,
+    error_code: str = "",
+) -> None:
+    ModelCall.objects.create(
+        session=student_message.session,
+        student_message=student_message,
+        provider=result.provider,
+        model=result.model,
+        prompt_version="patient-route-v1",
+        request_hash=hashed_request,
+        matched_fact_codes=result.fact_codes,
+        status=status,
+        latency_ms=result.latency_ms,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        error_code=error_code,
+    )
+
+
 def ask_patient(
     *,
     session: SimulationSession,
@@ -475,36 +505,29 @@ def ask_patient(
     if reused and student_message.response_status == ResponseStatus.PROCESSING:
         return ExchangeResult(student_message, None, reused=True)
 
-    selected = _select_facts(session, content)
-    facts = [
-        PatientFact(
-            code=fact.code,
-            patient_expression=fact.patient_expression,
-            certainty=fact.certainty,
-        )
-        for fact in selected
-    ]
-    if not facts:
-        unknown = selected[0].unknown_response if selected else "这个我不太清楚。"
-        result = GatewayResult(
-            answer=unknown,
-            fact_codes=[],
-            provider="rules",
-            model="unknown-fact-policy-v1",
-            latency_ms=1,
-        )
-        patient_message = _save_patient_response(
-            student_message=student_message,
-            result=result,
-            hashed_request=request_hash(question=content, facts=[]),
-            call_status=ModelCallStatus.SUCCEEDED,
-        )
-        return ExchangeResult(student_message, patient_message, reused)
-
+    facts = _patient_facts(session)
+    history = _recent_conversation(session=session, current_message=student_message)
     patient_gateway = gateway
+    route_hash = request_hash(question=content, facts=facts, history=history)
+    fact_by_code = {fact.code: fact for fact in facts}
     try:
         patient_gateway = patient_gateway or get_patient_gateway()
-        result = patient_gateway.answer(question=content, facts=facts)
+        route = patient_gateway.route(
+            question=content,
+            facts=facts,
+            history=history,
+        )
+        if not set(route.fact_codes).issubset(fact_by_code):
+            raise GatewayError(
+                "患者语义路由返回了未知事实。",
+                code="invalid_route_facts",
+            )
+        _save_routing_call(
+            student_message=student_message,
+            result=route,
+            hashed_request=route_hash,
+            status=ModelCallStatus.SUCCEEDED,
+        )
     except GatewayError as error:
         student_message.response_status = ResponseStatus.FAILED
         student_message.error_code = error.code
@@ -520,14 +543,64 @@ def ask_patient(
             model=(
                 getattr(client, "model", "") or os.environ.get("LLM_MODEL", "unavailable")
             ),
-            request_hash=request_hash(question=content, facts=facts),
-            matched_fact_codes=[fact.code for fact in facts],
+            prompt_version="patient-route-v1",
+            request_hash=route_hash,
+            matched_fact_codes=[],
+            status=ModelCallStatus.FAILED,
+            error_code=error.code,
+        )
+        raise ModelUnavailableError("患者语义理解模型暂时不可用，请稍后重试。") from error
+
+    selected_facts = [fact_by_code[code] for code in route.fact_codes]
+    if not selected_facts:
+        result = GatewayResult(
+            answer="这个我不太清楚。",
+            fact_codes=[],
+            provider="rules",
+            model="unknown-fact-policy-v1",
+            latency_ms=1,
+        )
+        patient_message = _save_patient_response(
+            student_message=student_message,
+            result=result,
+            hashed_request=request_hash(question=content, facts=[], history=history),
+            call_status=ModelCallStatus.SUCCEEDED,
+        )
+        return ExchangeResult(student_message, patient_message, reused)
+
+    try:
+        result = patient_gateway.answer(
+            question=content,
+            facts=selected_facts,
+            history=history,
+        )
+    except GatewayError as error:
+        student_message.response_status = ResponseStatus.FAILED
+        student_message.error_code = error.code
+        student_message.save(update_fields=["response_status", "error_code"])
+        client = getattr(patient_gateway, "client", None)
+        ModelCall.objects.create(
+            session=session,
+            student_message=student_message,
+            provider=(
+                getattr(client, "provider", "")
+                or os.environ.get("LLM_PROVIDER", "unavailable")
+            ),
+            model=(
+                getattr(client, "model", "") or os.environ.get("LLM_MODEL", "unavailable")
+            ),
+            request_hash=request_hash(
+                question=content,
+                facts=selected_facts,
+                history=history,
+            ),
+            matched_fact_codes=[fact.code for fact in selected_facts],
             status=ModelCallStatus.FAILED,
             error_code=error.code,
         )
         raise ModelUnavailableError("患者模型暂时不可用，请稍后重试。") from error
 
-    allowed_codes = {fact.code for fact in facts}
+    allowed_codes = {fact.code for fact in selected_facts}
     invalid = (
         not result.fact_codes
         or not set(result.fact_codes).issubset(allowed_codes)
@@ -535,8 +608,8 @@ def ask_patient(
     )
     if invalid:
         result = GatewayResult(
-            answer=" ".join(fact.patient_expression for fact in facts),
-            fact_codes=[fact.code for fact in facts],
+            answer=" ".join(fact.patient_expression for fact in selected_facts),
+            fact_codes=[fact.code for fact in selected_facts],
             provider=result.provider,
             model=result.model,
             latency_ms=result.latency_ms,
@@ -552,7 +625,11 @@ def ask_patient(
     patient_message = _save_patient_response(
         student_message=student_message,
         result=result,
-        hashed_request=request_hash(question=content, facts=facts),
+        hashed_request=request_hash(
+            question=content,
+            facts=selected_facts,
+            history=history,
+        ),
         call_status=call_status,
         call_error=call_error,
     )

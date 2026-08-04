@@ -71,6 +71,7 @@ def test_deepseek_patient_gateway_disables_thinking_and_retries_empty_json(monke
                 certainty="known",
             )
         ],
+        history=[],
     )
 
     assert len(requests) == 2
@@ -86,6 +87,53 @@ def test_deepseek_patient_gateway_disables_thinking_and_retries_empty_json(monke
     assert result.model == "DeepSeek-V4-Flash-0731"
     assert result.input_tokens == 30
     assert result.output_tokens == 12
+
+
+def test_deepseek_patient_gateway_routes_semantic_question_to_fact_code(monkeypatch):
+    configure_deepseek(monkeypatch)
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        captured["timeout"] = timeout
+        return JsonResponse(
+            {
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": (
+                                '{"fact_codes":["history.duration"],'
+                                '"confidence":0.96}'
+                            )
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 80, "completion_tokens": 10},
+            }
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    result = OpenAICompatiblePatientGateway(provider="deepseek").route(
+        question="不舒服从什么时候开始的？",
+        facts=[
+            PatientFact(
+                code="history.duration",
+                standard_fact="病程约三年",
+                patient_expression="差不多有三年了。",
+                certainty="known",
+            )
+        ],
+        history=[{"role": "patient", "content": "牙龈不舒服。"}],
+    )
+
+    assert captured["body"]["thinking"] == {"type": "disabled"}
+    assert "不舒服从什么时候开始的" in captured["body"]["messages"][1]["content"]
+    assert "病程约三年" in captured["body"]["messages"][1]["content"]
+    assert result.fact_codes == ["history.duration"]
+    assert result.confidence == 0.96
+    assert result.input_tokens == 80
 
 
 def test_deepseek_ai_evaluation_uses_low_reasoning_effort(monkeypatch):

@@ -80,7 +80,7 @@ describe('CaseEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /患者事实/ }))
     fireEvent.click(screen.getByRole('button', { name: '添加事实信息点' }))
     expect(screen.getByText('信息点 1')).toBeInTheDocument()
-    const tagInput = screen.getByLabelText('语义标签（逗号分隔）')
+    const tagInput = screen.getByLabelText('语义路由提示词（可选，逗号分隔）')
     fireEvent.change(tagInput, { target: { value: '多久' } })
     fireEvent.change(tagInput, { target: { value: '多久，' } })
     expect(tagInput).toHaveValue('多久，')
