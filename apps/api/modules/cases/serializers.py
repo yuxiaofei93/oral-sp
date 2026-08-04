@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from .models import (
@@ -15,6 +17,19 @@ class StringListField(serializers.ListField):
     child = serializers.CharField(max_length=160)
 
 
+class SearchTermListField(StringListField):
+    def to_internal_value(self, data):
+        values = super().to_internal_value(data)
+        normalized = []
+        for value in values:
+            normalized.extend(
+                term.strip()
+                for term in re.split(r"[,，、;；\n]", value)
+                if term.strip()
+            )
+        return list(dict.fromkeys(normalized))
+
+
 class PatientProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = PatientProfile
@@ -23,8 +38,8 @@ class PatientProfileSerializer(serializers.ModelSerializer):
 
 
 class CaseFactSerializer(serializers.ModelSerializer):
-    semantic_tags = StringListField(required=False)
-    synonyms = StringListField(required=False)
+    semantic_tags = SearchTermListField(required=False)
+    synonyms = SearchTermListField(required=False)
 
     class Meta:
         model = CaseFact

@@ -68,7 +68,7 @@ const emptyScoringItem = (order: number): ScoringItem => ({
 
 function commaList(value: string): string[] {
   return value
-    .split(/[,，]/)
+    .split(/[,，、;；\n]/)
     .map((item) => item.trim())
     .filter(Boolean)
 }

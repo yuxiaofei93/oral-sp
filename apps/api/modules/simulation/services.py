@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -324,7 +325,12 @@ def _select_facts(session: SimulationSession, question: str):
     candidates = session.case_version.facts.exclude(disclosure_mode=DisclosureMode.NEVER)
     selected = []
     for fact in candidates:
-        triggers = [*fact.semantic_tags, *fact.synonyms]
+        triggers = [
+            term.strip()
+            for value in [*fact.semantic_tags, *fact.synonyms]
+            for term in re.split(r"[,，、;；\n]", str(value))
+            if term.strip()
+        ]
         if any(
             str(trigger).casefold() in normalized_question
             for trigger in triggers

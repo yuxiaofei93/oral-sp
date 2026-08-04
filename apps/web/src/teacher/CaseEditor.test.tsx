@@ -50,12 +50,14 @@ describe('CaseEditor', () => {
   })
 
   it('saves a step with optimistic locking and supports adding facts', async () => {
+    const savedBodies: Array<Record<string, unknown>> = []
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input)
       if (url.endsWith('/csrf/')) {
         return Promise.resolve(new Response('{"csrf_token":"case-csrf"}', { status: 200 }))
       }
       if (url.endsWith('/draft/')) {
+        savedBodies.push(JSON.parse(String(init?.body)))
         expect(init?.method).toBe('PATCH')
         expect(init?.headers).toMatchObject({ 'X-CSRFToken': 'case-csrf' })
         expect(String(init?.body)).toContain('expected_updated_at')
@@ -78,6 +80,13 @@ describe('CaseEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /患者事实/ }))
     fireEvent.click(screen.getByRole('button', { name: '添加事实信息点' }))
     expect(screen.getByText('信息点 1')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('语义标签（逗号分隔）'), {
+      target: { value: '多久、病程；多长时间' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存并继续' }))
+    await waitFor(() => expect(savedBodies).toHaveLength(2))
+    expect(savedBodies[1]).toMatchObject({
+      facts: [{ semantic_tags: ['多久', '病程', '多长时间'] }],
+    })
   })
 })
-

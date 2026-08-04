@@ -301,6 +301,25 @@ def test_question_is_idempotent_and_sent_messages_are_immutable():
         first.student_message.delete()
 
 
+@pytest.mark.django_db
+def test_question_matches_legacy_tags_joined_with_chinese_delimiters():
+    _, student, assignment = make_exam_data(suffix="0")
+    assignment.case_version.facts.filter(code="history.duration").update(
+        semantic_tags=["多久、病程"],
+        synonyms=["多长时间；几年"],
+    )
+    session = start_session(assignment=assignment, student=student).session
+
+    exchange = ask_patient(
+        session=session,
+        student=student,
+        content="请问这个情况有多久了？",
+        client_message_id="question_delimiter_01",
+    )
+
+    assert exchange.patient_message.content == "差不多有三年了。"
+
+
 class DiagnosisLeakingGateway(PatientGateway):
     def answer(self, *, question, facts):
         del question
