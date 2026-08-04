@@ -80,9 +80,13 @@ describe('CaseEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /患者事实/ }))
     fireEvent.click(screen.getByRole('button', { name: '添加事实信息点' }))
     expect(screen.getByText('信息点 1')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('语义标签（逗号分隔）'), {
-      target: { value: '多久、病程；多长时间' },
-    })
+    const tagInput = screen.getByLabelText('语义标签（逗号分隔）')
+    fireEvent.change(tagInput, { target: { value: '多久' } })
+    fireEvent.change(tagInput, { target: { value: '多久，' } })
+    expect(tagInput).toHaveValue('多久，')
+    fireEvent.change(tagInput, { target: { value: '多久，病程；多长时间' } })
+    fireEvent.blur(tagInput)
+    expect(tagInput).toHaveValue('多久，病程，多长时间')
     fireEvent.click(screen.getByRole('button', { name: '保存并继续' }))
     await waitFor(() => expect(savedBodies).toHaveLength(2))
     expect(savedBodies[1]).toMatchObject({

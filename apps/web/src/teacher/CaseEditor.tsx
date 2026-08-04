@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 
 import {
   ApiError,
@@ -71,6 +71,32 @@ function commaList(value: string): string[] {
     .split(/[,，、;；\n]/)
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function DelimitedListInput({
+  value,
+  onChange,
+}: {
+  value: string[]
+  onChange: (value: string[]) => void
+}) {
+  const [text, setText] = useState(value.join('，'))
+
+  useEffect(() => {
+    setText(value.join('，'))
+  }, [value])
+
+  return (
+    <input
+      value={text}
+      onChange={(event) => setText(event.target.value)}
+      onBlur={() => {
+        const normalized = commaList(text)
+        setText(normalized.join('，'))
+        onChange(normalized)
+      }}
+    />
+  )
 }
 
 function EditorCard({ title, children }: { title: string; children: ReactNode }) {
@@ -217,9 +243,9 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
               </label>
               <label>
                 病种标签（逗号分隔，仅教师可见）
-                <input
-                  value={draft.disease_tags.join('，')}
-                  onChange={(event) => setField('disease_tags', commaList(event.target.value))}
+                <DelimitedListInput
+                  value={draft.disease_tags}
+                  onChange={(value) => setField('disease_tags', value)}
                 />
               </label>
               <label>
@@ -357,11 +383,11 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                     </label>
                     <label>
                       语义标签（逗号分隔）
-                      <input value={fact.semantic_tags.join('，')} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, semantic_tags: commaList(event.target.value) } : item))} />
+                      <DelimitedListInput value={fact.semantic_tags} onChange={(value) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, semantic_tags: value } : item))} />
                     </label>
                     <label>
                       同义问法（逗号分隔）
-                      <input value={fact.synonyms.join('，')} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, synonyms: commaList(event.target.value) } : item))} />
+                      <DelimitedListInput value={fact.synonyms} onChange={(value) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, synonyms: value } : item))} />
                     </label>
                     <label>
                       披露方式
@@ -434,8 +460,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                   <div className="form-grid">
                     <label>类型<select value={rule.diagnosis_type} onChange={(event) => setField('diagnosis_rules', draft.diagnosis_rules.map((item, itemIndex) => itemIndex === index ? { ...item, diagnosis_type: event.target.value } : item))}><option value="initial">初步诊断</option><option value="differential">鉴别诊断</option><option value="final">最终诊断</option></select></label>
                     <label>诊断名称<input value={rule.name} onChange={(event) => setField('diagnosis_rules', draft.diagnosis_rules.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} /></label>
-                    <label>可接受同义词<input value={rule.aliases.join('，')} onChange={(event) => setField('diagnosis_rules', draft.diagnosis_rules.map((item, itemIndex) => itemIndex === index ? { ...item, aliases: commaList(event.target.value) } : item))} /></label>
-                    <label>支持证据<input value={rule.supporting_evidence.join('，')} onChange={(event) => setField('diagnosis_rules', draft.diagnosis_rules.map((item, itemIndex) => itemIndex === index ? { ...item, supporting_evidence: commaList(event.target.value) } : item))} /></label>
+                    <label>可接受同义词<DelimitedListInput value={rule.aliases} onChange={(value) => setField('diagnosis_rules', draft.diagnosis_rules.map((item, itemIndex) => itemIndex === index ? { ...item, aliases: value } : item))} /></label>
+                    <label>支持证据<DelimitedListInput value={rule.supporting_evidence} onChange={(value) => setField('diagnosis_rules', draft.diagnosis_rules.map((item, itemIndex) => itemIndex === index ? { ...item, supporting_evidence: value } : item))} /></label>
                   </div>
                 </article>
               ))}
@@ -479,19 +505,19 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                       </label>
                     )}
                     {item.evaluation_method === 'rule' && item.matching_config.source === 'history_facts' && (
-                      <label className="form-grid__wide">患者事实编码（逗号分隔）<input value={Array.isArray(item.matching_config.fact_codes) ? item.matching_config.fact_codes.join('，') : ''} onChange={(event) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, fact_codes: commaList(event.target.value) } } : score))} /></label>
+                      <label className="form-grid__wide">患者事实编码（逗号分隔）<DelimitedListInput value={Array.isArray(item.matching_config.fact_codes) ? item.matching_config.fact_codes : []} onChange={(value) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, fact_codes: value } } : score))} /></label>
                     )}
                     {item.evaluation_method === 'rule' && item.matching_config.source === 'diagnoses' && (
-                      <label className="form-grid__wide">标准诊断名称（逗号分隔；留空时按维度匹配必需诊断）<input value={Array.isArray(item.matching_config.diagnosis_names) ? item.matching_config.diagnosis_names.join('，') : ''} onChange={(event) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, diagnosis_names: commaList(event.target.value) } } : score))} /></label>
+                      <label className="form-grid__wide">标准诊断名称（逗号分隔；留空时按维度匹配必需诊断）<DelimitedListInput value={Array.isArray(item.matching_config.diagnosis_names) ? item.matching_config.diagnosis_names : []} onChange={(value) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, diagnosis_names: value } } : score))} /></label>
                     )}
                     {item.evaluation_method === 'rule' && item.matching_config.source === 'tests' && (
-                      <label className="form-grid__wide">检查编码（逗号分隔；留空时匹配所有需主动申请的检查）<input value={Array.isArray(item.matching_config.test_codes) ? item.matching_config.test_codes.join('，') : ''} onChange={(event) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, test_codes: commaList(event.target.value) } } : score))} /></label>
+                      <label className="form-grid__wide">检查编码（逗号分隔；留空时匹配所有需主动申请的检查）<DelimitedListInput value={Array.isArray(item.matching_config.test_codes) ? item.matching_config.test_codes : []} onChange={(value) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, test_codes: value } } : score))} /></label>
                     )}
                     {item.evaluation_method === 'rule' && item.matching_config.source === 'submission_keywords' && (
                       <>
                         <label>答案阶段<select value={String(item.matching_config.submission_type ?? '')} onChange={(event) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, submission_type: event.target.value } } : score))}><option value="">请选择</option><option value="history_summary">病史摘要</option><option value="initial_reasoning">初步判断</option><option value="test_selection">检查计划</option><option value="final_reasoning">最终判断</option></select></label>
                         <label>命中方式<select value={String(item.matching_config.match ?? 'all')} onChange={(event) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, match: event.target.value } } : score))}><option value="all">按命中比例评分</option><option value="any">命中任一即满分</option></select></label>
-                        <label className="form-grid__wide">关键词（逗号分隔）<input value={Array.isArray(item.matching_config.keywords) ? item.matching_config.keywords.join('，') : ''} onChange={(event) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, keywords: commaList(event.target.value) } } : score))} /></label>
+                        <label className="form-grid__wide">关键词（逗号分隔）<DelimitedListInput value={Array.isArray(item.matching_config.keywords) ? item.matching_config.keywords : []} onChange={(value) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, keywords: value } } : score))} /></label>
                       </>
                     )}
                     <label className="form-grid__wide">评分说明<textarea rows={2} value={item.description} onChange={(event) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, description: event.target.value } : score))} /></label>
