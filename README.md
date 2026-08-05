@@ -76,12 +76,14 @@ docker compose up --build
 
 启动后访问：
 
-- Web：`http://localhost`
+- 入口选择：`http://localhost/`
+- 学生登录与注册：`http://localhost/student/`
+- 教师与管理员登录：`http://localhost/teacher/`
 - API 存活检查：`http://localhost/api/health/live/`
 - API 就绪检查：`http://localhost/api/health/ready/`
 - 获取 CSRF Token：`http://localhost/api/auth/csrf/`
 
-教师和管理员登录后可进入病例库、课程与学生、考试任务三个工作区。自助注册账号默认只有学生角色；教师和管理员由 Django Admin 授权。
+学生端与教师端使用独立入口页面。教师和管理员从教师入口登录后可进入病例库、课程与学生、考试任务三个工作区。自助注册仅在学生入口开放，注册账号默认只有学生角色；教师和管理员由 Django Admin 授权。入口隔离只负责交互引导，后端 API 仍会独立校验每个账号的角色权限。
 
 ## 最小教学流程
 

@@ -12,6 +12,7 @@ import { StudentAssignments } from '../student/StudentAssignments'
 import { TeacherWorkspace } from '../teacher/TeacherWorkspace'
 
 type Mode = 'login' | 'register'
+type Portal = 'student' | 'teacher'
 
 const roleNames = {
   student: '学生',
@@ -19,7 +20,17 @@ const roleNames = {
   administrator: '管理员',
 }
 
-export function AuthPanel() {
+type AuthPanelProps = {
+  portal: Portal
+}
+
+function canAccessPortal(user: CurrentUser, portal: Portal) {
+  return portal === 'student'
+    ? user.roles.includes('student')
+    : user.roles.some((role) => role === 'teacher' || role === 'administrator')
+}
+
+export function AuthPanel({ portal }: AuthPanelProps) {
   const [mode, setMode] = useState<Mode>('login')
   const [user, setUser] = useState<CurrentUser | null>()
   const [submitting, setSubmitting] = useState(false)
@@ -79,6 +90,30 @@ export function AuthPanel() {
   }
 
   if (user) {
+    if (!canAccessPortal(user, portal)) {
+      const expectedRole = portal === 'student' ? '学生' : '教师或管理员'
+      const otherPortal = portal === 'student' ? '/teacher/' : '/student/'
+      const otherPortalName = portal === 'student' ? '教师端' : '学生端'
+
+      return (
+        <section className="auth-card auth-card--mismatch" aria-labelledby="role-mismatch-title">
+          <p className="auth-card__hint">入口与账号角色不一致</p>
+          <h2 id="role-mismatch-title">当前账号无法进入{portal === 'student' ? '学生端' : '教师端'}</h2>
+          <p className="account-meta">
+            当前登录的是 {user.display_name}（{user.roles.map((role) => roleNames[role]).join('、')}），
+            此入口仅供{expectedRole}使用。
+          </p>
+          <div className="auth-card__actions">
+            <a className="button button--link" href={otherPortal}>前往{otherPortalName}</a>
+            <button className="button button--secondary" onClick={handleLogout} disabled={submitting}>
+              退出当前账号
+            </button>
+          </div>
+          {error && <p className="form-error">{error}</p>}
+        </section>
+      )
+    }
+
     return (
       <div className="authenticated-area">
         <section className="auth-card auth-card--account" aria-labelledby="welcome-title">
@@ -105,25 +140,33 @@ export function AuthPanel() {
 
   return (
     <section className="auth-card" aria-labelledby="auth-title">
-      <div className="auth-switch" aria-label="账号入口">
-        <button
-          className={mode === 'login' ? 'is-active' : ''}
-          type="button"
-          onClick={() => setMode('login')}
-        >
-          登录
-        </button>
-        <button
-          className={mode === 'register' ? 'is-active' : ''}
-          type="button"
-          onClick={() => setMode('register')}
-        >
-          学生注册
-        </button>
-      </div>
+      {portal === 'student' && (
+        <div className="auth-switch" aria-label="学生账号操作">
+          <button
+            className={mode === 'login' ? 'is-active' : ''}
+            type="button"
+            onClick={() => setMode('login')}
+          >
+            学生登录
+          </button>
+          <button
+            className={mode === 'register' ? 'is-active' : ''}
+            type="button"
+            onClick={() => setMode('register')}
+          >
+            学生注册
+          </button>
+        </div>
+      )}
 
-      <h2 id="auth-title">{mode === 'login' ? '进入教学平台' : '创建学生账号'}</h2>
-      <p className="auth-card__hint">使用中国大陆手机号和密码，暂不发送短信验证码。</p>
+      <h2 id="auth-title">
+        {mode === 'register' ? '创建学生账号' : portal === 'student' ? '学生登录' : '教师登录'}
+      </h2>
+      <p className="auth-card__hint">
+        {portal === 'teacher'
+          ? '请使用已由管理员授权的教师或管理员账号登录。'
+          : '使用中国大陆手机号和密码，暂不发送短信验证码。'}
+      </p>
 
       <form onSubmit={handleSubmit}>
         {mode === 'register' && (
@@ -155,7 +198,11 @@ export function AuthPanel() {
         </label>
         {error && <p className="form-error">{error}</p>}
         <button className="button" type="submit" disabled={submitting}>
-          {submitting ? '正在提交…' : mode === 'login' ? '登录' : '注册并登录'}
+          {submitting
+            ? '正在提交…'
+            : mode === 'register'
+              ? '注册并进入学生端'
+              : `进入${portal === 'student' ? '学生端' : '教师端'}`}
         </button>
       </form>
     </section>
