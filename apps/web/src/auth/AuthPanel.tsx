@@ -172,7 +172,6 @@ export function AuthPanel({ portal }: AuthPanelProps) {
             type="tel"
             inputMode="tel"
             autoComplete="tel"
-            placeholder="13800138000"
             required
           />
         </label>
