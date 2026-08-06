@@ -189,14 +189,14 @@ class TeacherAssignmentOptionView(APIView):
             status=VersionStatus.PUBLISHED,
             case__is_active=True,
         ).select_related("case")
-        class_groups = ClassGroup.objects.filter(is_active=True).select_related("course").annotate(
-            student_count=Count("memberships", distinct=True)
-        )
+        class_groups = ClassGroup.objects.filter(
+            is_active=True,
+            course__is_active=True,
+        ).select_related("course").annotate(student_count=Count("memberships", distinct=True))
         if not (request.user.is_superuser or request.user.has_role(RoleCode.ADMINISTRATOR)):
             case_versions = case_versions.filter(case__created_by=request.user)
             class_groups = class_groups.filter(
                 course__teacher_links__teacher=request.user,
-                course__is_active=True,
             ).distinct()
 
         data = {

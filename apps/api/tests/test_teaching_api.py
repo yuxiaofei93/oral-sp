@@ -4,7 +4,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from modules.accounts.models import Role, RoleCode
-from modules.teaching.models import ClassMembership, Course, CourseTeacher
+from modules.teaching.models import ClassGroup, ClassMembership, Course, CourseTeacher
 
 User = get_user_model()
 PASSWORD = "MolarTraining!2026"
@@ -38,7 +38,8 @@ def test_teacher_creates_course_class_and_imports_registered_students_atomically
         format="json",
     )
     assert class_response.status_code == 201
-    class_id = class_response.json()["classes"][0]["id"]
+    class_id = class_response.json()["id"]
+    assert class_response.json()["course_id"] == course_id
 
     roster_url = reverse("teacher-class-roster", kwargs={"class_id": class_id})
     rejected = client.post(
@@ -59,7 +60,9 @@ def test_teacher_creates_course_class_and_imports_registered_students_atomically
     assert imported.json() == {"created_count": 1, "existing_count": 0}
 
     course_list = client.get(reverse("teacher-course-list"))
-    roster = course_list.json()[0]["classes"][0]
+    assert course_list.json()[0]["class_count"] == 1
+    class_list = client.get(reverse("teacher-class-create"))
+    roster = class_list.json()[0]
     assert roster["student_count"] == 1
     assert roster["students"][0]["display_name"] == RoleCode.STUDENT
 
@@ -97,12 +100,40 @@ def test_teacher_cannot_view_or_modify_another_teachers_courses():
     client.force_authenticate(outsider)
 
     assert client.get(reverse("teacher-course-list")).json() == []
+    assert client.get(reverse("teacher-class-create")).json() == []
     roster_response = client.post(
         reverse("teacher-class-roster", kwargs={"class_id": class_group.id}),
         {"phones": [student.phone]},
         format="json",
     )
     assert roster_response.status_code == 404
+
+    assert client.delete(
+        reverse("teacher-course-detail", kwargs={"course_id": course.id})
+    ).status_code == 404
+
+
+@pytest.mark.django_db
+def test_teacher_archives_course_without_deleting_historical_structure():
+    teacher = make_user("13700000007", RoleCode.TEACHER)
+    course = Course.objects.create(code="ARCHIVE", name="待删除课程", created_by=teacher)
+    CourseTeacher.objects.create(course=course, teacher=teacher)
+    class_group = ClassGroup.objects.create(course=course, code="CLASS-A", name="历史班级")
+    client = APIClient()
+    client.force_authenticate(teacher)
+
+    response = client.delete(
+        reverse("teacher-course-detail", kwargs={"course_id": course.id})
+    )
+
+    assert response.status_code == 204
+    course.refresh_from_db()
+    class_group.refresh_from_db()
+    assert course.is_active is False
+    assert class_group.is_active is False
+    assert Course.objects.filter(pk=course.id).exists()
+    assert client.get(reverse("teacher-course-list")).json() == []
+    assert client.get(reverse("teacher-class-create")).json() == []
 
 
 @pytest.mark.django_db
@@ -112,3 +143,4 @@ def test_student_cannot_access_teaching_management_api():
     client.force_authenticate(student)
 
     assert client.get(reverse("teacher-course-list")).status_code == 403
+    assert client.get(reverse("teacher-class-create")).status_code == 403

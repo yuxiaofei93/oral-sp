@@ -8,7 +8,14 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
+from modules.teaching.models import ClassGroup
+
+from .serializers import (
+    LoginSerializer,
+    RegisterSerializer,
+    RegistrationClassSerializer,
+    UserSerializer,
+)
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
@@ -33,6 +40,18 @@ class RegisterView(APIView):
         user = serializer.save()
         login(request, user)
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+
+
+class RegistrationClassListView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        classes = ClassGroup.objects.filter(
+            is_active=True,
+            course__is_active=True,
+        ).select_related("course").order_by("course__code", "code")
+        return Response(RegistrationClassSerializer(classes, many=True).data)
 
 
 @method_decorator(csrf_protect, name="dispatch")
@@ -68,4 +87,3 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(UserSerializer(request.user).data)
-

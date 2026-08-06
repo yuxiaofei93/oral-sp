@@ -59,6 +59,14 @@ def create_class_group(*, course: Course, code: str, name: str, user) -> ClassGr
     return ClassGroup.objects.create(course=course, code=code, name=name)
 
 
+def archive_course(*, course: Course, user) -> None:
+    if not can_manage_course(course=course, user=user):
+        raise TeachingPermissionError("你没有该课程的管理权限。")
+    with transaction.atomic():
+        Course.objects.filter(pk=course.pk).update(is_active=False)
+        ClassGroup.objects.filter(course=course).update(is_active=False)
+
+
 def add_students_by_phone(
     *,
     class_group: ClassGroup,

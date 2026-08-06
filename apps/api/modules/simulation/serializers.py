@@ -33,7 +33,7 @@ class AssignmentCreateSerializer(serializers.Serializer):
     )
     class_group_id = serializers.PrimaryKeyRelatedField(
         source="class_group",
-        queryset=ClassGroup.objects.filter(is_active=True),
+        queryset=ClassGroup.objects.filter(is_active=True, course__is_active=True),
     )
     duration_minutes = serializers.IntegerField(min_value=1, max_value=240)
     opens_at = serializers.DateTimeField()

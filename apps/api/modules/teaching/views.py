@@ -1,4 +1,4 @@
-from django.db.models import Count, Prefetch
+from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
@@ -10,6 +10,7 @@ from modules.accounts.permissions import IsTeacherOrAdministrator
 from .models import ClassGroup, ClassMembership, Course
 from .serializers import (
     ClassGroupCreateSerializer,
+    ClassGroupSerializer,
     CourseCreateSerializer,
     CourseSerializer,
     RosterAddSerializer,
@@ -18,6 +19,7 @@ from .services import (
     StudentLookupError,
     TeachingError,
     add_students_by_phone,
+    archive_course,
     create_class_group,
     create_course,
     remove_student,
@@ -25,23 +27,26 @@ from .services import (
 
 
 def teacher_course_queryset(user):
-    memberships = ClassMembership.objects.select_related("student").order_by(
-        "student__display_name",
-        "student__phone",
+    queryset = Course.objects.filter(is_active=True).annotate(
+        class_count=Count("classes", filter=Q(classes__is_active=True), distinct=True)
     )
-    classes = (
-        ClassGroup.objects.annotate(student_count=Count("memberships"))
-        .prefetch_related(Prefetch("memberships", queryset=memberships))
-        .order_by("code")
-    )
-    queryset = Course.objects.prefetch_related(Prefetch("classes", queryset=classes))
     if user.is_superuser or user.has_role(RoleCode.ADMINISTRATOR):
         return queryset
     return queryset.filter(teacher_links__teacher=user).distinct()
 
 
 def teacher_class_queryset(user):
-    queryset = ClassGroup.objects.select_related("course")
+    memberships = ClassMembership.objects.select_related("student").order_by(
+        "student__display_name",
+        "student__phone",
+    )
+    queryset = (
+        ClassGroup.objects.filter(is_active=True, course__is_active=True)
+        .select_related("course")
+        .annotate(student_count=Count("memberships", distinct=True))
+        .prefetch_related(Prefetch("memberships", queryset=memberships))
+        .order_by("course__code", "code")
+    )
     if user.is_superuser or user.has_role(RoleCode.ADMINISTRATOR):
         return queryset
     return queryset.filter(course__teacher_links__teacher=user).distinct()
@@ -72,8 +77,23 @@ class TeacherCourseListCreateView(APIView):
         return Response(CourseSerializer(course).data, status=status.HTTP_201_CREATED)
 
 
+class TeacherCourseDetailView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def delete(self, request, course_id):
+        course = get_object_or_404(teacher_course_queryset(request.user), pk=course_id)
+        try:
+            archive_course(course=course, user=request.user)
+        except TeachingError as error:
+            return teaching_error_response(error)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class TeacherClassCreateView(APIView):
     permission_classes = [IsTeacherOrAdministrator]
+
+    def get(self, request):
+        return Response(ClassGroupSerializer(teacher_class_queryset(request.user), many=True).data)
 
     def post(self, request):
         serializer = ClassGroupCreateSerializer(data=request.data)
@@ -82,8 +102,8 @@ class TeacherClassCreateView(APIView):
             class_group = create_class_group(user=request.user, **serializer.validated_data)
         except TeachingError as error:
             return teaching_error_response(error)
-        course = teacher_course_queryset(request.user).get(pk=class_group.course_id)
-        return Response(CourseSerializer(course).data, status=status.HTTP_201_CREATED)
+        class_group = teacher_class_queryset(request.user).get(pk=class_group.pk)
+        return Response(ClassGroupSerializer(class_group).data, status=status.HTTP_201_CREATED)
 
 
 class TeacherClassRosterView(APIView):

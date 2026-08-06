@@ -18,8 +18,15 @@ describe('AuthPanel', () => {
       if (url.endsWith('/csrf/')) {
         return Promise.resolve(new Response('{"csrf_token":"test-csrf"}', { status: 200 }))
       }
+      if (url.endsWith('/registration-classes/')) {
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 'class-1', code: 'CLASS-A', name: 'A 班',
+          course_id: 'course-1', course_code: 'ORAL-2026', course_name: '口腔问诊训练',
+        }]), { status: 200 }))
+      }
       if (url.endsWith('/register/')) {
         expect(init?.headers).toMatchObject({ 'X-CSRFToken': 'test-csrf' })
+        expect(JSON.parse(String(init?.body)).class_group_id).toBe('class-1')
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -43,16 +50,18 @@ describe('AuthPanel', () => {
     expect(screen.queryByRole('heading', { name: '学生登录' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('手机号')).not.toHaveAttribute('placeholder')
     fireEvent.click(screen.getByRole('button', { name: '注册' }))
+    await waitFor(() => screen.getByRole('option', { name: '口腔问诊训练 / A 班' }))
     expect(screen.queryByRole('heading', { name: '创建学生账号' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('手机号')).not.toHaveAttribute('placeholder')
     fireEvent.change(screen.getByLabelText('姓名'), { target: { value: '测试学生' } })
+    fireEvent.change(screen.getByLabelText('班级'), { target: { value: 'class-1' } })
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800138000' } })
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'MolarTraining!2026' } })
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'MolarTraining!2026' } })
     fireEvent.click(screen.getByRole('button', { name: '注册' }))
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '欢迎，测试学生' })).toBeInTheDocument())
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5))
   })
 
   it('rejects mismatched registration passwords before calling the API', async () => {
@@ -61,20 +70,28 @@ describe('AuthPanel', () => {
       if (url.endsWith('/me/')) {
         return Promise.resolve(new Response('{"detail":"not authenticated"}', { status: 403 }))
       }
+      if (url.endsWith('/registration-classes/')) {
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 'class-1', code: 'CLASS-A', name: 'A 班',
+          course_id: 'course-1', course_code: 'ORAL-2026', course_name: '口腔问诊训练',
+        }]), { status: 200 }))
+      }
       return Promise.reject(new Error(`unexpected request: ${url}`))
     })
 
     render(<AuthPanel portal="student" />)
     await waitFor(() => screen.getByRole('button', { name: '登录' }))
     fireEvent.click(screen.getByRole('button', { name: '注册' }))
+    await waitFor(() => screen.getByRole('option', { name: '口腔问诊训练 / A 班' }))
     fireEvent.change(screen.getByLabelText('姓名'), { target: { value: '测试学生' } })
+    fireEvent.change(screen.getByLabelText('班级'), { target: { value: 'class-1' } })
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800138000' } })
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'MolarTraining!2026' } })
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'different-password' } })
     fireEvent.click(screen.getByRole('button', { name: '注册' }))
 
     expect(await screen.findByText('两次输入的密码不一致。')).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('does not render a student workspace inside the teacher portal', async () => {

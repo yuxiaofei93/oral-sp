@@ -4,11 +4,17 @@ from .views import (
     TeacherClassCreateView,
     TeacherClassRosterMemberView,
     TeacherClassRosterView,
+    TeacherCourseDetailView,
     TeacherCourseListCreateView,
 )
 
 urlpatterns = [
     path("courses/", TeacherCourseListCreateView.as_view(), name="teacher-course-list"),
+    path(
+        "courses/<uuid:course_id>/",
+        TeacherCourseDetailView.as_view(),
+        name="teacher-course-detail",
+    ),
     path("classes/", TeacherClassCreateView.as_view(), name="teacher-class-create"),
     path(
         "classes/<uuid:class_id>/students/",

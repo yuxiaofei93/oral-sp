@@ -2,6 +2,8 @@ from django.contrib.auth import password_validation
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
+from modules.teaching.models import ClassGroup, ClassMembership
+
 from .models import Role, RoleCode, User, UserRole
 from .phone import normalize_phone
 
@@ -24,6 +26,10 @@ class RegisterSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=32)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     display_name = serializers.CharField(max_length=80)
+    class_group_id = serializers.PrimaryKeyRelatedField(
+        source="class_group",
+        queryset=ClassGroup.objects.filter(is_active=True, course__is_active=True),
+    )
 
     def validate_phone(self, value: str) -> str:
         phone = normalize_phone(value)
@@ -37,6 +43,7 @@ class RegisterSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
+        class_group = validated_data.pop("class_group")
         try:
             with transaction.atomic():
                 user = User.objects.create_user(**validated_data)
@@ -45,9 +52,20 @@ class RegisterSerializer(serializers.Serializer):
                     defaults={"name": RoleCode.STUDENT.label},
                 )
                 UserRole.objects.create(user=user, role=role)
+                ClassMembership.objects.create(class_group=class_group, student=user)
                 return user
         except IntegrityError as error:
             raise serializers.ValidationError({"phone": "该手机号已经注册。"}) from error
+
+
+class RegistrationClassSerializer(serializers.ModelSerializer):
+    course_id = serializers.UUIDField(source="course.id", read_only=True)
+    course_code = serializers.CharField(source="course.code", read_only=True)
+    course_name = serializers.CharField(source="course.name", read_only=True)
+
+    class Meta:
+        model = ClassGroup
+        fields = ["id", "code", "name", "course_id", "course_code", "course_name"]
 
 
 class LoginSerializer(serializers.Serializer):
@@ -56,4 +74,3 @@ class LoginSerializer(serializers.Serializer):
 
     def validate_phone(self, value: str) -> str:
         return normalize_phone(value)
-

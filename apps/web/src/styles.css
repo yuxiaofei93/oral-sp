@@ -208,7 +208,8 @@ h1 {
   font-weight: 650;
 }
 
-.auth-card input {
+.auth-card input,
+.auth-card select {
   width: 100%;
   height: 46px;
   border: 1px solid #cbd9d6;
@@ -219,7 +220,8 @@ h1 {
   outline: none;
 }
 
-.auth-card input:focus {
+.auth-card input:focus,
+.auth-card select:focus {
   border-color: #16816d;
   box-shadow: 0 0 0 3px rgb(22 129 109 / 12%);
 }
@@ -533,10 +535,8 @@ h1 {
   white-space: pre-wrap;
 }
 
-.management-forms {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+.management-form--single {
+  width: min(100%, 620px);
 }
 
 .compact-form,
@@ -568,8 +568,7 @@ h1 {
 .compact-form input,
 .compact-form select,
 .assignment-form input,
-.assignment-form select,
-.roster-card textarea {
+.assignment-form select {
   width: 100%;
   min-height: 44px;
   border: 1px solid #cbd9d6;
@@ -583,8 +582,7 @@ h1 {
 .compact-form input:focus,
 .compact-form select:focus,
 .assignment-form input:focus,
-.assignment-form select:focus,
-.roster-card textarea:focus {
+.assignment-form select:focus {
   border-color: #16816d;
   box-shadow: 0 0 0 3px rgb(22 129 109 / 12%);
 }
@@ -621,10 +619,27 @@ h1 {
 
 .course-list header h3,
 .course-list header span,
+.course-list header p,
 .course-list > article > p,
 .exam-list h3,
 .exam-list p {
   margin: 3px 0 0;
+}
+
+.course-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.course-list__header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.course-list__header p {
+  margin: 0;
 }
 
 .course-list header span,
@@ -636,48 +651,6 @@ h1 {
 .roster-list span {
   color: #647a75;
   font-size: 13px;
-}
-
-.class-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.class-chips button {
-  display: flex;
-  gap: 8px;
-  border: 1px solid #cfe0dc;
-  border-radius: 999px;
-  padding: 9px 13px;
-  color: #334d48;
-  background: #f3f8f6;
-  cursor: pointer;
-}
-
-.class-chips button span {
-  color: #6b817c;
-}
-
-.class-chips button.is-active {
-  border-color: #176f60;
-  color: #fff;
-  background: #176f60;
-}
-
-.class-chips button.is-active span {
-  color: #d8eee8;
-}
-
-.roster-card form {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: end;
-  gap: 12px;
-}
-
-.roster-card textarea {
-  resize: vertical;
 }
 
 .roster-list {
@@ -1241,7 +1214,6 @@ h1 {
   .new-case-form,
   .form-grid,
   .publish-summary,
-  .management-forms,
   .assignment-form,
   .progress-grid,
   .statistics-summary,
@@ -1271,7 +1243,7 @@ h1 {
 
   .teacher-tabs {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     width: 100%;
   }
 
@@ -1279,7 +1251,7 @@ h1 {
     padding-inline: 8px;
   }
 
-  .roster-card form,
+  .course-list__header,
   .exam-list__header,
   .exam-list__actions,
   .roster-list article,

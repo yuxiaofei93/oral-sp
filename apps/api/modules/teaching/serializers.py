@@ -17,20 +17,34 @@ class StudentRosterSerializer(serializers.ModelSerializer):
 
 
 class ClassGroupSerializer(serializers.ModelSerializer):
+    course_id = serializers.UUIDField(source="course.id", read_only=True)
+    course_code = serializers.CharField(source="course.code", read_only=True)
+    course_name = serializers.CharField(source="course.name", read_only=True)
     students = StudentRosterSerializer(source="memberships", many=True, read_only=True)
     student_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = ClassGroup
-        fields = ["id", "code", "name", "is_active", "student_count", "students", "created_at"]
+        fields = [
+            "id",
+            "code",
+            "name",
+            "course_id",
+            "course_code",
+            "course_name",
+            "is_active",
+            "student_count",
+            "students",
+            "created_at",
+        ]
 
 
 class CourseSerializer(serializers.ModelSerializer):
-    classes = ClassGroupSerializer(many=True, read_only=True)
+    class_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Course
-        fields = ["id", "code", "name", "is_active", "classes", "created_at", "updated_at"]
+        fields = ["id", "code", "name", "is_active", "class_count", "created_at", "updated_at"]
 
 
 class CourseCreateSerializer(serializers.Serializer):

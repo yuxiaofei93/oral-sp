@@ -10,7 +10,20 @@ export type CurrentUser = {
 type AuthPayload = {
   phone: string
   password: string
-  display_name?: string
+}
+
+type RegistrationPayload = AuthPayload & {
+  display_name: string
+  class_group_id: string
+}
+
+export type RegistrationClass = {
+  id: string
+  code: string
+  name: string
+  course_id: string
+  course_code: string
+  course_name: string
 }
 
 export type PatientProfile = {
@@ -371,6 +384,9 @@ export type TeachingClass = {
   id: string
   code: string
   name: string
+  course_id: string
+  course_code: string
+  course_name: string
   is_active: boolean
   student_count: number
   students: RosterStudent[]
@@ -382,7 +398,7 @@ export type TeachingCourse = {
   code: string
   name: string
   is_active: boolean
-  classes: TeachingClass[]
+  class_count: number
   created_at: string
   updated_at: string
 }
@@ -483,8 +499,15 @@ export async function getCurrentUser(): Promise<CurrentUser> {
   return parseResponse<CurrentUser>(response)
 }
 
-export function register(payload: Required<AuthPayload>): Promise<CurrentUser> {
+export function register(payload: RegistrationPayload): Promise<CurrentUser> {
   return mutate<CurrentUser>('POST', '/api/auth/register/', payload)
+}
+
+export async function listRegistrationClasses(): Promise<RegistrationClass[]> {
+  const response = await fetch('/api/auth/registration-classes/', {
+    credentials: 'same-origin',
+  })
+  return parseResponse<RegistrationClass[]>(response)
 }
 
 export function signIn(payload: AuthPayload): Promise<CurrentUser> {
@@ -586,19 +609,23 @@ export function createTeachingCourse(payload: {
   return mutate('POST', '/api/teacher/teaching/courses/', payload)
 }
 
+export function deleteTeachingCourse(courseId: string): Promise<void> {
+  return mutate('DELETE', `/api/teacher/teaching/courses/${courseId}/`)
+}
+
+export async function listTeachingClasses(): Promise<TeachingClass[]> {
+  const response = await fetch('/api/teacher/teaching/classes/', {
+    credentials: 'same-origin',
+  })
+  return parseResponse<TeachingClass[]>(response)
+}
+
 export function createTeachingClass(payload: {
   course_id: string
   code: string
   name: string
-}): Promise<TeachingCourse> {
+}): Promise<TeachingClass> {
   return mutate('POST', '/api/teacher/teaching/classes/', payload)
-}
-
-export function addClassStudents(
-  classId: string,
-  phones: string[],
-): Promise<{ created_count: number; existing_count: number }> {
-  return mutate('POST', `/api/teacher/teaching/classes/${classId}/students/`, { phones })
 }
 
 export function removeClassStudent(classId: string, studentId: string): Promise<void> {

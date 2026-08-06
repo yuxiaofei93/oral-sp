@@ -3,7 +3,9 @@ import { FormEvent, useEffect, useState } from 'react'
 import {
   ApiError,
   CurrentUser,
+  RegistrationClass,
   getCurrentUser,
+  listRegistrationClasses,
   register,
   signIn,
   signOut,
@@ -35,6 +37,8 @@ export function AuthPanel({ portal }: AuthPanelProps) {
   const [user, setUser] = useState<CurrentUser | null>()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [registrationClasses, setRegistrationClasses] = useState<RegistrationClass[] | null>(null)
+  const [registrationClassesLoading, setRegistrationClassesLoading] = useState(false)
 
   useEffect(() => {
     getCurrentUser()
@@ -59,9 +63,15 @@ export function AuthPanel({ portal }: AuthPanelProps) {
     const password = String(data.get('password') ?? '')
     const passwordConfirmation = String(data.get('password_confirmation') ?? '')
     const displayName = String(data.get('display_name') ?? '')
+    const classGroupId = String(data.get('class_group_id') ?? '')
 
     if (mode === 'register' && password !== passwordConfirmation) {
       setError('两次输入的密码不一致。')
+      setSubmitting(false)
+      return
+    }
+    if (mode === 'register' && !classGroupId) {
+      setError('请选择班级。')
       setSubmitting(false)
       return
     }
@@ -69,7 +79,12 @@ export function AuthPanel({ portal }: AuthPanelProps) {
     try {
       const nextUser =
         mode === 'register'
-          ? await register({ phone, password, display_name: displayName })
+          ? await register({
+              phone,
+              password,
+              display_name: displayName,
+              class_group_id: classGroupId,
+            })
           : await signIn({ phone, password })
       setUser(nextUser)
     } catch (requestError: unknown) {
@@ -89,6 +104,21 @@ export function AuthPanel({ portal }: AuthPanelProps) {
       setError(requestError instanceof ApiError ? requestError.message : '退出失败，请稍后重试。')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function showRegistration() {
+    setMode('register')
+    setError('')
+    if (registrationClasses !== null || registrationClassesLoading) return
+    setRegistrationClassesLoading(true)
+    try {
+      setRegistrationClasses(await listRegistrationClasses())
+    } catch (requestError: unknown) {
+      setError(requestError instanceof ApiError ? requestError.message : '班级列表加载失败。')
+      setRegistrationClasses([])
+    } finally {
+      setRegistrationClassesLoading(false)
     }
   }
 
@@ -165,6 +195,29 @@ export function AuthPanel({ portal }: AuthPanelProps) {
             <input name="display_name" autoComplete="name" required maxLength={80} />
           </label>
         )}
+        {mode === 'register' && (
+          <label>
+            班级
+            <select
+              name="class_group_id"
+              required
+              disabled={registrationClassesLoading || registrationClasses?.length === 0}
+            >
+              <option value="">
+                {registrationClassesLoading
+                  ? '正在加载班级…'
+                  : registrationClasses?.length === 0
+                    ? '暂无可选班级，请联系教师'
+                    : '请选择班级'}
+              </option>
+              {registrationClasses?.map((classGroup) => (
+                <option value={classGroup.id} key={classGroup.id}>
+                  {classGroup.course_name} / {classGroup.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           手机号
           <input
@@ -198,7 +251,11 @@ export function AuthPanel({ portal }: AuthPanelProps) {
           </label>
         )}
         {error && <p className="form-error">{error}</p>}
-        <button className="button" type="submit" disabled={submitting}>
+        <button
+          className="button"
+          type="submit"
+          disabled={submitting || (mode === 'register' && registrationClasses?.length === 0)}
+        >
           {submitting
             ? '正在提交…'
             : mode === 'register'
@@ -211,8 +268,12 @@ export function AuthPanel({ portal }: AuthPanelProps) {
             <button
               type="button"
               onClick={() => {
-                setMode(mode === 'login' ? 'register' : 'login')
-                setError('')
+                if (mode === 'login') {
+                  void showRegistration()
+                } else {
+                  setMode('login')
+                  setError('')
+                }
               }}
             >
               {mode === 'login' ? '注册' : '返回登录'}
