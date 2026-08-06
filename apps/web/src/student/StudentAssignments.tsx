@@ -118,8 +118,9 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
   async function handleStageSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (session.stage === 'completed') return
+    const form = event.currentTarget
     const config = stageConfig[session.stage]
-    const data = new FormData(event.currentTarget)
+    const data = new FormData(form)
     setBusy(true)
     setError('')
     try {
@@ -127,9 +128,25 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
         submission_type: config.submissionType,
         payload: { text: String(data.get('content') ?? '') },
       })
-      await refreshSession()
-      event.currentTarget.reset()
+      form.reset()
+      try {
+        await refreshSession()
+      } catch {
+        setError('本阶段已提交成功，但页面状态同步失败，请刷新页面继续。')
+      }
     } catch (requestError: unknown) {
+      try {
+        const refreshed = await refreshSession()
+        const submissionExists = refreshed.submissions.some(
+          (submission) => submission.submission_type === config.submissionType,
+        )
+        if (submissionExists) {
+          form.reset()
+          return
+        }
+      } catch {
+        // Keep the original submission error when server state cannot be reconciled.
+      }
       setError(requestError instanceof ApiError ? requestError.message : '阶段提交失败。')
     } finally {
       setBusy(false)
@@ -205,7 +222,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
         <form className="stage-form" onSubmit={handleStageSubmit}>
           <h3>{currentStage.title}</h3>
           <p>{currentStage.help}</p>
-          <textarea name="content" rows={5} required />
+          <textarea name="content" aria-label={currentStage.title} rows={5} required />
           <button className="button" type="submit" disabled={busy}>
             {session.stage === 'final_reasoning' ? '提交并交卷' : '提交并进入下一阶段'}
           </button>

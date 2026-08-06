@@ -100,6 +100,72 @@ describe('StudentAssignments', () => {
     expect(fetchMock).toHaveBeenCalled()
   })
 
+  it('advances to the next stage without reporting a false submission failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input)
+      if (url.endsWith('/student/assignments/')) {
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 'assignment-1',
+          title: '牙周问诊练习',
+          case_title: '口腔不适病例',
+          difficulty: 'intermediate',
+          duration_minutes: 20,
+          opens_at: '2026-08-04T00:00:00Z',
+          deadline_at: '2099-08-04T02:00:00Z',
+          status: 'open',
+          feedback_released_at: null,
+          attempt_status: 'active',
+          session_id: 'session-1',
+        }]), { status: 200 }))
+      }
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"student-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/assignment-1/session/')) {
+        return Promise.resolve(new Response(JSON.stringify({ created: false, session }), { status: 200 }))
+      }
+      if (url.endsWith('/session-1/submissions/')) {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          submission_type: 'history_summary',
+          payload: { text: '牙龈疼痛约三年。' },
+        })
+        return Promise.resolve(new Response(JSON.stringify({
+          id: 'submission-1',
+          submission_type: 'history_summary',
+          payload: { text: '牙龈疼痛约三年。' },
+          submitted_at: '2026-08-06T01:00:00Z',
+        }), { status: 201 }))
+      }
+      if (url.endsWith('/student/sessions/session-1/')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...session,
+          stage: 'initial_reasoning',
+          submissions: [{
+            id: 'submission-1',
+            submission_type: 'history_summary',
+            payload: { text: '牙龈疼痛约三年。' },
+            submitted_at: '2026-08-06T01:00:00Z',
+          }],
+        }), { status: 200 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<StudentAssignments />)
+    await waitFor(() => screen.getByRole('button', { name: '继续作答' }))
+    fireEvent.click(screen.getByRole('button', { name: '继续作答' }))
+    await waitFor(() => screen.getByRole('heading', { name: '病史摘要' }))
+
+    const stageAnswer = screen.getByRole('textbox', { name: '病史摘要' })
+    fireEvent.change(stageAnswer, { target: { value: '牙龈疼痛约三年。' } })
+    fireEvent.click(screen.getByRole('button', { name: '提交并进入下一阶段' }))
+
+    await waitFor(() => expect(screen.getByRole('heading', {
+      name: '初步诊断与鉴别诊断',
+    })).toBeInTheDocument())
+    expect(screen.queryByText('阶段提交失败。')).not.toBeInTheDocument()
+  })
+
   it('shows released score, omissions and standard answers only from feedback API', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input)
