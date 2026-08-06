@@ -33,7 +33,7 @@ class AssignmentCreateSerializer(serializers.Serializer):
     )
     class_group_id = serializers.PrimaryKeyRelatedField(
         source="class_group",
-        queryset=ClassGroup.objects.filter(is_active=True, course__is_active=True),
+        queryset=ClassGroup.objects.filter(is_active=True),
     )
     duration_minutes = serializers.IntegerField(min_value=1, max_value=240)
     opens_at = serializers.DateTimeField()
@@ -54,7 +54,7 @@ class TeacherAssignmentSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     class_name = serializers.CharField(source="class_group.name", read_only=True)
-    course_name = serializers.CharField(source="class_group.course.name", read_only=True)
+    class_code = serializers.CharField(source="class_group.code", read_only=True)
     student_count = serializers.IntegerField(read_only=True)
     submitted_count = serializers.IntegerField(read_only=True)
     active_count = serializers.IntegerField(read_only=True)
@@ -73,7 +73,7 @@ class TeacherAssignmentSerializer(serializers.ModelSerializer):
             "class_group_id",
             "case_title",
             "case_version_number",
-            "course_name",
+            "class_code",
             "class_name",
             "duration_minutes",
             "opens_at",

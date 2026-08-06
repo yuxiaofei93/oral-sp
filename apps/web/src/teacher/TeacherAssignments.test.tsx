@@ -16,7 +16,7 @@ describe('TeacherAssignments', () => {
         { id: 'version-1', case_code: 'OM-001', title: '牙周病例', version_number: 1, suggested_duration_minutes: 20 },
       ],
       class_groups: [
-        { id: 'class-1', course_name: '口腔问诊训练', class_name: 'A 班', student_count: 12 },
+        { id: 'class-1', class_code: 'CLASS-A', class_name: 'A 班', student_count: 12 },
       ],
     }
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
@@ -38,7 +38,7 @@ describe('TeacherAssignments', () => {
           ...body,
           case_title: '牙周病例',
           case_version_number: 1,
-          course_name: '口腔问诊训练',
+          class_code: 'CLASS-A',
           class_name: 'A 班',
           status: 'open',
           feedback_released_at: null,

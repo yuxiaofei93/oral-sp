@@ -8,7 +8,6 @@ from django.utils import timezone
 
 from modules.accounts.models import RoleCode
 from modules.cases.models import DisclosureMode, VersionStatus
-from modules.teaching.models import CourseTeacher
 
 from .gateways import (
     GatewayError,
@@ -111,18 +110,15 @@ def create_assignment(
         raise AssignmentUnavailableError("只能发布已经生成版本号的病例。")
     if not case_version.case.is_active:
         raise AssignmentUnavailableError("该病例已经停用，不能发布新任务。")
-    if not class_group.is_active or not class_group.course.is_active:
-        raise AssignmentUnavailableError("该课程或班级已经停用，不能发布新任务。")
+    if not class_group.is_active:
+        raise AssignmentUnavailableError("该班级已经停用，不能发布新任务。")
     can_use_case = case_version.case.created_by_id == user.id
-    can_manage_course = CourseTeacher.objects.filter(
-        course=class_group.course,
-        teacher=user,
-    ).exists()
+    can_manage_class = class_group.created_by_id == user.id
     elevated = user.is_superuser or user.has_role(RoleCode.ADMINISTRATOR)
     if not elevated and not can_use_case:
         raise AssignmentUnavailableError("你没有该病例的任务发布权限。")
-    if not (elevated or can_manage_course):
-        raise AssignmentUnavailableError("你没有该课程的任务发布权限。")
+    if not (elevated or can_manage_class):
+        raise AssignmentUnavailableError("你没有该班级的任务发布权限。")
 
     students = list(class_group.memberships.values_list("student_id", flat=True))
     if not students:

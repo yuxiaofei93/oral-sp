@@ -263,7 +263,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
               </option>
               {registrationClasses?.map((classGroup) => (
                 <option value={classGroup.id} key={classGroup.id}>
-                  {classGroup.course_name} / {classGroup.name}
+                  {classGroup.code} · {classGroup.name}（{classGroup.teacher_name}）
                 </option>
               ))}
             </select>

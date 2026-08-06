@@ -22,9 +22,7 @@ export type RegistrationClass = {
   id: string
   code: string
   name: string
-  course_id: string
-  course_code: string
-  course_name: string
+  teacher_name: string
 }
 
 export type PatientProfile = {
@@ -385,23 +383,11 @@ export type TeachingClass = {
   id: string
   code: string
   name: string
-  course_id: string
-  course_code: string
-  course_name: string
+  created_by_name: string
   is_active: boolean
   student_count: number
   students: RosterStudent[]
   created_at: string
-}
-
-export type TeachingCourse = {
-  id: string
-  code: string
-  name: string
-  is_active: boolean
-  class_count: number
-  created_at: string
-  updated_at: string
 }
 
 export type TeacherAssignment = {
@@ -411,7 +397,7 @@ export type TeacherAssignment = {
   class_group_id: string
   case_title: string
   case_version_number: number
-  course_name: string
+  class_code: string
   class_name: string
   duration_minutes: number
   opens_at: string
@@ -436,7 +422,7 @@ export type AssignmentOptions = {
   }>
   class_groups: Array<{
     id: string
-    course_name: string
+    class_code: string
     class_name: string
     student_count: number
   }>
@@ -612,24 +598,6 @@ export async function getSessionFeedback(sessionId: string): Promise<SessionFeed
   return parseResponse<SessionFeedback>(response)
 }
 
-export async function listTeachingCourses(): Promise<TeachingCourse[]> {
-  const response = await fetch('/api/teacher/teaching/courses/', {
-    credentials: 'same-origin',
-  })
-  return parseResponse<TeachingCourse[]>(response)
-}
-
-export function createTeachingCourse(payload: {
-  code: string
-  name: string
-}): Promise<TeachingCourse> {
-  return mutate('POST', '/api/teacher/teaching/courses/', payload)
-}
-
-export function deleteTeachingCourse(courseId: string): Promise<void> {
-  return mutate('DELETE', `/api/teacher/teaching/courses/${courseId}/`)
-}
-
 export async function listTeachingClasses(): Promise<TeachingClass[]> {
   const response = await fetch('/api/teacher/teaching/classes/', {
     credentials: 'same-origin',
@@ -638,11 +606,14 @@ export async function listTeachingClasses(): Promise<TeachingClass[]> {
 }
 
 export function createTeachingClass(payload: {
-  course_id: string
   code: string
   name: string
 }): Promise<TeachingClass> {
   return mutate('POST', '/api/teacher/teaching/classes/', payload)
+}
+
+export function deleteTeachingClass(classId: string): Promise<void> {
+  return mutate('DELETE', `/api/teacher/teaching/classes/${classId}/`)
 }
 
 export function removeClassStudent(classId: string, studentId: string): Promise<void> {

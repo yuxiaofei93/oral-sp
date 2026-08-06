@@ -11,7 +11,7 @@ const assignment: TeacherAssignment = {
   class_group_id: 'class-1',
   case_title: '牙周病例',
   case_version_number: 1,
-  course_name: '口腔问诊训练',
+  class_code: 'CLASS-A',
   class_name: 'A 班',
   duration_minutes: 20,
   opens_at: '2026-08-04T00:00:00Z',

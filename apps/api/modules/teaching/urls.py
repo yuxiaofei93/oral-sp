@@ -1,20 +1,18 @@
 from django.urls import path
 
 from .views import (
-    TeacherClassCreateView,
+    TeacherClassDetailView,
+    TeacherClassListCreateView,
     TeacherClassRosterMemberView,
-    TeacherCourseDetailView,
-    TeacherCourseListCreateView,
 )
 
 urlpatterns = [
-    path("courses/", TeacherCourseListCreateView.as_view(), name="teacher-course-list"),
+    path("classes/", TeacherClassListCreateView.as_view(), name="teacher-class-list"),
     path(
-        "courses/<uuid:course_id>/",
-        TeacherCourseDetailView.as_view(),
-        name="teacher-course-detail",
+        "classes/<uuid:class_id>/",
+        TeacherClassDetailView.as_view(),
+        name="teacher-class-detail",
     ),
-    path("classes/", TeacherClassCreateView.as_view(), name="teacher-class-create"),
     path(
         "classes/<uuid:class_id>/students/<uuid:student_id>/",
         TeacherClassRosterMemberView.as_view(),

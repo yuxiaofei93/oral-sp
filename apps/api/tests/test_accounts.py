@@ -16,7 +16,7 @@ from modules.accounts.models import (
 )
 from modules.accounts.permissions import IsStudent, IsTeacherOrAdministrator
 from modules.accounts.verification import VerificationCodeError, consume_verification_code
-from modules.teaching.models import ClassGroup, ClassMembership, Course
+from modules.teaching.models import ClassGroup, ClassMembership
 
 User = get_user_model()
 PASSWORD = "MolarTraining!2026"
@@ -34,12 +34,11 @@ def make_registration_class(suffix: str) -> ClassGroup:
         password=PASSWORD,
         display_name="测试教师",
     )
-    course = Course.objects.create(
-        code=f"REGISTER-{suffix}",
-        name="注册课程",
+    return ClassGroup.objects.create(
+        code=f"CLASS-{suffix}",
+        name="注册班级",
         created_by=teacher,
     )
-    return ClassGroup.objects.create(course=course, code="CLASS-A", name="注册班级")
 
 
 def csrf_post(client: Client, url: str, payload: dict):
@@ -275,14 +274,11 @@ def test_registration_code_rejects_an_existing_email():
 def test_registration_class_list_only_exposes_active_choices():
     active = make_registration_class("004")
     inactive_class = ClassGroup.objects.create(
-        course=active.course,
-        code="CLASS-B",
+        code="CLASS-INACTIVE",
         name="停用班级",
+        created_by=active.created_by,
         is_active=False,
     )
-    inactive_course_class = make_registration_class("005")
-    inactive_course_class.course.is_active = False
-    inactive_course_class.course.save(update_fields=["is_active"])
 
     response = Client().get(reverse("auth-registration-classes"))
 
@@ -292,9 +288,7 @@ def test_registration_class_list_only_exposes_active_choices():
             "id": str(active.id),
             "code": active.code,
             "name": active.name,
-            "course_id": str(active.course_id),
-            "course_code": active.course.code,
-            "course_name": active.course.name,
+            "teacher_name": active.created_by.display_name,
         }
     ]
     assert str(inactive_class.id) not in str(response.json())

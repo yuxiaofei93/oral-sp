@@ -36,7 +36,7 @@ class RegisterSerializer(serializers.Serializer):
     display_name = serializers.CharField(max_length=80)
     class_group_id = serializers.PrimaryKeyRelatedField(
         source="class_group",
-        queryset=ClassGroup.objects.filter(is_active=True, course__is_active=True),
+        queryset=ClassGroup.objects.filter(is_active=True),
     )
 
     def validate_email(self, value: str) -> str:
@@ -78,13 +78,11 @@ class RegisterSerializer(serializers.Serializer):
 
 
 class RegistrationClassSerializer(serializers.ModelSerializer):
-    course_id = serializers.UUIDField(source="course.id", read_only=True)
-    course_code = serializers.CharField(source="course.code", read_only=True)
-    course_name = serializers.CharField(source="course.name", read_only=True)
+    teacher_name = serializers.CharField(source="created_by.display_name", read_only=True)
 
     class Meta:
         model = ClassGroup
-        fields = ["id", "code", "name", "course_id", "course_code", "course_name"]
+        fields = ["id", "code", "name", "teacher_name"]
 
 
 class LoginSerializer(serializers.Serializer):

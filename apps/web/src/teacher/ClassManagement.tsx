@@ -3,15 +3,13 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   TeachingClass,
-  TeachingCourse,
   createTeachingClass,
+  deleteTeachingClass,
   listTeachingClasses,
-  listTeachingCourses,
   removeClassStudent,
 } from '../api/client'
 
 export function ClassManagement() {
-  const [courses, setCourses] = useState<TeachingCourse[]>([])
   const [classes, setClasses] = useState<TeachingClass[]>([])
   const [selectedClassId, setSelectedClassId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -22,12 +20,7 @@ export function ClassManagement() {
     setLoading(true)
     setError('')
     try {
-      const [nextCourses, nextClasses] = await Promise.all([
-        listTeachingCourses(),
-        listTeachingClasses(),
-      ])
-      setCourses(nextCourses)
-      setClasses(nextClasses)
+      setClasses(await listTeachingClasses())
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '班级列表加载失败。')
     } finally {
@@ -53,7 +46,6 @@ export function ClassManagement() {
     setMessage('')
     try {
       const created = await createTeachingClass({
-        course_id: String(data.get('course_id') ?? ''),
         code: String(data.get('code') ?? '').toUpperCase(),
         name: String(data.get('name') ?? ''),
       })
@@ -63,6 +55,23 @@ export function ClassManagement() {
       await loadData()
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '班级创建失败。')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleDelete(classGroup: TeachingClass) {
+    if (!globalThis.confirm(`确定删除班级“${classGroup.name}”吗？历史任务和记录会保留。`)) return
+    setLoading(true)
+    setError('')
+    setMessage('')
+    try {
+      await deleteTeachingClass(classGroup.id)
+      if (selectedClassId === classGroup.id) setSelectedClassId('')
+      setMessage('班级已删除，历史任务和记录保持不变。')
+      await loadData()
+    } catch (requestError: unknown) {
+      setError(requestError instanceof ApiError ? requestError.message : '班级删除失败。')
     } finally {
       setLoading(false)
     }
@@ -96,41 +105,42 @@ export function ClassManagement() {
 
       <form className="compact-form management-form--single" onSubmit={handleCreate}>
         <h3>新建班级</h3>
-        <label>所属课程
-          <select name="course_id" required disabled={courses.length === 0}>
-            <option value="">请选择课程</option>
-            {courses.map((course) => (
-              <option value={course.id} key={course.id}>{course.code} · {course.name}</option>
-            ))}
-          </select>
-        </label>
         <label>班级编号<input name="code" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" required /></label>
         <label>班级名称<input name="name" required /></label>
-        <button className="button" type="submit" disabled={loading || courses.length === 0}>创建班级</button>
+        <button className="button" type="submit" disabled={loading}>创建班级</button>
       </form>
 
       {error && <p className="form-error">{error}</p>}
       {message && <p className="form-success">{message}</p>}
       {loading && classes.length === 0 && <p className="empty-state">正在加载班级…</p>}
-      {!loading && courses.length === 0 && <p className="empty-state">请先在课程管理中创建课程。</p>}
-      {!loading && courses.length > 0 && classes.length === 0 && <p className="empty-state">目前没有班级。</p>}
+      {!loading && classes.length === 0 && <p className="empty-state">目前没有班级。</p>}
 
-      <div className="course-list">
+      <div className="class-list">
         {classes.map((classGroup) => (
           <article key={classGroup.id}>
-            <header className="course-list__header">
+            <header className="class-list__header">
               <div>
-                <span>{classGroup.course_name} · {classGroup.code}</span>
+                <span>{classGroup.code}</span>
                 <h3>{classGroup.name}</h3>
                 <p>{classGroup.student_count} 名学生</p>
               </div>
-              <button
-                className="button button--secondary"
-                type="button"
-                onClick={() => setSelectedClassId(classGroup.id)}
-              >
-                管理学生
-              </button>
+              <div className="class-list__actions">
+                <button
+                  className="button button--secondary"
+                  type="button"
+                  onClick={() => setSelectedClassId(classGroup.id)}
+                >
+                  管理学生
+                </button>
+                <button
+                  className="text-button text-button--danger"
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleDelete(classGroup)}
+                >
+                  删除班级
+                </button>
+              </div>
             </header>
           </article>
         ))}
@@ -140,7 +150,7 @@ export function ClassManagement() {
         <section className="roster-card">
           <div>
             <h3>{selectedClass.name}学生名单</h3>
-            <p>{selectedClass.course_name} · 共 {selectedClass.student_count} 人</p>
+            <p>{selectedClass.code} · 共 {selectedClass.student_count} 人</p>
           </div>
           {selectedClass.students.length === 0 ? <p className="empty-state">班级中还没有学生。</p> : (
             <div className="roster-list">

@@ -56,10 +56,9 @@ class RegistrationClassListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        classes = ClassGroup.objects.filter(
-            is_active=True,
-            course__is_active=True,
-        ).select_related("course").order_by("course__code", "code")
+        classes = ClassGroup.objects.filter(is_active=True).select_related(
+            "created_by"
+        ).order_by("code")
         return Response(RegistrationClassSerializer(classes, many=True).data)
 
 

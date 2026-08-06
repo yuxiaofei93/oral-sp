@@ -49,7 +49,7 @@ from modules.simulation.services import (
     start_session,
     submit_stage,
 )
-from modules.teaching.models import ClassGroup, ClassMembership, Course, CourseTeacher
+from modules.teaching.models import ClassGroup, ClassMembership
 
 User = get_user_model()
 PASSWORD = "MolarTraining!2026"
@@ -197,17 +197,11 @@ def make_exam_data(*, suffix="1"):
         },
     )
     published = publish_draft(draft=draft, user=teacher).version
-    course = Course.objects.create(
-        code=f"COURSE-{suffix}",
-        name="口腔诊断学",
-        created_by=teacher,
-    )
     class_group = ClassGroup.objects.create(
-        course=course,
         code=f"CLASS-{suffix}",
         name="第一教学班",
+        created_by=teacher,
     )
-    CourseTeacher.objects.create(course=course, teacher=teacher)
     ClassMembership.objects.create(class_group=class_group, student=student)
     now = timezone.now()
     assignment = create_assignment(

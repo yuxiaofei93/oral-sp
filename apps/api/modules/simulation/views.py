@@ -84,7 +84,6 @@ def teacher_assignment_queryset(user):
     queryset = CaseAssignment.objects.select_related(
         "case_version",
         "class_group",
-        "class_group__course",
     ).annotate(
         student_count=Count("student_links", distinct=True),
         session_count=Count("sessions", distinct=True),
@@ -189,15 +188,12 @@ class TeacherAssignmentOptionView(APIView):
             status=VersionStatus.PUBLISHED,
             case__is_active=True,
         ).select_related("case")
-        class_groups = ClassGroup.objects.filter(
-            is_active=True,
-            course__is_active=True,
-        ).select_related("course").annotate(student_count=Count("memberships", distinct=True))
+        class_groups = ClassGroup.objects.filter(is_active=True).annotate(
+            student_count=Count("memberships", distinct=True)
+        )
         if not (request.user.is_superuser or request.user.has_role(RoleCode.ADMINISTRATOR)):
             case_versions = case_versions.filter(case__created_by=request.user)
-            class_groups = class_groups.filter(
-                course__teacher_links__teacher=request.user,
-            ).distinct()
+            class_groups = class_groups.filter(created_by=request.user)
 
         data = {
             "case_versions": [
@@ -213,11 +209,11 @@ class TeacherAssignmentOptionView(APIView):
             "class_groups": [
                 {
                     "id": str(class_group.id),
-                    "course_name": class_group.course.name,
+                    "class_code": class_group.code,
                     "class_name": class_group.name,
                     "student_count": class_group.student_count,
                 }
-                for class_group in class_groups.order_by("course__code", "code")
+                for class_group in class_groups.order_by("code")
             ],
         }
         return Response(AssignmentOptionSerializer(data).data)

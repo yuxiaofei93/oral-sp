@@ -21,7 +21,7 @@ describe('AuthPanel', () => {
       if (url.endsWith('/registration-classes/')) {
         return Promise.resolve(new Response(JSON.stringify([{
           id: 'class-1', code: 'CLASS-A', name: 'A 班',
-          course_id: 'course-1', course_code: 'ORAL-2026', course_name: '口腔问诊训练',
+          teacher_name: '教师甲',
         }]), { status: 200 }))
       }
       if (url.endsWith('/verification-codes/registration/')) {
@@ -56,7 +56,7 @@ describe('AuthPanel', () => {
     render(<AuthPanel portal="student" />)
     await waitFor(() => screen.getByRole('button', { name: '登录' }))
     fireEvent.click(screen.getByRole('button', { name: '注册' }))
-    await waitFor(() => screen.getByRole('option', { name: '口腔问诊训练 / A 班' }))
+    await waitFor(() => screen.getByRole('option', { name: 'CLASS-A · A 班（教师甲）' }))
     fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'student@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     expect(await screen.findByText('验证码已发送。使用本地邮件模式时，请查看后端终端。')).toBeInTheDocument()
@@ -82,7 +82,7 @@ describe('AuthPanel', () => {
       if (url.endsWith('/registration-classes/')) {
         return Promise.resolve(new Response(JSON.stringify([{
           id: 'class-1', code: 'CLASS-A', name: 'A 班',
-          course_id: 'course-1', course_code: 'ORAL-2026', course_name: '口腔问诊训练',
+          teacher_name: '教师甲',
         }]), { status: 200 }))
       }
       return Promise.reject(new Error(`unexpected request: ${url}`))
@@ -91,7 +91,7 @@ describe('AuthPanel', () => {
     render(<AuthPanel portal="student" />)
     await waitFor(() => screen.getByRole('button', { name: '登录' }))
     fireEvent.click(screen.getByRole('button', { name: '注册' }))
-    await waitFor(() => screen.getByRole('option', { name: '口腔问诊训练 / A 班' }))
+    await waitFor(() => screen.getByRole('option', { name: 'CLASS-A · A 班（教师甲）' }))
     fireEvent.change(screen.getByLabelText('姓名'), { target: { value: '测试学生' } })
     fireEvent.change(screen.getByLabelText('班级'), { target: { value: 'class-1' } })
     fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'student@example.com' } })

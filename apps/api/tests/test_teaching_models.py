@@ -2,7 +2,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 
-from modules.teaching.models import ClassGroup, ClassMembership, Course
+from modules.teaching.models import ClassGroup, ClassMembership
 
 User = get_user_model()
 
@@ -19,8 +19,11 @@ def test_student_can_only_join_a_class_once():
         password="MolarTraining!2026",
         display_name="测试学生",
     )
-    course = Course.objects.create(code="ORAL-001", name="口腔问诊基础", created_by=teacher)
-    class_group = ClassGroup.objects.create(course=course, code="2026-A", name="2026 A 班")
+    class_group = ClassGroup.objects.create(
+        code="2026-A",
+        name="2026 A 班",
+        created_by=teacher,
+    )
     ClassMembership.objects.create(class_group=class_group, student=student)
 
     with pytest.raises(IntegrityError), transaction.atomic():

@@ -615,13 +615,13 @@ h1 {
   align-self: end;
 }
 
-.course-list,
+.class-list,
 .exam-list {
   display: grid;
   gap: 14px;
 }
 
-.course-list > article,
+.class-list > article,
 .exam-list > article {
   display: grid;
   gap: 16px;
@@ -631,33 +631,39 @@ h1 {
   background: #fff;
 }
 
-.course-list header h3,
-.course-list header span,
-.course-list header p,
-.course-list > article > p,
+.class-list header h3,
+.class-list header span,
+.class-list header p,
+.class-list > article > p,
 .exam-list h3,
 .exam-list p {
   margin: 3px 0 0;
 }
 
-.course-list__header {
+.class-list__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
 }
 
-.course-list__header > div {
+.class-list__header > div {
   display: grid;
   gap: 3px;
 }
 
-.course-list__header p {
+.class-list__header p {
   margin: 0;
 }
 
-.course-list header span,
-.course-list > article > p,
+.class-list__header .class-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.class-list header span,
+.class-list > article > p,
 .exam-list__header span,
 .exam-list p,
 .exam-list__actions > span,
@@ -1265,7 +1271,7 @@ h1 {
     padding-inline: 8px;
   }
 
-  .course-list__header,
+  .class-list__header,
   .exam-list__header,
   .exam-list__actions,
   .roster-list article,
