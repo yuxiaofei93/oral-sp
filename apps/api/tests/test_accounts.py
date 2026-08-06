@@ -11,6 +11,20 @@ User = get_user_model()
 PASSWORD = "MolarTraining!2026"
 
 
+@pytest.mark.django_db
+def test_superuser_requires_a_display_name():
+    with pytest.raises(ValueError, match="必须提供姓名"):
+        User.objects.create_superuser(phone="13900139999", password=PASSWORD)
+
+    administrator = User.objects.create_superuser(
+        phone="13900139999",
+        password=PASSWORD,
+        display_name="  李一帆  ",
+    )
+
+    assert administrator.display_name == "李一帆"
+
+
 @pytest.mark.parametrize(
     ("source", "expected"),
     [

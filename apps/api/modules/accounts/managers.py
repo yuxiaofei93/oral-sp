@@ -22,11 +22,14 @@ class UserManager(BaseUserManager):
     def create_superuser(self, phone: str, password: str | None = None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
+        display_name = str(extra_fields.get("display_name", "")).strip()
 
         if extra_fields.get("is_staff") is not True:
             raise ValueError("超级管理员必须设置 is_staff=True。")
         if extra_fields.get("is_superuser") is not True:
             raise ValueError("超级管理员必须设置 is_superuser=True。")
+        if not display_name:
+            raise ValueError("超级管理员必须提供姓名。")
 
+        extra_fields["display_name"] = display_name
         return self._create_user(phone, password, **extra_fields)
-

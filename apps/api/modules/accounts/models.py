@@ -38,7 +38,7 @@ class User(AbstractUser):
     )
 
     USERNAME_FIELD = "phone"
-    REQUIRED_FIELDS: list[str] = []
+    REQUIRED_FIELDS = ["display_name"]
 
     objects = UserManager()
 
