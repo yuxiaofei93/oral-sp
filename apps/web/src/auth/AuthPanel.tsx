@@ -221,24 +221,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
   }
 
   return (
-    <section
-      className="auth-card"
-      aria-label={portal === 'student' ? '账号认证' : undefined}
-      aria-labelledby={portal === 'teacher' ? 'auth-title' : undefined}
-    >
-      {portal === 'teacher' && (
-        <h2 id="auth-title">{mode === 'forgot_password' ? '重置密码' : '教师登录'}</h2>
-      )}
-      <p className="auth-card__hint">
-        {mode === 'forgot_password'
-          ? '通过邮箱验证码设置新密码。'
-          : portal === 'teacher'
-            ? '请使用已由管理员授权的教师或管理员账号登录。'
-            : mode === 'register'
-              ? '使用邮箱创建账号并加入班级。'
-              : '使用邮箱和密码登录。'}
-      </p>
-
+    <section className="auth-card" aria-label="账号认证">
       <form onSubmit={handleSubmit}>
         {mode === 'register' && (
           <label>

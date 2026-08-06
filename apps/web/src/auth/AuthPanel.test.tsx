@@ -70,7 +70,7 @@ describe('AuthPanel', () => {
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '欢迎，测试学生' })).toBeInTheDocument())
     expect(screen.getByText(/student@example.com/)).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(7)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(7))
   })
 
   it('rejects mismatched registration passwords before calling the registration API', async () => {
