@@ -46,7 +46,7 @@ describe('App', () => {
 
     window.history.replaceState({}, '', '/teacher/')
     const { unmount } = render(<App />)
-    expect(screen.getByRole('heading', { name: '教师教学工作台' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '口腔模拟问诊系统管理后台' })).toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('heading', { name: '教师登录' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '学生注册' })).not.toBeInTheDocument()
     unmount()
