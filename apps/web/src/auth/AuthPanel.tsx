@@ -57,7 +57,14 @@ export function AuthPanel({ portal }: AuthPanelProps) {
     const data = new FormData(event.currentTarget)
     const phone = String(data.get('phone') ?? '')
     const password = String(data.get('password') ?? '')
+    const passwordConfirmation = String(data.get('password_confirmation') ?? '')
     const displayName = String(data.get('display_name') ?? '')
+
+    if (mode === 'register' && password !== passwordConfirmation) {
+      setError('两次输入的密码不一致。')
+      setSubmitting(false)
+      return
+    }
 
     try {
       const nextUser =
@@ -139,29 +146,12 @@ export function AuthPanel({ portal }: AuthPanelProps) {
   }
 
   return (
-    <section className="auth-card" aria-labelledby="auth-title">
-      {portal === 'student' && (
-        <div className="auth-switch" aria-label="学生账号操作">
-          <button
-            className={mode === 'login' ? 'is-active' : ''}
-            type="button"
-            onClick={() => setMode('login')}
-          >
-            学生登录
-          </button>
-          <button
-            className={mode === 'register' ? 'is-active' : ''}
-            type="button"
-            onClick={() => setMode('register')}
-          >
-            学生注册
-          </button>
-        </div>
-      )}
-
-      <h2 id="auth-title">
-        {mode === 'register' ? '创建学生账号' : portal === 'student' ? '学生登录' : '教师登录'}
-      </h2>
+    <section
+      className="auth-card"
+      aria-label={portal === 'student' ? (mode === 'login' ? '学生登录' : '学生注册') : undefined}
+      aria-labelledby={portal === 'teacher' ? 'auth-title' : undefined}
+    >
+      {portal === 'teacher' && <h2 id="auth-title">教师登录</h2>}
       <p className="auth-card__hint">
         {portal === 'teacher'
           ? '请使用已由管理员授权的教师或管理员账号登录。'
@@ -171,7 +161,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
       <form onSubmit={handleSubmit}>
         {mode === 'register' && (
           <label>
-            姓名或教学昵称
+            姓名
             <input name="display_name" autoComplete="name" required maxLength={80} />
           </label>
         )}
@@ -196,14 +186,40 @@ export function AuthPanel({ portal }: AuthPanelProps) {
             required
           />
         </label>
+        {mode === 'register' && (
+          <label>
+            确认密码
+            <input
+              name="password_confirmation"
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
+          </label>
+        )}
         {error && <p className="form-error">{error}</p>}
         <button className="button" type="submit" disabled={submitting}>
           {submitting
             ? '正在提交…'
             : mode === 'register'
-              ? '注册并进入学生端'
-              : `进入${portal === 'student' ? '学生端' : '教师端'}`}
+              ? '注册'
+              : portal === 'student' ? '登录' : '进入教师端'}
         </button>
+        {portal === 'student' && (
+          <p className="auth-alternative">
+            {mode === 'login' ? '还没有账号？' : '已有账号？'}
+            <button
+              type="button"
+              onClick={() => {
+                setMode(mode === 'login' ? 'register' : 'login')
+                setError('')
+              }}
+            >
+              {mode === 'login' ? '注册' : '返回登录'}
+            </button>
+          </p>
+        )}
       </form>
     </section>
   )

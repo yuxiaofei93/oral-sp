@@ -39,15 +39,40 @@ describe('AuthPanel', () => {
     })
 
     render(<AuthPanel portal="student" />)
-    await waitFor(() => screen.getByRole('heading', { name: '学生登录' }))
-    fireEvent.click(screen.getByRole('button', { name: '学生注册' }))
-    fireEvent.change(screen.getByLabelText('姓名或教学昵称'), { target: { value: '测试学生' } })
+    await waitFor(() => screen.getByRole('button', { name: '登录' }))
+    expect(screen.queryByRole('heading', { name: '学生登录' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '注册' }))
+    expect(screen.queryByRole('heading', { name: '创建学生账号' })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('姓名'), { target: { value: '测试学生' } })
     fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800138000' } })
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'MolarTraining!2026' } })
-    fireEvent.click(screen.getByRole('button', { name: '注册并进入学生端' }))
+    fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'MolarTraining!2026' } })
+    fireEvent.click(screen.getByRole('button', { name: '注册' }))
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '欢迎，测试学生' })).toBeInTheDocument())
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+  })
+
+  it('rejects mismatched registration passwords before calling the API', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input)
+      if (url.endsWith('/me/')) {
+        return Promise.resolve(new Response('{"detail":"not authenticated"}', { status: 403 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<AuthPanel portal="student" />)
+    await waitFor(() => screen.getByRole('button', { name: '登录' }))
+    fireEvent.click(screen.getByRole('button', { name: '注册' }))
+    fireEvent.change(screen.getByLabelText('姓名'), { target: { value: '测试学生' } })
+    fireEvent.change(screen.getByLabelText('手机号'), { target: { value: '13800138000' } })
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'MolarTraining!2026' } })
+    fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'different-password' } })
+    fireEvent.click(screen.getByRole('button', { name: '注册' }))
+
+    expect(await screen.findByText('两次输入的密码不一致。')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('does not render a student workspace inside the teacher portal', async () => {

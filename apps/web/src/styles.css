@@ -180,32 +180,29 @@ h1 {
   line-height: 1.6;
 }
 
-.auth-switch {
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 12px;
-  background: #edf4f1;
-}
-
-.auth-switch button {
-  border: 0;
-  border-radius: 9px;
-  padding: 8px 14px;
-  color: #526b66;
-  background: transparent;
-  cursor: pointer;
-}
-
-.auth-switch button.is-active {
-  color: #153d36;
-  background: #fff;
-  box-shadow: 0 2px 8px rgb(32 79 70 / 10%);
-}
-
 .auth-card form {
   display: grid;
   gap: 16px;
+}
+
+.auth-alternative {
+  margin: 2px 0 0;
+  color: #647a75;
+  font-size: 14px;
+  text-align: center;
+}
+
+.auth-alternative button {
+  border: 0;
+  padding: 0 0 0 5px;
+  color: #176f60;
+  background: transparent;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-alternative button:hover {
+  text-decoration: underline;
 }
 
 .auth-card label {
