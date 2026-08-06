@@ -59,7 +59,7 @@ describe('AuthPanel', () => {
     await waitFor(() => screen.getByRole('option', { name: 'CLASS-A · A 班（教师甲）' }))
     fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'student@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
-    expect(await screen.findByText('验证码已发送。使用本地邮件模式时，请查看后端终端。')).toBeInTheDocument()
+    expect(await screen.findByText('验证码已发送，请查收邮件。')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('姓名'), { target: { value: '测试学生' } })
     fireEvent.change(screen.getByLabelText('班级'), { target: { value: 'class-1' } })
@@ -136,7 +136,7 @@ describe('AuthPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '忘记密码' }))
     fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'teacher@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
-    await screen.findByText('验证码已发送。使用本地邮件模式时，请查看后端终端。')
+    await screen.findByText('验证码已发送，请查收邮件。')
     fireEvent.change(screen.getByLabelText('邮箱验证码'), { target: { value: '654321' } })
     fireEvent.change(screen.getByLabelText('新密码'), { target: { value: 'NewMolarTraining!2026' } })
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'NewMolarTraining!2026' } })

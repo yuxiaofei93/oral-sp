@@ -132,7 +132,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
       } else {
         await requestPasswordResetCode(email)
       }
-      setNotice('验证码已发送。使用本地邮件模式时，请查看后端终端。')
+      setNotice('验证码已发送，请查收邮件。')
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '验证码发送失败，请稍后重试。')
     } finally {
