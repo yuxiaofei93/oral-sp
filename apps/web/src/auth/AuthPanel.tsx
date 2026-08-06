@@ -203,7 +203,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
             ? '正在提交…'
             : mode === 'register'
               ? '注册'
-              : portal === 'student' ? '登录' : '进入教师端'}
+              : '登录'}
         </button>
         {portal === 'student' && (
           <p className="auth-alternative">
