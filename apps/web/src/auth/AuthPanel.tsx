@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 
 import {
   ApiError,
@@ -19,6 +19,10 @@ import { portalHome } from '../portal'
 
 type Mode = 'login' | 'register' | 'forgot_password'
 type Portal = 'student' | 'teacher'
+type CodeConfirmation = {
+  email: string
+  mode: Exclude<Mode, 'login'>
+}
 
 const roleNames = {
   student: '学生',
@@ -42,6 +46,8 @@ export function AuthPanel({ portal }: AuthPanelProps) {
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [codeSending, setCodeSending] = useState(false)
+  const codeSendingRef = useRef(false)
+  const [codeConfirmation, setCodeConfirmation] = useState<CodeConfirmation | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [registrationClasses, setRegistrationClasses] = useState<RegistrationClass[] | null>(null)
@@ -62,6 +68,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
 
   function changeMode(nextMode: Mode) {
     setMode(nextMode)
+    setCodeConfirmation(null)
     setError('')
     setNotice('')
   }
@@ -118,25 +125,37 @@ export function AuthPanel({ portal }: AuthPanelProps) {
     }
   }
 
-  async function handleSendCode() {
-    if (!email.trim() || !email.includes('@')) {
+  function requestCodeConfirmation() {
+    const normalizedEmail = email.trim()
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
       setError('请先输入有效的邮箱地址。')
       return
     }
+    if (mode === 'login') return
+    setError('')
+    setNotice('')
+    setCodeConfirmation({ email: normalizedEmail, mode })
+  }
+
+  async function confirmSendCode() {
+    if (!codeConfirmation || codeSendingRef.current) return
+    codeSendingRef.current = true
     setCodeSending(true)
     setError('')
     setNotice('')
     try {
-      if (mode === 'register') {
-        await requestRegistrationCode(email)
+      if (codeConfirmation.mode === 'register') {
+        await requestRegistrationCode(codeConfirmation.email)
       } else {
-        await requestPasswordResetCode(email)
+        await requestPasswordResetCode(codeConfirmation.email)
       }
       setNotice('验证码已发送，请查收邮件。')
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '验证码发送失败，请稍后重试。')
     } finally {
+      codeSendingRef.current = false
       setCodeSending(false)
+      setCodeConfirmation(null)
     }
   }
 
@@ -278,8 +297,8 @@ export function AuthPanel({ portal }: AuthPanelProps) {
               <button
                 className="button button--secondary"
                 type="button"
-                disabled={codeSending}
-                onClick={handleSendCode}
+                disabled={codeSending || codeConfirmation !== null}
+                onClick={requestCodeConfirmation}
               >
                 {codeSending ? '发送中…' : '获取验证码'}
               </button>
@@ -334,6 +353,44 @@ export function AuthPanel({ portal }: AuthPanelProps) {
           )}
         </p>
       </form>
+      {codeConfirmation && (
+        <div className="confirmation-overlay">
+          <section
+            className="confirmation-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="email-confirmation-title"
+            aria-describedby="email-confirmation-description"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !codeSending) setCodeConfirmation(null)
+            }}
+          >
+            <h2 id="email-confirmation-title">确认邮箱地址</h2>
+            <p id="email-confirmation-description">验证码将发送至：</p>
+            <strong className="confirmation-dialog__email">{codeConfirmation.email}</strong>
+            <p className="confirmation-dialog__hint">请确认邮箱地址填写正确。</p>
+            <div className="confirmation-dialog__actions">
+              <button
+                className="button button--secondary"
+                type="button"
+                disabled={codeSending}
+                onClick={() => setCodeConfirmation(null)}
+              >
+                取消
+              </button>
+              <button
+                className="button"
+                type="button"
+                disabled={codeSending}
+                onClick={() => void confirmSendCode()}
+                autoFocus
+              >
+                {codeSending ? '发送中…' : '确认发送'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   )
 }

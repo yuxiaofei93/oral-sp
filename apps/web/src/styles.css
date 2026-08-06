@@ -240,6 +240,58 @@ h1 {
   white-space: nowrap;
 }
 
+.confirmation-overlay {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(12 35 31 / 48%);
+  backdrop-filter: blur(3px);
+}
+
+.confirmation-dialog {
+  width: min(100%, 420px);
+  padding: 28px;
+  border: 1px solid rgb(25 80 71 / 14%);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgb(12 35 31 / 24%);
+}
+
+.confirmation-dialog h2 {
+  margin: 0 0 20px;
+  color: #153d36;
+  font-size: 22px;
+}
+
+.confirmation-dialog p {
+  margin: 0;
+  color: #526b66;
+  line-height: 1.6;
+}
+
+.confirmation-dialog__email {
+  display: block;
+  overflow-wrap: anywhere;
+  margin: 8px 0 14px;
+  color: #19332f;
+  font-size: 17px;
+}
+
+.confirmation-dialog .confirmation-dialog__hint {
+  color: #70847f;
+  font-size: 14px;
+}
+
+.confirmation-dialog__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 24px;
+}
+
 .button {
   min-height: 46px;
   border: 0;
