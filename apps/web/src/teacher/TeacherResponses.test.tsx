@@ -91,7 +91,7 @@ describe('TeacherResponses', () => {
               {
                 student_id: 'student-1',
                 display_name: '学生甲',
-                phone: '+8613800138000',
+                email: 'student@example.com',
                 attempt_status: 'completed',
                 session_id: 'session-1',
                 started_at: '2026-08-04T00:00:00Z',
@@ -122,7 +122,7 @@ describe('TeacherResponses', () => {
               remaining_seconds: 0,
               student_id: 'student-1',
               student_name: '学生甲',
-              student_phone: '+8613800138000',
+              student_email: 'student@example.com',
               messages: [
                 { id: 'm1', sequence: 1, role: 'student', content: '疼了多久？' },
                 { id: 'm2', sequence: 2, role: 'patient', content: '三年了。' },

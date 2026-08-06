@@ -23,7 +23,7 @@ class CaseAssignmentAdmin(admin.ModelAdmin):
 class SimulationSessionAdmin(admin.ModelAdmin):
     list_display = ("assignment", "student", "status", "stage", "started_at", "completed_at")
     list_filter = ("status", "stage")
-    search_fields = ("assignment__title", "student__phone", "student__display_name")
+    search_fields = ("assignment__title", "student__email", "student__display_name")
     readonly_fields = (
         "assignment",
         "student",

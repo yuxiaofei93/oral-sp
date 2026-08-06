@@ -267,7 +267,7 @@ class TeacherAssignmentResponseListView(APIView):
         rows = []
         for link in assignment.student_links.select_related("student").order_by(
             "student__display_name",
-            "student__phone",
+            "student__email",
         ):
             session = sessions.get(link.student_id)
             assessment = None
@@ -286,7 +286,7 @@ class TeacherAssignmentResponseListView(APIView):
                 {
                     "student_id": link.student_id,
                     "display_name": link.student.display_name,
-                    "phone": link.student.phone,
+                    "email": link.student.email,
                     "attempt_status": session.status if session else "not_started",
                     "session_id": session.id if session else None,
                     "started_at": session.started_at if session else None,

@@ -1,19 +1,16 @@
-from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
-
-from modules.accounts.phone import normalize_phone
 
 from .models import ClassGroup, ClassMembership, Course
 
 
 class StudentRosterSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(source="student.id", read_only=True)
-    phone = serializers.CharField(source="student.phone", read_only=True)
+    email = serializers.EmailField(source="student.email", read_only=True)
     display_name = serializers.CharField(source="student.display_name", read_only=True)
 
     class Meta:
         model = ClassMembership
-        fields = ["id", "phone", "display_name", "created_at"]
+        fields = ["id", "email", "display_name", "created_at"]
 
 
 class ClassGroupSerializer(serializers.ModelSerializer):
@@ -69,23 +66,3 @@ class ClassGroupCreateSerializer(serializers.Serializer):
         if ClassGroup.objects.filter(course=attrs["course"], code=attrs["code"]).exists():
             raise serializers.ValidationError({"code": "该课程下的班级编号已经存在。"})
         return attrs
-
-
-class RosterAddSerializer(serializers.Serializer):
-    phones = serializers.ListField(
-        child=serializers.CharField(max_length=32),
-        min_length=1,
-        max_length=100,
-    )
-
-    def validate_phones(self, values):
-        normalized = []
-        errors = []
-        for value in values:
-            try:
-                normalized.append(normalize_phone(value))
-            except DjangoValidationError:
-                errors.append(value)
-        if errors:
-            raise serializers.ValidationError(f"以下号码格式无效：{'、'.join(errors)}")
-        return list(dict.fromkeys(normalized))

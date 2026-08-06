@@ -24,4 +24,3 @@ def normalize_phone(value: str) -> str:
 
 def validate_phone(value: str) -> None:
     normalize_phone(value)
-

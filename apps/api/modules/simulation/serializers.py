@@ -494,7 +494,7 @@ class TeacherReviewCreateSerializer(serializers.Serializer):
 class TeacherResponseRowSerializer(serializers.Serializer):
     student_id = serializers.UUIDField()
     display_name = serializers.CharField()
-    phone = serializers.CharField()
+    email = serializers.EmailField()
     attempt_status = serializers.CharField()
     session_id = serializers.UUIDField(allow_null=True)
     started_at = serializers.DateTimeField(allow_null=True)
@@ -531,7 +531,7 @@ class AssignmentStatisticsSerializer(serializers.Serializer):
 class TeacherSessionRecordSerializer(SessionSerializer):
     student_id = serializers.UUIDField(read_only=True)
     student_name = serializers.CharField(source="student.display_name", read_only=True)
-    student_phone = serializers.CharField(source="student.phone", read_only=True)
+    student_email = serializers.EmailField(source="student.email", read_only=True)
     assessment = serializers.SerializerMethodField()
     latest_review = serializers.SerializerMethodField()
     ai_evaluation = serializers.SerializerMethodField()
@@ -543,7 +543,7 @@ class TeacherSessionRecordSerializer(SessionSerializer):
             *SessionSerializer.Meta.fields,
             "student_id",
             "student_name",
-            "student_phone",
+            "student_email",
             "assessment",
             "latest_review",
             "ai_evaluation",

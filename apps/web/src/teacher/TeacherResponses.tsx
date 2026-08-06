@@ -170,7 +170,7 @@ export function TeacherResponses({
           <div>
             <button className="text-button" type="button" onClick={() => setRecord(null)}>← 返回答卷列表</button>
             <h2 id="student-record-title">{record.student_name}的答卷</h2>
-            <p>{record.student_phone} · {attemptNames[record.status]}</p>
+            <p>{record.student_email} · {attemptNames[record.status]}</p>
           </div>
           {record.assessment && (
             <div className="record-score">
@@ -368,7 +368,7 @@ export function TeacherResponses({
           <tbody>
             {rows.map((row) => (
               <tr key={row.student_id}>
-                <td><strong>{row.display_name}</strong><small>{row.phone}</small></td>
+                <td><strong>{row.display_name}</strong><small>{row.email}</small></td>
                 <td>{attemptNames[row.attempt_status]}</td>
                 <td>{elapsed(row.elapsed_seconds)}</td>
                 <td>{row.score ? `${row.score.final_score} / ${row.score.scored_maximum}` : '—'}</td>

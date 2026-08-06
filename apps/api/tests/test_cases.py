@@ -11,8 +11,12 @@ User = get_user_model()
 PASSWORD = "MolarTraining!2026"
 
 
-def make_user(phone: str, role_code: str):
-    user = User.objects.create_user(phone=phone, password=PASSWORD, display_name=role_code)
+def make_user(identifier: str, role_code: str):
+    user = User.objects.create_user(
+        email=f"{identifier}@example.com",
+        password=PASSWORD,
+        display_name=role_code,
+    )
     user.roles.add(Role.objects.get(code=role_code))
     return user
 
@@ -158,4 +162,3 @@ def test_draft_update_rejects_stale_timestamp():
         format="json",
     )
     assert conflict.status_code == 409
-

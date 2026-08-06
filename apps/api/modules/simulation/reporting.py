@@ -75,7 +75,7 @@ def assignment_report(assignment) -> dict:
     rows = []
     for link in assignment.student_links.select_related("student").order_by(
         "student__display_name",
-        "student__phone",
+        "student__email",
     ):
         session = sessions.get(link.student_id)
         report = _session_report(session) if session else None
@@ -83,7 +83,7 @@ def assignment_report(assignment) -> dict:
             {
                 "student_id": str(link.student_id),
                 "display_name": link.student.display_name,
-                "phone": link.student.phone,
+                "email": link.student.email,
                 "session_id": str(session.id) if session else None,
                 "status": report["status"] if report else "not_started",
                 "started_at": report["started_at"] if report else None,
@@ -191,7 +191,7 @@ def assignment_csv(assignment, report: dict | None = None) -> str:
     writer.writerow(
         [
             "学生姓名",
-            "手机号",
+            "邮箱",
             "作答状态",
             "开始时间",
             "结束时间",
@@ -211,7 +211,7 @@ def assignment_csv(assignment, report: dict | None = None) -> str:
         score = row["score"] or {}
         values = [
             row["display_name"],
-            row["phone"],
+            row["email"],
             STATUS_LABELS[row["status"]],
             _local_datetime(row["started_at"]),
             _local_datetime(row["completed_at"]),

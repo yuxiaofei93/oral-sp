@@ -92,8 +92,12 @@ class StaticAIEvaluationGateway(AIEvaluationGateway):
         )
 
 
-def make_user(phone: str, role_code: str):
-    user = User.objects.create_user(phone=phone, password=PASSWORD, display_name=role_code)
+def make_user(identifier: str, role_code: str):
+    user = User.objects.create_user(
+        email=f"{identifier}@example.com",
+        password=PASSWORD,
+        display_name=role_code,
+    )
     user.roles.add(Role.objects.get(code=role_code))
     return user
 
@@ -655,7 +659,7 @@ def test_deepseek_ai_evaluation_is_traceable_idempotent_and_teacher_overridable(
     assert created.json()["results"][0]["confidence"] == 0.82
     assert "牙龈疼痛有多久了" in created.json()["results"][0]["evidence_excerpt"]
     assert "student" not in gateway.payloads[0]
-    assert student.phone not in str(gateway.payloads[0])
+    assert student.email not in str(gateway.payloads[0])
 
     reused = client.post(evaluation_url, {}, format="json")
     assert reused.status_code == 200
@@ -765,7 +769,7 @@ def test_missing_answers_generate_omissions_errors_and_teacher_record():
 
     record = client.get(reverse("teacher-session-record", kwargs={"session_id": session.id}))
     assert record.status_code == 200
-    assert record.json()["student_phone"] == student.phone
+    assert record.json()["student_email"] == student.email
     assert len(record.json()["messages"]) == 0
     assert len(record.json()["submissions"]) == 4
     assert len(record.json()["assessment"]["scoring_items"]) == 5
@@ -997,9 +1001,9 @@ def test_assignment_statistics_and_csv_export_use_latest_review_safely():
     assert exported["Content-Type"].startswith("text/csv")
     assert exported.content.startswith("\ufeff".encode())
     csv_text = exported.content.decode("utf-8-sig")
-    assert "学生姓名,手机号,作答状态" in csv_text
+    assert "学生姓名,邮箱,作答状态" in csv_text
     assert "'=SUM(1,1)" in csv_text
-    assert "'+8613800000007" in csv_text
+    assert student.email in csv_text
     assert "'+需要重点复习诊断依据" in csv_text
     assert ",0.0,2.0,8.0,9.0,是," in csv_text
 

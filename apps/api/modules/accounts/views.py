@@ -10,11 +10,20 @@ from rest_framework.views import APIView
 
 from modules.teaching.models import ClassGroup
 
+from .models import User, VerificationPurpose
 from .serializers import (
     LoginSerializer,
+    PasswordResetSerializer,
     RegisterSerializer,
     RegistrationClassSerializer,
     UserSerializer,
+    VerificationCodeRequestSerializer,
+)
+from .verification import (
+    CODE_TTL_SECONDS,
+    VerificationCodeCooldownError,
+    VerificationEmailError,
+    send_verification_email,
 )
 
 
@@ -54,6 +63,84 @@ class RegistrationClassListView(APIView):
         return Response(RegistrationClassSerializer(classes, many=True).data)
 
 
+def verification_error_response(error):
+    if isinstance(error, VerificationCodeCooldownError):
+        response = Response(
+            {"detail": str(error), "retry_after": error.retry_after},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+        response["Retry-After"] = str(error.retry_after)
+        return response
+    if isinstance(error, VerificationEmailError):
+        return Response(
+            {"detail": str(error)},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class RegistrationVerificationCodeView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "verification_code"
+
+    def post(self, request):
+        serializer = VerificationCodeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        if User.objects.filter(email=email).exists():
+            return Response(
+                {"detail": "该邮箱已经注册。"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            send_verification_email(
+                email=email,
+                purpose=VerificationPurpose.REGISTRATION,
+            )
+        except (VerificationCodeCooldownError, VerificationEmailError) as error:
+            return verification_error_response(error)
+        return Response({"detail": "验证码已发送。", "expires_in": CODE_TTL_SECONDS})
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class PasswordResetVerificationCodeView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "verification_code"
+
+    def post(self, request):
+        serializer = VerificationCodeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        if User.objects.filter(email=email, is_active=True).exists():
+            try:
+                send_verification_email(
+                    email=email,
+                    purpose=VerificationPurpose.PASSWORD_RESET,
+                )
+            except (VerificationCodeCooldownError, VerificationEmailError) as error:
+                return verification_error_response(error)
+        return Response({"detail": "如果该邮箱已注册，验证码将发送到邮箱。"})
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class PasswordResetView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
+
+    def post(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "密码已重置，请使用新密码登录。"})
+
+
 @method_decorator(csrf_protect, name="dispatch")
 class LoginView(APIView):
     authentication_classes = []
@@ -67,7 +154,7 @@ class LoginView(APIView):
         user = authenticate(request, **serializer.validated_data)
         if user is None or not user.is_active:
             return Response(
-                {"detail": "手机号或密码错误。"},
+                {"detail": "邮箱或密码错误。"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         login(request, user)

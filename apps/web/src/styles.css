@@ -181,6 +181,10 @@ h1 {
 }
 
 .auth-alternative {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 12px;
   margin: 2px 0 0;
   color: #647a75;
   font-size: 14px;
@@ -189,7 +193,7 @@ h1 {
 
 .auth-alternative button {
   border: 0;
-  padding: 0 0 0 5px;
+  padding: 0;
   color: #176f60;
   background: transparent;
   font-weight: 700;
@@ -224,6 +228,16 @@ h1 {
 .auth-card select:focus {
   border-color: #16816d;
   box-shadow: 0 0 0 3px rgb(22 129 109 / 12%);
+}
+
+.verification-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.verification-field .button {
+  white-space: nowrap;
 }
 
 .button {

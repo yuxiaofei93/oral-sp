@@ -13,12 +13,9 @@ from .serializers import (
     ClassGroupSerializer,
     CourseCreateSerializer,
     CourseSerializer,
-    RosterAddSerializer,
 )
 from .services import (
-    StudentLookupError,
     TeachingError,
-    add_students_by_phone,
     archive_course,
     create_class_group,
     create_course,
@@ -38,7 +35,7 @@ def teacher_course_queryset(user):
 def teacher_class_queryset(user):
     memberships = ClassMembership.objects.select_related("student").order_by(
         "student__display_name",
-        "student__phone",
+        "student__email",
     )
     queryset = (
         ClassGroup.objects.filter(is_active=True, course__is_active=True)
@@ -54,13 +51,7 @@ def teacher_class_queryset(user):
 
 def teaching_error_response(error: TeachingError) -> Response:
     data = {"detail": str(error), "code": error.code}
-    if isinstance(error, StudentLookupError):
-        data["missing"] = error.missing
-        data["not_students"] = error.not_students
-        response_status = status.HTTP_400_BAD_REQUEST
-    else:
-        response_status = status.HTTP_403_FORBIDDEN
-    return Response(data, status=response_status)
+    return Response(data, status=status.HTTP_403_FORBIDDEN)
 
 
 class TeacherCourseListCreateView(APIView):
@@ -104,30 +95,6 @@ class TeacherClassCreateView(APIView):
             return teaching_error_response(error)
         class_group = teacher_class_queryset(request.user).get(pk=class_group.pk)
         return Response(ClassGroupSerializer(class_group).data, status=status.HTTP_201_CREATED)
-
-
-class TeacherClassRosterView(APIView):
-    permission_classes = [IsTeacherOrAdministrator]
-
-    def post(self, request, class_id):
-        class_group = get_object_or_404(teacher_class_queryset(request.user), pk=class_id)
-        serializer = RosterAddSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            result = add_students_by_phone(
-                class_group=class_group,
-                user=request.user,
-                **serializer.validated_data,
-            )
-        except TeachingError as error:
-            return teaching_error_response(error)
-        return Response(
-            {
-                "created_count": result.created_count,
-                "existing_count": result.existing_count,
-            },
-            status=status.HTTP_200_OK,
-        )
 
 
 class TeacherClassRosterMemberView(APIView):

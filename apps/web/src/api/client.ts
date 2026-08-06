@@ -2,19 +2,20 @@ export type UserRole = 'student' | 'teacher' | 'administrator'
 
 export type CurrentUser = {
   id: string
-  phone: string
+  email: string
   display_name: string
   roles: UserRole[]
 }
 
 type AuthPayload = {
-  phone: string
+  email: string
   password: string
 }
 
 type RegistrationPayload = AuthPayload & {
   display_name: string
   class_group_id: string
+  verification_code: string
 }
 
 export type RegistrationClass = {
@@ -281,7 +282,7 @@ export type SessionAssessment = AssessmentScore & {
 export type TeacherResponseRow = {
   student_id: string
   display_name: string
-  phone: string
+  email: string
   attempt_status: AttemptStatus
   session_id: string | null
   started_at: string | null
@@ -365,7 +366,7 @@ export type AIEvaluationRun = {
 export type TeacherSessionRecord = SimulationSession & {
   student_id: string
   student_name: string
-  student_phone: string
+  student_email: string
   assessment: SessionAssessment | null
   latest_review: TeacherReview | null
   ai_evaluation: AIEvaluationRun | null
@@ -375,7 +376,7 @@ export type TeacherSessionRecord = SimulationSession & {
 
 export type RosterStudent = {
   id: string
-  phone: string
+  email: string
   display_name: string
   created_at: string
 }
@@ -501,6 +502,22 @@ export async function getCurrentUser(): Promise<CurrentUser> {
 
 export function register(payload: RegistrationPayload): Promise<CurrentUser> {
   return mutate<CurrentUser>('POST', '/api/auth/register/', payload)
+}
+
+export function requestRegistrationCode(email: string): Promise<{ detail: string; expires_in: number }> {
+  return mutate('POST', '/api/auth/verification-codes/registration/', { email })
+}
+
+export function requestPasswordResetCode(email: string): Promise<{ detail: string }> {
+  return mutate('POST', '/api/auth/verification-codes/password-reset/', { email })
+}
+
+export function resetPassword(payload: {
+  email: string
+  verification_code: string
+  new_password: string
+}): Promise<{ detail: string }> {
+  return mutate('POST', '/api/auth/password-reset/', payload)
 }
 
 export async function listRegistrationClasses(): Promise<RegistrationClass[]> {

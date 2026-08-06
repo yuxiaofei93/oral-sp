@@ -146,7 +146,7 @@ export function ClassManagement() {
             <div className="roster-list">
               {selectedClass.students.map((student) => (
                 <article key={student.id}>
-                  <div><strong>{student.display_name}</strong><span>{student.phone}</span></div>
+                  <div><strong>{student.display_name}</strong><span>{student.email}</span></div>
                   <button
                     className="text-button text-button--danger"
                     type="button"

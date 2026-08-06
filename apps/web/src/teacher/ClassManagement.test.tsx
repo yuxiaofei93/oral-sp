@@ -24,7 +24,7 @@ describe('ClassManagement', () => {
           course_code: 'ORAL-2026', course_name: '口腔问诊训练', is_active: true,
           student_count: 1,
           students: [{
-            id: 'student-1', phone: '+8613800138000', display_name: '学生甲',
+            id: 'student-1', email: 'student@example.com', display_name: '学生甲',
             created_at: '2026-08-04T00:00:00Z',
           }],
           created_at: '2026-08-04T00:00:00Z',
@@ -40,7 +40,7 @@ describe('ClassManagement', () => {
 
     expect(screen.getByRole('heading', { name: 'A 班学生名单' })).toBeInTheDocument()
     expect(screen.getByText('学生甲')).toBeInTheDocument()
-    expect(screen.getByText('+8613800138000')).toBeInTheDocument()
+    expect(screen.getByText('student@example.com')).toBeInTheDocument()
   })
 
   it('creates a class under an existing course', async () => {

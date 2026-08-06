@@ -11,15 +11,15 @@ class UserRoleInline(admin.TabularInline):
 
 
 @admin.register(User)
-class PhoneUserAdmin(UserAdmin):
+class EmailUserAdmin(UserAdmin):
     model = User
-    ordering = ["phone"]
-    list_display = ["phone", "display_name", "is_active", "is_staff", "last_login"]
-    search_fields = ["phone", "display_name"]
+    ordering = ["email"]
+    list_display = ["email", "display_name", "is_active", "is_staff", "last_login"]
+    search_fields = ["email", "display_name"]
     inlines = [UserRoleInline]
     fieldsets = (
-        (None, {"fields": ("phone", "password")}),
-        ("个人信息", {"fields": ("display_name", "phone_verified_at")}),
+        (None, {"fields": ("email", "password")}),
+        ("个人信息", {"fields": ("display_name", "email_verified_at")}),
         ("权限", {"fields": ("is_active", "is_staff", "is_superuser", "groups")}),
         ("时间", {"fields": ("last_login", "date_joined")}),
     )
@@ -28,11 +28,10 @@ class PhoneUserAdmin(UserAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("phone", "display_name", "password1", "password2"),
+                "fields": ("email", "display_name", "password1", "password2"),
             },
         ),
     )
 
 
 admin.site.register(Role)
-

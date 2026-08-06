@@ -7,13 +7,16 @@ import {
   getCurrentUser,
   listRegistrationClasses,
   register,
+  requestPasswordResetCode,
+  requestRegistrationCode,
+  resetPassword,
   signIn,
   signOut,
 } from '../api/client'
 import { StudentAssignments } from '../student/StudentAssignments'
 import { TeacherWorkspace } from '../teacher/TeacherWorkspace'
 
-type Mode = 'login' | 'register'
+type Mode = 'login' | 'register' | 'forgot_password'
 type Portal = 'student' | 'teacher'
 
 const roleNames = {
@@ -35,8 +38,11 @@ function canAccessPortal(user: CurrentUser, portal: Portal) {
 export function AuthPanel({ portal }: AuthPanelProps) {
   const [mode, setMode] = useState<Mode>('login')
   const [user, setUser] = useState<CurrentUser | null>()
+  const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [codeSending, setCodeSending] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [registrationClasses, setRegistrationClasses] = useState<RegistrationClass[] | null>(null)
   const [registrationClassesLoading, setRegistrationClassesLoading] = useState(false)
 
@@ -53,19 +59,26 @@ export function AuthPanel({ portal }: AuthPanelProps) {
       })
   }, [])
 
+  function changeMode(nextMode: Mode) {
+    setMode(nextMode)
+    setError('')
+    setNotice('')
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitting(true)
     setError('')
+    setNotice('')
 
     const data = new FormData(event.currentTarget)
-    const phone = String(data.get('phone') ?? '')
     const password = String(data.get('password') ?? '')
     const passwordConfirmation = String(data.get('password_confirmation') ?? '')
+    const verificationCode = String(data.get('verification_code') ?? '')
     const displayName = String(data.get('display_name') ?? '')
     const classGroupId = String(data.get('class_group_id') ?? '')
 
-    if (mode === 'register' && password !== passwordConfirmation) {
+    if (mode !== 'login' && password !== passwordConfirmation) {
       setError('两次输入的密码不一致。')
       setSubmitting(false)
       return
@@ -77,20 +90,52 @@ export function AuthPanel({ portal }: AuthPanelProps) {
     }
 
     try {
-      const nextUser =
-        mode === 'register'
-          ? await register({
-              phone,
-              password,
-              display_name: displayName,
-              class_group_id: classGroupId,
-            })
-          : await signIn({ phone, password })
+      if (mode === 'forgot_password') {
+        const result = await resetPassword({
+          email,
+          verification_code: verificationCode,
+          new_password: password,
+        })
+        changeMode('login')
+        setNotice(result.detail)
+        return
+      }
+      const nextUser = mode === 'register'
+        ? await register({
+            email,
+            password,
+            verification_code: verificationCode,
+            display_name: displayName,
+            class_group_id: classGroupId,
+          })
+        : await signIn({ email, password })
       setUser(nextUser)
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '请求失败，请稍后重试。')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleSendCode() {
+    if (!email.trim() || !email.includes('@')) {
+      setError('请先输入有效的邮箱地址。')
+      return
+    }
+    setCodeSending(true)
+    setError('')
+    setNotice('')
+    try {
+      if (mode === 'register') {
+        await requestRegistrationCode(email)
+      } else {
+        await requestPasswordResetCode(email)
+      }
+      setNotice('验证码已发送。使用本地邮件模式时，请查看后端终端。')
+    } catch (requestError: unknown) {
+      setError(requestError instanceof ApiError ? requestError.message : '验证码发送失败，请稍后重试。')
+    } finally {
+      setCodeSending(false)
     }
   }
 
@@ -108,8 +153,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
   }
 
   async function showRegistration() {
-    setMode('register')
-    setError('')
+    changeMode('register')
     if (registrationClasses !== null || registrationClassesLoading) return
     setRegistrationClassesLoading(true)
     try {
@@ -158,7 +202,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
             <p className="auth-card__hint">当前账号</p>
             <h2 id="welcome-title">欢迎，{user.display_name}</h2>
             <p className="account-meta">
-              {user.phone} · {user.roles.map((role) => roleNames[role]).join('、')}
+              {user.email} · {user.roles.map((role) => roleNames[role]).join('、')}
             </p>
           </div>
           <button className="button button--secondary" onClick={handleLogout} disabled={submitting}>
@@ -178,14 +222,20 @@ export function AuthPanel({ portal }: AuthPanelProps) {
   return (
     <section
       className="auth-card"
-      aria-label={portal === 'student' ? (mode === 'login' ? '学生登录' : '学生注册') : undefined}
+      aria-label={portal === 'student' ? '账号认证' : undefined}
       aria-labelledby={portal === 'teacher' ? 'auth-title' : undefined}
     >
-      {portal === 'teacher' && <h2 id="auth-title">教师登录</h2>}
+      {portal === 'teacher' && (
+        <h2 id="auth-title">{mode === 'forgot_password' ? '重置密码' : '教师登录'}</h2>
+      )}
       <p className="auth-card__hint">
-        {portal === 'teacher'
-          ? '请使用已由管理员授权的教师或管理员账号登录。'
-          : '使用中国大陆手机号和密码，暂不发送短信验证码。'}
+        {mode === 'forgot_password'
+          ? '通过邮箱验证码设置新密码。'
+          : portal === 'teacher'
+            ? '请使用已由管理员授权的教师或管理员账号登录。'
+            : mode === 'register'
+              ? '使用邮箱创建账号并加入班级。'
+              : '使用邮箱和密码登录。'}
       </p>
 
       <form onSubmit={handleSubmit}>
@@ -219,17 +269,41 @@ export function AuthPanel({ portal }: AuthPanelProps) {
           </label>
         )}
         <label>
-          手机号
+          邮箱
           <input
-            name="phone"
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
+            name="email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
             required
           />
         </label>
+        {mode !== 'login' && (
+          <label>
+            邮箱验证码
+            <span className="verification-field">
+              <input
+                name="verification_code"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                autoComplete="one-time-code"
+                required
+              />
+              <button
+                className="button button--secondary"
+                type="button"
+                disabled={codeSending}
+                onClick={handleSendCode}
+              >
+                {codeSending ? '发送中…' : '获取验证码'}
+              </button>
+            </span>
+          </label>
+        )}
         <label>
-          密码
+          {mode === 'forgot_password' ? '新密码' : '密码'}
           <input
             name="password"
             type="password"
@@ -238,7 +312,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
             required
           />
         </label>
-        {mode === 'register' && (
+        {mode !== 'login' && (
           <label>
             确认密码
             <input
@@ -251,6 +325,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
           </label>
         )}
         {error && <p className="form-error">{error}</p>}
+        {notice && <p className="form-success">{notice}</p>}
         <button
           className="button"
           type="submit"
@@ -260,26 +335,20 @@ export function AuthPanel({ portal }: AuthPanelProps) {
             ? '正在提交…'
             : mode === 'register'
               ? '注册'
-              : '登录'}
+              : mode === 'forgot_password'
+                ? '重置密码'
+                : '登录'}
         </button>
-        {portal === 'student' && (
-          <p className="auth-alternative">
-            {mode === 'login' ? '还没有账号？' : '已有账号？'}
-            <button
-              type="button"
-              onClick={() => {
-                if (mode === 'login') {
-                  void showRegistration()
-                } else {
-                  setMode('login')
-                  setError('')
-                }
-              }}
-            >
-              {mode === 'login' ? '注册' : '返回登录'}
-            </button>
-          </p>
-        )}
+        <p className="auth-alternative">
+          {mode === 'login' ? (
+            <>
+              {portal === 'student' && <><span>还没有账号？</span><button type="button" onClick={() => void showRegistration()}>注册</button></>}
+              <button type="button" onClick={() => changeMode('forgot_password')}>忘记密码</button>
+            </>
+          ) : (
+            <button type="button" onClick={() => changeMode('login')}>返回登录</button>
+          )}
+        </p>
       </form>
     </section>
   )

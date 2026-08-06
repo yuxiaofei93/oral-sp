@@ -10,12 +10,12 @@ User = get_user_model()
 @pytest.mark.django_db
 def test_student_can_only_join_a_class_once():
     teacher = User.objects.create_user(
-        phone="13800138001",
+        email="teacher@example.com",
         password="MolarTraining!2026",
         display_name="测试教师",
     )
     student = User.objects.create_user(
-        phone="13800138002",
+        email="student@example.com",
         password="MolarTraining!2026",
         display_name="测试学生",
     )
@@ -25,4 +25,3 @@ def test_student_can_only_join_a_class_once():
 
     with pytest.raises(IntegrityError), transaction.atomic():
         ClassMembership.objects.create(class_group=class_group, student=student)
-
