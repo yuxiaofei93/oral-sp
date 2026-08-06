@@ -65,27 +65,6 @@ textarea {
   margin-bottom: 20px;
 }
 
-.back-link {
-  display: inline-block;
-  margin-bottom: 32px;
-  color: #176f60;
-  font-size: 14px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.back-link:hover {
-  text-decoration: underline;
-}
-
-.hero {
-  padding: clamp(32px, 7vw, 72px);
-  border: 1px solid rgb(25 80 71 / 12%);
-  border-radius: 28px;
-  background: #f9fcfb;
-  box-shadow: 0 24px 70px rgb(32 79 70 / 10%);
-}
-
 .eyebrow {
   margin: 0 0 16px;
   color: #147866;
@@ -149,99 +128,9 @@ h1 {
   background: #cf594b;
 }
 
-.principles {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-.principles article {
-  display: grid;
-  gap: 8px;
-  min-height: 130px;
-  align-content: center;
-  padding: 24px;
-  border: 1px solid rgb(25 80 71 / 10%);
-  border-radius: 20px;
-  background: rgb(255 255 255 / 62%);
-}
-
-.principles strong {
-  font-size: 18px;
-}
-
-.principles span,
 .disclaimer {
   color: #647a75;
   line-height: 1.6;
-}
-
-.portal-choices {
-  display: grid;
-  gap: 22px;
-}
-
-.section-heading h2 {
-  margin: 0;
-  color: #153d36;
-  font-size: clamp(28px, 4vw, 42px);
-}
-
-.portal-choices__grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 18px;
-}
-
-.portal-choice {
-  display: grid;
-  gap: 14px;
-  min-height: 250px;
-  padding: clamp(26px, 4vw, 38px);
-  border: 1px solid rgb(25 80 71 / 12%);
-  border-radius: 24px;
-  color: #19332f;
-  background: #fff;
-  box-shadow: 0 16px 42px rgb(32 79 70 / 7%);
-  text-decoration: none;
-  transition: transform 160ms ease, box-shadow 160ms ease;
-}
-
-.portal-choice:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 22px 52px rgb(32 79 70 / 12%);
-}
-
-.portal-choice--student {
-  background: linear-gradient(145deg, #fff 55%, #e7f5f0 100%);
-}
-
-.portal-choice--teacher {
-  background: linear-gradient(145deg, #fff 55%, #f0f2e5 100%);
-}
-
-.portal-choice__number {
-  color: #7b918c;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-}
-
-.portal-choice strong {
-  font-size: clamp(25px, 3vw, 34px);
-}
-
-.portal-choice p {
-  max-width: 390px;
-  margin: 0;
-  color: #647a75;
-  line-height: 1.7;
-}
-
-.portal-choice__action {
-  align-self: end;
-  color: #176f60;
-  font-weight: 750;
 }
 
 .auth-card {
@@ -1388,18 +1277,6 @@ h1 {
   .shell {
     width: min(100% - 28px, 1040px);
     padding-top: 24px;
-  }
-
-  .principles {
-    grid-template-columns: 1fr;
-  }
-
-  .portal-choices__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .principles article {
-    min-height: auto;
   }
 
   .auth-card--account,

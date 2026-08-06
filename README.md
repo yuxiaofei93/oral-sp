@@ -76,8 +76,7 @@ docker compose up --build
 
 启动后访问：
 
-- 入口选择：`http://localhost/`
-- 学生登录与注册：`http://localhost/student/`
+- 学生登录与注册（默认首页）：`http://localhost/`，也可使用 `http://localhost/student/`
 - 教师与管理员登录：`http://localhost/teacher/`
 - API 存活检查：`http://localhost/api/health/live/`
 - API 就绪检查：`http://localhost/api/health/ready/`
