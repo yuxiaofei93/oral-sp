@@ -61,13 +61,30 @@ services:
       - private_media:/app/var/private-media
     restart: unless-stopped
 
-  web:
+  web-student:
     build:
       context: ./apps/web
+      args:
+        VITE_PORTAL: student
+        VITE_STUDENT_ORIGIN: ${STUDENT_WEB_ORIGIN:-http://localhost:5173}
+        VITE_TEACHER_ORIGIN: ${TEACHER_WEB_ORIGIN:-http://localhost:5174}
     depends_on:
       - api
     ports:
-      - "80:80"
+      - "${STUDENT_WEB_PORT:-5173}:80"
+    restart: unless-stopped
+
+  web-teacher:
+    build:
+      context: ./apps/web
+      args:
+        VITE_PORTAL: teacher
+        VITE_STUDENT_ORIGIN: ${STUDENT_WEB_ORIGIN:-http://localhost:5173}
+        VITE_TEACHER_ORIGIN: ${TEACHER_WEB_ORIGIN:-http://localhost:5174}
+    depends_on:
+      - api
+    ports:
+      - "${TEACHER_WEB_PORT:-5174}:80"
     restart: unless-stopped
 
 volumes:

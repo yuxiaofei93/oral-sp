@@ -67,7 +67,7 @@ make web-test
 make web-build
 ```
 
-有 Docker Compose 的环境可以启动完整服务：
+有 Docker Compose 的环境可以启动完整服务；学生端和教师端会构建为两个独立入口：
 
 ```bash
 cp .env.example .env
@@ -76,13 +76,22 @@ docker compose up --build
 
 启动后访问：
 
-- 学生登录与注册（默认首页）：`http://localhost/`，也可使用 `http://localhost/student/`
-- 教师与管理员登录：`http://localhost/teacher/`
-- API 存活检查：`http://localhost/api/health/live/`
-- API 就绪检查：`http://localhost/api/health/ready/`
-- 获取 CSRF Token：`http://localhost/api/auth/csrf/`
+- 学生登录与注册：`http://localhost:5173/`
+- 教师与管理员登录：`http://localhost:5174/`
+- API 存活检查：`http://localhost:5173/api/health/live/`
+- API 就绪检查：`http://localhost:5173/api/health/ready/`
+- 获取 CSRF Token：`http://localhost:5173/api/auth/csrf/`
 
-学生端与教师端使用独立入口页面。教师和管理员从教师入口登录后可进入病例库、课程管理、班级管理、考试任务四个工作区。自助注册仅在学生入口开放，学生必须选择一个当前有效的班级，注册成功后会自动加入该班；教师和管理员由 Django Admin 授权。入口隔离只负责交互引导，后端 API 仍会独立校验每个账号的角色权限。
+学生端与教师端使用独立根地址，不再通过 `/student/` 和 `/teacher/` 页面路径区分。教师和管理员从教师入口登录后可进入病例库、课程管理、班级管理、考试任务四个工作区。自助注册仅在学生入口开放，学生必须选择一个当前有效的班级，注册成功后会自动加入该班；教师和管理员由 Django Admin 授权。入口隔离只负责交互引导，后端 API 仍会独立校验每个账号的角色权限。
+
+不使用 Docker 时，在两个终端分别启动前端：
+
+```bash
+npm --prefix apps/web run dev:student
+npm --prefix apps/web run dev:teacher
+```
+
+生产环境分别构建 `npm --prefix apps/web run build:student` 和 `npm --prefix apps/web run build:teacher`，将学生域名与教师域名各自指向对应产物。Docker Compose 使用 `STUDENT_WEB_ORIGIN`、`TEACHER_WEB_ORIGIN` 传入完整 HTTPS 根地址；手动构建时则设置对应的 `VITE_STUDENT_ORIGIN`、`VITE_TEACHER_ORIGIN`。Django 的 `DJANGO_ALLOWED_HOSTS` 和 `DJANGO_CSRF_TRUSTED_ORIGINS` 也要包含这两个域名。页面入口不再使用角色路径，但后端 `/api/student/`、`/api/teacher/` 命名空间会继续保留用于权限隔离。
 
 ## 最小教学流程
 

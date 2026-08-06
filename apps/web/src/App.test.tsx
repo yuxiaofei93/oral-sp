@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { App } from './App'
+import { App, PortalApp } from './App'
 
 describe('App', () => {
   afterEach(() => {
@@ -27,6 +27,18 @@ describe('App', () => {
     expect(screen.queryByText('选择您的入口')).not.toBeInTheDocument()
   })
 
+  it('does not use a legacy path to select a portal', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{"detail":"not authenticated"}', { status: 403 }),
+    )
+    window.history.replaceState({}, '', '/teacher/')
+
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: '口腔门诊模拟问诊系统' })).toBeInTheDocument()
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+  })
+
   it('renders the page when the account service is unavailable', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input)
@@ -45,8 +57,7 @@ describe('App', () => {
       new Response('{"detail":"not authenticated"}', { status: 403 }),
     )
 
-    window.history.replaceState({}, '', '/teacher/')
-    const { unmount } = render(<App />)
+    const { unmount } = render(<PortalApp portal="teacher" />)
     expect(screen.getByRole('heading', { name: '口腔模拟问诊系统管理后台' })).toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('heading', { name: '教师登录' })).toBeInTheDocument())
     expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument()

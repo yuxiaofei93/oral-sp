@@ -4,8 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
+    "dev": "vite --mode student --host 0.0.0.0 --port 5173 --strictPort",
+    "dev:student": "vite --mode student --host 0.0.0.0 --port 5173 --strictPort",
+    "dev:teacher": "vite --mode teacher --host 0.0.0.0 --port 5174 --strictPort",
+    "build": "tsc -b && vite build --mode student",
+    "build:student": "tsc -b && vite build --mode student --outDir dist/student",
+    "build:teacher": "tsc -b && vite build --mode teacher --outDir dist/teacher",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -25,4 +29,3 @@
     "vitest": "^3.2.4"
   }
 }
-

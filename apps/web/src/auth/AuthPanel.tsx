@@ -15,6 +15,7 @@ import {
 } from '../api/client'
 import { StudentAssignments } from '../student/StudentAssignments'
 import { TeacherWorkspace } from '../teacher/TeacherWorkspace'
+import { portalHome } from '../portal'
 
 type Mode = 'login' | 'register' | 'forgot_password'
 type Portal = 'student' | 'teacher'
@@ -173,7 +174,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
   if (user) {
     if (!canAccessPortal(user, portal)) {
       const expectedRole = portal === 'student' ? '学生' : '教师或管理员'
-      const otherPortal = portal === 'student' ? '/teacher/' : '/student/'
+      const otherPortal = portalHome(portal === 'student' ? 'teacher' : 'student')
       const otherPortalName = portal === 'student' ? '教师端' : '学生端'
 
       return (

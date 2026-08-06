@@ -1,16 +1,10 @@
+import { useEffect } from 'react'
+
 import { AuthPanel } from './auth/AuthPanel'
+import type { Portal } from './portal'
+import { resolvePortal } from './portal'
 
-type Portal = 'student' | 'teacher'
-
-function currentPortal(pathname: string): Portal {
-  const normalizedPath = pathname.replace(/\/+$/, '') || '/'
-  if (normalizedPath === '/teacher') return 'teacher'
-  return 'student'
-}
-
-export function App() {
-  const portal = currentPortal(window.location.pathname)
-
+export function PortalApp({ portal }: { portal: Portal }) {
   const portalCopy = portal === 'student'
     ? {
         title: '口腔门诊模拟问诊系统',
@@ -31,4 +25,18 @@ export function App() {
       <AuthPanel portal={portal} />
     </main>
   )
+}
+
+export function App() {
+  const portal = resolvePortal({
+    configuredPortal: import.meta.env.VITE_PORTAL,
+    mode: import.meta.env.MODE,
+    port: window.location.port,
+  })
+  useEffect(() => {
+    if (window.location.pathname !== '/') {
+      window.history.replaceState({}, '', '/')
+    }
+  }, [])
+  return <PortalApp portal={portal} />
 }

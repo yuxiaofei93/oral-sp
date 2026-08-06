@@ -166,7 +166,10 @@ describe('AuthPanel', () => {
     await waitFor(() => expect(screen.getByRole('heading', {
       name: '当前账号无法进入教师端',
     })).toBeInTheDocument())
-    expect(screen.getByRole('link', { name: '前往学生端' })).toHaveAttribute('href', '/student/')
+    expect(screen.getByRole('link', { name: '前往学生端' })).toHaveAttribute(
+      'href',
+      'http://localhost:5173/',
+    )
     expect(screen.queryByRole('heading', { name: '我的问诊任务' })).not.toBeInTheDocument()
   })
 })
