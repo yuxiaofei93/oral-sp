@@ -11,43 +11,42 @@ describe('App', () => {
   })
 
   it('uses the student homepage at the root address', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
-      const url = String(input)
-      if (url.includes('/api/health/')) return Promise.resolve(new Response('{}', { status: 200 }))
-      return Promise.resolve(new Response('{"detail":"not authenticated"}', { status: 403 }))
-    })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{"detail":"not authenticated"}', { status: 403 }),
+    )
 
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: '学生学习入口' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '口腔门诊模拟问诊系统' })).toBeInTheDocument()
+    expect(screen.getByText('面向口腔医学教学的模拟患者问诊与临床思维训练平台。')).toBeInTheDocument()
     expect(screen.getByText('仅用于教学模拟，不用于真实患者诊疗。')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('服务已就绪'))
     await waitFor(() => expect(screen.getByRole('heading', { name: '学生登录' })).toBeInTheDocument())
+    expect(screen.queryByText('STUDENT PORTAL')).not.toBeInTheDocument()
+    expect(screen.queryByText('服务已就绪')).not.toBeInTheDocument()
     expect(screen.queryByText('选择您的入口')).not.toBeInTheDocument()
   })
 
-  it('reports an unavailable API without crashing', async () => {
+  it('renders the page when the account service is unavailable', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input)
-      if (url.includes('/api/health/')) return Promise.reject(new Error('network unavailable'))
-      return Promise.resolve(new Response('{"detail":"not authenticated"}', { status: 403 }))
+      if (url.endsWith('/me/')) return Promise.reject(new Error('network unavailable'))
+      return Promise.reject(new Error(`unexpected request: ${url}`))
     })
 
     render(<App />)
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('服务暂不可用'))
+    expect(screen.getByRole('heading', { name: '口腔门诊模拟问诊系统' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('暂时无法读取登录状态。')).toBeInTheDocument())
   })
 
   it('renders an independent teacher login page', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
-      const url = String(input)
-      if (url.includes('/api/health/')) return Promise.resolve(new Response('{}', { status: 200 }))
-      return Promise.resolve(new Response('{"detail":"not authenticated"}', { status: 403 }))
-    })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{"detail":"not authenticated"}', { status: 403 }),
+    )
 
     window.history.replaceState({}, '', '/teacher/')
     const { unmount } = render(<App />)
-    expect(screen.getByRole('heading', { name: '教师教学入口' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '教师教学工作台' })).toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('heading', { name: '教师登录' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '学生注册' })).not.toBeInTheDocument()
     unmount()

@@ -62,7 +62,7 @@ textarea {
 }
 
 .portal-header .summary {
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .eyebrow {
@@ -88,44 +88,6 @@ h1 {
   color: #57706b;
   font-size: clamp(17px, 2vw, 21px);
   line-height: 1.75;
-}
-
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 36px;
-  padding: 8px 13px;
-  border-radius: 999px;
-  background: #e8efed;
-  color: #425a56;
-  font-size: 14px;
-  font-weight: 650;
-}
-
-.status span {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #78908b;
-}
-
-.status--ready {
-  background: #daf4e8;
-  color: #126047;
-}
-
-.status--ready span {
-  background: #21a675;
-}
-
-.status--unavailable {
-  background: #fbe8e5;
-  color: #8f3c32;
-}
-
-.status--unavailable span {
-  background: #cf594b;
 }
 
 .disclaimer {
