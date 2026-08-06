@@ -19,7 +19,7 @@ describe('App', () => {
 
     expect(screen.getByRole('heading', { name: '口腔门诊模拟问诊系统' })).toBeInTheDocument()
     expect(screen.getByText('面向口腔医学教学的模拟患者问诊与临床思维训练平台。')).toBeInTheDocument()
-    expect(screen.getByText('仅用于教学模拟，不用于真实患者诊疗。')).toBeInTheDocument()
+    expect(screen.queryByText('仅用于教学模拟，不用于真实患者诊疗。')).not.toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument())
     expect(screen.queryByRole('heading', { name: '学生登录' })).not.toBeInTheDocument()
     expect(screen.queryByText('STUDENT PORTAL')).not.toBeInTheDocument()

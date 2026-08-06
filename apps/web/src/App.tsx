@@ -29,8 +29,6 @@ export function App() {
       </header>
 
       <AuthPanel portal={portal} />
-
-      <p className="disclaimer">仅用于教学模拟，不用于真实患者诊疗。</p>
     </main>
   )
 }
