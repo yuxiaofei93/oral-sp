@@ -76,15 +76,15 @@ nginx -v
 
 ## 4. 克隆私有仓库
 
-服务器能通过 SSH 访问私有 Gitee 仓库时：
+服务器能通过 SSH 访问私有 GitHub 仓库时：
 
 ```bash
 sudo install -d -o "$USER" -g "$USER" /opt/oral-sp
-git clone git@gitee.com:Nick2019/oral-sp.git /opt/oral-sp
+git clone git@github.com:yuxiaofei93/oral-sp.git /opt/oral-sp
 cd /opt/oral-sp
 ```
 
-如果提示无权限，在 ECS 生成一对专用 SSH 密钥，将公钥加入 Gitee 仓库的只读部署公钥。不要把 SSH 私钥、Gitee 密码或令牌放入仓库。
+如果提示无权限，在 ECS 生成一对专用 SSH 密钥，将公钥加入 GitHub 仓库的只读 Deploy key。不要把 SSH 私钥、GitHub 密码或令牌放入仓库。
 
 ## 5. 安装项目依赖
 
