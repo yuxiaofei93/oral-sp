@@ -1,4 +1,6 @@
-FROM python:3.13-slim AS test
+ARG DOCKER_HUB_PROXY=m.daocloud.io/docker.io
+
+FROM ${DOCKER_HUB_PROXY}/library/python:3.13-slim AS test
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -16,7 +18,7 @@ RUN python -m pip install --upgrade pip && \
     ruff check config modules tests && \
     pytest
 
-FROM python:3.13-slim AS runtime
+FROM ${DOCKER_HUB_PROXY}/library/python:3.13-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

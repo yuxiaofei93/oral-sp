@@ -62,6 +62,8 @@ Gitee Go 推送镜像时使用公网地址；广州 ECS 拉取镜像时优先使
 
 任意镜像测试或构建失败时，流水线会失败。部署不属于流水线，避免在 1 GB ECS 上安装常驻 Gitee Go Agent；确认三个镜像均已推送后，再通过 SSH 发布指定的 `build-N` 版本。
 
+Gitee Go 构建节点通过 DaoCloud 公共镜像代理拉取 Docker Hub 的 Python、Node.js 和 Nginx 基础镜像，避免直接连接 Docker Hub 超时。代理仅改变拉取地址，镜像仍对应 Docker Hub 的官方镜像；正式生产前应进一步固定基础镜像摘要或同步到自有 ACR。
+
 ## 4. 安装 Docker Engine
 
 在 ECS 上按照 Docker 官方 Debian 软件源安装 Engine 和 Compose 插件：
