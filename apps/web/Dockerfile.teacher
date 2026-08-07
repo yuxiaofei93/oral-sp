@@ -4,15 +4,15 @@ FROM ${DOCKER_HUB_PROXY}/library/node:24-alpine AS build
 
 WORKDIR /app
 
-ENV VITE_PORTAL=teacher \
-    VITE_STUDENT_ORIGIN=https://wenzhen.wishine.top \
-    VITE_TEACHER_ORIGIN=https://manage.wishine.top
-
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY apps/web/ ./
-RUN npm test && npm run build:teacher
+RUN npm test && \
+    VITE_PORTAL=teacher \
+    VITE_STUDENT_ORIGIN=https://wenzhen.wishine.top \
+    VITE_TEACHER_ORIGIN=https://manage.wishine.top \
+    npm run build:teacher
 
 FROM ${DOCKER_HUB_PROXY}/library/nginx:1.29-alpine
 
