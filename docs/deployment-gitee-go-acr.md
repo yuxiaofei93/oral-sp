@@ -47,8 +47,8 @@ Gitee Go 推送镜像时使用公网地址；广州 ECS 拉取镜像时优先使
 当前已经创建“Docker 仓库账号密码”凭证：
 
 ```text
-凭证名称：oral-sp-gitee-go
-凭证 ID：6156e620-74a7-013f-1849-323791aaa193
+凭证名称：oral-sp-docker
+凭证 ID：dfc9cba0-74ac-013f-4bb6-2e389257c45b
 ```
 
 凭证 ID 是安全引用，可以保存在流水线中；ACR 用户名和 Registry 密码只保存在 Gitee 凭证管理中，不写入仓库。
