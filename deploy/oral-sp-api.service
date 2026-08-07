@@ -7,11 +7,11 @@ After=network-online.target
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/opt/oral-sp/apps/api
-EnvironmentFile=/opt/oral-sp/.env.production
+WorkingDirectory=/home/nick/oral-sp/apps/api
+EnvironmentFile=/home/nick/oral-sp/.env.production
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/oral-sp/.venv/bin/gunicorn --config /opt/oral-sp/deploy/gunicorn.conf.py config.wsgi:application
+ExecStart=/home/nick/oral-sp/.venv/bin/gunicorn --config /home/nick/oral-sp/deploy/gunicorn.conf.py config.wsgi:application
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=on-failure
 RestartSec=3
@@ -20,9 +20,9 @@ TimeoutStartSec=60
 TimeoutStopSec=60
 UMask=0027
 PrivateTmp=true
-ProtectHome=true
+ProtectHome=read-only
 ProtectSystem=strict
-ReadWritePaths=/opt/oral-sp/var
+ReadWritePaths=/home/nick/oral-sp/var
 NoNewPrivileges=true
 
 [Install]

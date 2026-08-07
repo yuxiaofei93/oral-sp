@@ -8,7 +8,7 @@
 - 1 核 1 GB，不使用 Docker、PostgreSQL 或 Caddy。
 - Nginx 提供双域名、React 静态文件、HTTPS 和反向代理。
 - Gunicorn 使用 1 个 worker 和 4 个线程运行 Django API，监听 `127.0.0.1:8010`，避免与同机现有的 FamilyLedger `127.0.0.1:8000` 冲突。
-- SQLite 保存在 `/opt/oral-sp/var/production.sqlite3`，不迁移本地测试数据。
+- 项目位于 `/home/nick/oral-sp`，SQLite 保存在 `/home/nick/oral-sp/var/production.sqlite3`，不迁移本地测试数据。
 
 Gunicorn 不能单独提供这套系统：它只运行 Django WSGI API，不负责 React 静态文件、两个域名或 HTTPS。Nginx 是很轻量的必要入口层。
 
@@ -79,9 +79,9 @@ nginx -v
 服务器能通过 SSH 访问私有 GitHub 仓库时：
 
 ```bash
-sudo install -d -o "$USER" -g "$USER" /opt/oral-sp
-git clone git@github.com:yuxiaofei93/oral-sp.git /opt/oral-sp
-cd /opt/oral-sp
+cd /home/nick
+git clone git@github.com:yuxiaofei93/oral-sp.git oral-sp
+cd /home/nick/oral-sp
 ```
 
 如果提示无权限，在 ECS 生成一对专用 SSH 密钥，将公钥加入 GitHub 仓库的只读 Deploy key。不要把 SSH 私钥、GitHub 密码或令牌放入仓库。
@@ -89,7 +89,7 @@ cd /opt/oral-sp
 ## 5. 安装项目依赖
 
 ```bash
-cd /opt/oral-sp
+cd /home/nick/oral-sp
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -c apps/api/constraints.txt ./apps/api
@@ -101,7 +101,7 @@ python3 -m venv .venv
 ## 6. 填写生产环境变量
 
 ```bash
-cd /opt/oral-sp
+cd /home/nick/oral-sp
 cp deploy/production.env.example .env.production
 openssl rand -hex 48
 nano .env.production
@@ -126,16 +126,17 @@ TLS 和 SSL 不能同时为 `true`。阿里云对 TCP 25 有限制，不建议�
 不要把本地 `.env` 直接复制上去，也不要把 `.env.production` 提交到 Git。设置文件权限：
 
 ```bash
-sudo chown root:www-data /opt/oral-sp/.env.production
-sudo chmod 640 /opt/oral-sp/.env.production
-sudo install -d -o www-data -g www-data -m 750 /opt/oral-sp/var
-sudo install -d -o www-data -g www-data -m 750 /opt/oral-sp/var/private-media
+sudo chmod 711 /home/nick
+sudo chown root:www-data /home/nick/oral-sp/.env.production
+sudo chmod 640 /home/nick/oral-sp/.env.production
+sudo install -d -o www-data -g www-data -m 750 /home/nick/oral-sp/var
+sudo install -d -o www-data -g www-data -m 750 /home/nick/oral-sp/var/private-media
 ```
 
 ## 7. 初始化 SQLite
 
 ```bash
-cd /opt/oral-sp
+cd /home/nick/oral-sp
 sudo -u www-data ./deploy/manage-production.sh check --deploy
 sudo -u www-data ./deploy/manage-production.sh migrate
 sudo -u www-data ./deploy/manage-production.sh createsuperuser
@@ -148,7 +149,7 @@ SQLite 配置使用 20 秒锁等待和 `IMMEDIATE` 事务，Gunicorn 只有一�
 ## 8. 构建两个前端
 
 ```bash
-cd /opt/oral-sp
+cd /home/nick/oral-sp
 ./deploy/build-frontends.sh
 ```
 
@@ -160,14 +161,14 @@ cd /opt/oral-sp
 构建后确认 Nginx 用户可以读取：
 
 ```bash
-sudo -u www-data test -r /opt/oral-sp/apps/web/dist/student/index.html
-sudo -u www-data test -r /opt/oral-sp/apps/web/dist/teacher/index.html
+sudo -u www-data test -r /home/nick/oral-sp/apps/web/dist/student/index.html
+sudo -u www-data test -r /home/nick/oral-sp/apps/web/dist/teacher/index.html
 ```
 
 ## 9. 启动 Gunicorn systemd 服务
 
 ```bash
-cd /opt/oral-sp
+cd /home/nick/oral-sp
 sudo install -m 644 deploy/oral-sp-api.service /etc/systemd/system/oral-sp-api.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now oral-sp-api
@@ -188,7 +189,7 @@ curl --fail --silent --show-error \
 ## 10. 安装 Nginx 初始 HTTP 配置
 
 ```bash
-cd /opt/oral-sp
+cd /home/nick/oral-sp
 sudo install -d -m 755 /var/www/certbot
 sudo install -m 644 deploy/nginx/oral-sp-http.conf /etc/nginx/sites-available/oral-sp
 sudo ln -s /etc/nginx/sites-available/oral-sp /etc/nginx/sites-enabled/oral-sp
@@ -229,7 +230,7 @@ sudo certbot certonly \
 证书成功后切换到仓库内的正式 HTTPS 配置：
 
 ```bash
-cd /opt/oral-sp
+cd /home/nick/oral-sp
 sudo install -m 644 deploy/nginx/oral-sp.conf /etc/nginx/sites-available/oral-sp
 sudo install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
 sudo install -m 755 deploy/certbot-reload-nginx.sh /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
@@ -273,11 +274,11 @@ sudo journalctl -u oral-sp-api -n 200 --no-pager
 备份脚本使用 Python 内置的 SQLite 在线备份 API，无需停止 Gunicorn：
 
 ```bash
-cd /opt/oral-sp
+cd /home/nick/oral-sp
 sudo ./deploy/backup.sh
 ```
 
-备份位于 `/opt/oral-sp/backups/`，脚本会对备份执行完整性检查，不会自动删除历史文件。建议每日备份并定期复制到 ECS 以外。
+备份位于 `/home/nick/oral-sp/backups/`，脚本会对备份执行完整性检查，不会自动删除历史文件。建议每日备份并定期复制到 ECS 以外。
 
 每日 03:15 备份：
 
@@ -288,7 +289,7 @@ sudo crontab -e
 添加：
 
 ```cron
-15 3 * * * /opt/oral-sp/deploy/backup.sh >> /var/log/oral-sp-backup.log 2>&1
+15 3 * * * /home/nick/oral-sp/deploy/backup.sh >> /var/log/oral-sp-backup.log 2>&1
 ```
 
 恢复 SQLite 会覆盖当前数据。必须先备份当前文件、停止 `oral-sp-api`、确认备份完整后才能操作，不要把恢复放入自动更新脚本。
@@ -298,7 +299,7 @@ sudo crontab -e
 每次更新前备份：
 
 ```bash
-cd /opt/oral-sp
+cd /home/nick/oral-sp
 sudo ./deploy/backup.sh
 git pull --ff-only
 .venv/bin/python -m pip install -c apps/api/constraints.txt ./apps/api
@@ -330,7 +331,7 @@ sudo journalctl -u oral-sp-api -n 200 --no-pager
 sudo tail -n 200 /var/log/nginx/error.log
 sudo nginx -t
 sudo certbot certificates
-sudo -u www-data /opt/oral-sp/deploy/manage-production.sh check
+sudo -u www-data /home/nick/oral-sp/deploy/manage-production.sh check
 ```
 
 - `oral-sp-api` 启动失败：优先检查 `.env.production`、SQLite 目录权限和 `journalctl`。

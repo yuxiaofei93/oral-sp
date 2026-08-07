@@ -7,11 +7,11 @@ from config.settings import database_config
 def test_sqlite_database_config_is_tuned_for_the_native_deployment(monkeypatch):
     monkeypatch.setenv("SQLITE_TIMEOUT_SECONDS", "20")
 
-    config = database_config("sqlite:////opt/oral-sp/var/production.sqlite3")
+    config = database_config("sqlite:////home/nick/oral-sp/var/production.sqlite3")
 
     assert config == {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": "/opt/oral-sp/var/production.sqlite3",
+        "NAME": "/home/nick/oral-sp/var/production.sqlite3",
         "OPTIONS": {
             "timeout": 20,
             "transaction_mode": "IMMEDIATE",
