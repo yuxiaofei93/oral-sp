@@ -7,7 +7,7 @@
 - 教师端：`https://manage.wishine.top`。
 - 1 核 1 GB，不使用 Docker、PostgreSQL 或 Caddy。
 - Nginx 提供双域名、React 静态文件、HTTPS 和反向代理。
-- Gunicorn 使用 1 个 worker 和 4 个线程运行 Django API。
+- Gunicorn 使用 1 个 worker 和 4 个线程运行 Django API，监听 `127.0.0.1:8010`，避免与同机现有的 FamilyLedger `127.0.0.1:8000` 冲突。
 - SQLite 保存在 `/opt/oral-sp/var/production.sqlite3`，不迁移本地测试数据。
 
 Gunicorn 不能单独提供这套系统：它只运行 Django WSGI API，不负责 React 静态文件、两个域名或 HTTPS。Nginx 是很轻量的必要入口层。
@@ -27,7 +27,7 @@ Gunicorn 不能单独提供这套系统：它只运行 Django WSGI API，不负�
 - TCP `443`：来源 `0.0.0.0/0`。
 - TCP `22`：仅允许管理员的固定公网 IP。
 
-不要对公网开放 `8000`、`5173`、`5174` 或 `5432`。在阿里云备案控制台确认已备案的 `wishine.top` 已经接入当前 ECS。
+不要对公网开放 `8000`、`8010`、`5173`、`5174` 或 `5432`。在阿里云备案控制台确认已备案的 `wishine.top` 已经接入当前 ECS。
 
 DNS 生效后检查：
 
@@ -180,10 +180,10 @@ sudo systemctl status oral-sp-api --no-pager
 curl --fail --silent --show-error \
   -H 'Host: wenzhen.wishine.top' \
   -H 'X-Forwarded-Proto: https' \
-  http://127.0.0.1:8000/api/health/ready/
+  http://127.0.0.1:8010/api/health/ready/
 ```
 
-预期返回 `status: ok` 和 `database: ready`。Gunicorn 只监听 `127.0.0.1:8000`，公网不能直接访问。
+预期返回 `status: ok` 和 `database: ready`。Gunicorn 只监听 `127.0.0.1:8010`，公网不能直接访问。
 
 ## 10. 安装 Nginx 初始 HTTP 配置
 
@@ -334,7 +334,7 @@ sudo -u www-data /opt/oral-sp/deploy/manage-production.sh check
 ```
 
 - `oral-sp-api` 启动失败：优先检查 `.env.production`、SQLite 目录权限和 `journalctl`。
-- 网站出现 `502 Bad Gateway`：检查 Gunicorn 是否监听 `127.0.0.1:8000`。
+- 网站出现 `502 Bad Gateway`：检查 Gunicorn 是否监听 `127.0.0.1:8010`。
 - 证书失败：检查 DNS A 记录、80/443 安全组和错误 AAAA 记录。
 - 邮件失败：检查 SMTP 授权码、465/587 端口和 TLS/SSL 组合。
 - `database is locked`：记录当时并发人数和操作，准备迁移 PostgreSQL。

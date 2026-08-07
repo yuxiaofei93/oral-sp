@@ -32,6 +32,6 @@ npm --prefix apps/web run build:student
 npm --prefix apps/web run build:teacher
 ```
 
-产物分别位于 `apps/web/dist/student/` 和 `apps/web/dist/teacher/`。Nginx 将两个域名分别指向对应的静态目录，并把同源 `/api/` 请求转发到 `127.0.0.1:8000` 的 Django API。
+产物分别位于 `apps/web/dist/student/` 和 `apps/web/dist/teacher/`。当前内测服务器的 Nginx 将两个域名分别指向对应的静态目录，并把同源 `/api/` 请求转发到 `127.0.0.1:8010` 的 Django API；`8000` 保留给同机现有服务。
 
 浏览器页面统一从 `/` 进入，不使用 `/student/` 或 `/teacher/`。后端 API 继续保留 `/api/student/` 和 `/api/teacher/` 前缀，这是接口授权边界，不是面向用户的入口地址。
