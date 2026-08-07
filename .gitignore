@@ -1,8 +1,10 @@
 .env
+.env.production
 .venv/
 __pycache__/
 *.py[cod]
 *.egg-info/
+build/
 .pytest_cache/
 .ruff_cache/
 .coverage
@@ -17,6 +19,7 @@ coverage/
 /apps/web/vite.config.d.ts
 
 var/
+backups/
 *.sqlite3
 
 .idea/

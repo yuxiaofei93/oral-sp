@@ -66,7 +66,16 @@ def database_config(database_url: str) -> dict[str, object]:
     parsed = urlparse(database_url)
     if parsed.scheme == "sqlite":
         path = parsed.path or str(BASE_DIR / "var" / "db.sqlite3")
-        return {"ENGINE": "django.db.backends.sqlite3", "NAME": path}
+        if path.startswith("//"):
+            path = path[1:]
+        return {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": path,
+            "OPTIONS": {
+                "timeout": int(os.getenv("SQLITE_TIMEOUT_SECONDS", "20")),
+                "transaction_mode": "IMMEDIATE",
+            },
+        }
     if parsed.scheme not in {"postgres", "postgresql"}:
         raise ValueError("DATABASE_URL must use postgresql:// or sqlite://")
     return {
@@ -137,6 +146,12 @@ CSRF_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE = os.getenv("DJANGO_SECURE_COOKIES", "false").lower() == "true"
 CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "false").lower() == "true"
+SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = (
+    os.getenv("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", "false").lower() == "true"
+)
+SECURE_HSTS_PRELOAD = os.getenv("DJANGO_SECURE_HSTS_PRELOAD", "false").lower() == "true"
 
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",

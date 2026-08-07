@@ -131,7 +131,9 @@ LLM_TIMEOUT_SECONDS=30
 
 ## 低配部署说明
 
-1 核 1 GB 主机只运行一个 API worker，并把 PostgreSQL 最大连接数限制为 30。MVP 不在同一台机器运行 MinIO、Redis、Celery或本地大模型。建议配置 1–2 GB swap，并在真实课堂前用预期人数进行一次并发测试。
+1 核 1 GB 主机只运行一个 API worker。MVP 不在同一台机器运行 MinIO、Redis、Celery 或本地大模型。建议配置 1–2 GB swap，并在真实课堂前用预期人数进行一次并发测试。
+
+当前阿里云内测机采用 SQLite、Gunicorn、Nginx 和 Certbot，不需要 Docker 或 PostgreSQL。双域名、HTTPS、systemd、SQLite 备份和更新回滚流程见 [阿里云 Debian 13 原生部署文档](./docs/deployment-aliyun-debian.md)。服务器使用本地 `.env.production`，不要直接复用开发 `.env`。
 
 外部模型密钥只能通过服务端环境变量提供，不能提交到 Git、返回给浏览器或记录到日志。
 
