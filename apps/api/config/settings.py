@@ -92,7 +92,7 @@ def database_config(database_url: str) -> dict[str, object]:
 
 DATABASES = {
     "default": database_config(
-        os.getenv("DATABASE_URL", "postgresql://oral_sp:oral_sp_dev_only@localhost:5432/oral_sp")
+        os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'var' / 'db.sqlite3'}")
     )
 }
 

@@ -8,7 +8,7 @@
 
 - React + TypeScript 前端。
 - Django + Django REST Framework 后端。
-- PostgreSQL 开发数据库。
+- SQLite 本地开发和内测数据库，并保留 PostgreSQL 适配能力。
 - 本地私有媒体存储，不依赖 S3 或 MinIO。
 - 适配 1 核 1 GB 主机的单 worker 和低内存数据库配置。
 - API 存活及数据库就绪检查。
@@ -47,31 +47,35 @@ apps/
   web/       React 学生端和教师端
 docs/
   decisions/ 已确认的架构和产品决策
-compose.yaml PostgreSQL、API 和 Web 开发/部署基线
+deploy/      Gunicorn、Nginx、前端构建和 SQLite 备份脚本
 ```
 
 ## 本地开发
 
-安装后端依赖并运行测试：
+首次准备环境：
 
 ```bash
+test -f .env || cp .env.example .env
 make api-install
-make api-test
-```
-
-安装前端依赖并运行测试：
-
-```bash
 make web-install
-make web-test
-make web-build
 ```
 
-有 Docker Compose 的环境可以启动完整服务；学生端和教师端会构建为两个独立入口：
+启动后端前先加载本地环境变量并初始化 SQLite：
 
 ```bash
-cp .env.example .env
-docker compose up --build
+set -a
+source .env
+set +a
+
+.venv/bin/python apps/api/manage.py migrate
+.venv/bin/python apps/api/manage.py runserver 0.0.0.0:8000
+```
+
+在另外两个终端分别启动学生端和教师端：
+
+```bash
+npm --prefix apps/web run dev:student
+npm --prefix apps/web run dev:teacher
 ```
 
 启动后访问：
@@ -84,14 +88,16 @@ docker compose up --build
 
 学生端与教师端使用独立根地址，不再通过 `/student/` 和 `/teacher/` 页面路径区分。教师和管理员从教师入口登录后可进入病例库、班级管理、考试任务三个工作区。自助注册仅在学生入口开放，学生必须选择一个当前有效的班级，注册成功后会自动加入该班；教师和管理员由 Django Admin 授权。入口隔离只负责交互引导，后端 API 仍会独立校验每个账号的角色权限。
 
-不使用 Docker 时，在两个终端分别启动前端：
+运行全部测试和本地构建：
 
 ```bash
-npm --prefix apps/web run dev:student
-npm --prefix apps/web run dev:teacher
+make api-test
+make api-lint
+make web-test
+make web-build
 ```
 
-生产环境分别构建 `npm --prefix apps/web run build:student` 和 `npm --prefix apps/web run build:teacher`，将学生域名与教师域名各自指向对应产物。Docker Compose 使用 `STUDENT_WEB_ORIGIN`、`TEACHER_WEB_ORIGIN` 传入完整 HTTPS 根地址；手动构建时则设置对应的 `VITE_STUDENT_ORIGIN`、`VITE_TEACHER_ORIGIN`。Django 的 `DJANGO_ALLOWED_HOSTS` 和 `DJANGO_CSRF_TRUSTED_ORIGINS` 也要包含这两个域名。页面入口不再使用角色路径，但后端 `/api/student/`、`/api/teacher/` 命名空间会继续保留用于权限隔离。
+生产环境由服务器本地运行 `./deploy/build-frontends.sh`，分别生成 `apps/web/dist/student/` 和 `apps/web/dist/teacher/`。如更换域名，通过 `VITE_STUDENT_ORIGIN`、`VITE_TEACHER_ORIGIN` 指定两个完整 HTTPS 根地址。Django 的 `DJANGO_ALLOWED_HOSTS` 和 `DJANGO_CSRF_TRUSTED_ORIGINS` 也要包含这两个域名。页面入口不再使用角色路径，但后端 `/api/student/`、`/api/teacher/` 命名空间会继续保留用于权限隔离。
 
 ## 最小教学流程
 
@@ -123,7 +129,7 @@ LLM_MODEL=deepseek-v4-flash
 LLM_TIMEOUT_SECONDS=30
 ```
 
-不要把真实密钥提交到仓库或粘贴到聊天中。Docker Compose 会从项目根目录的 `.env` 读取配置；修改后需重启 API 服务。
+不要把真实密钥提交到仓库或粘贴到聊天中。本地启动前加载项目根目录的 `.env`；修改后需重新加载环境变量并重启 API 服务。
 
 患者问答采用两阶段模型调用：语义路由先根据当前问题、最近对话和所有允许披露的患者事实选择事实编码，患者回答模型随后只能使用选中的事实作答。路由不接收标准诊断、标准检查解释、评分答案、学生姓名或邮箱；教师填写的语义提示词和典型问法仅用于辅助，不要求穷举所有表达。AI 辅助评分使用低强度思考与 JSON 输出，只发送评分标准、问诊消息、阶段提交和病例标准答案。数据库保存最终评分、有效证据、置信度、评语、调用模型、耗时、token 数和错误码，不保存完整提示词或思维链。无效 JSON 会受控重试一次，越界分数或虚构证据会被拒绝。
 
@@ -134,8 +140,6 @@ LLM_TIMEOUT_SECONDS=30
 1 核 1 GB 主机只运行一个 API worker。MVP 不在同一台机器运行 MinIO、Redis、Celery 或本地大模型。建议配置 1–2 GB swap，并在真实课堂前用预期人数进行一次并发测试。
 
 当前阿里云内测机采用 SQLite、Gunicorn、Nginx 和 Certbot，不需要 Docker 或 PostgreSQL。双域名、HTTPS、systemd、SQLite 备份和更新回滚流程见 [阿里云 Debian 13 原生部署文档](./docs/deployment-aliyun-debian.md)。服务器使用本地 `.env.production`，不要直接复用开发 `.env`。
-
-如采用 Gitee Go 云端构建、阿里云 ACR 托管镜像、ECS 仅拉取运行的容器方案，见 [Gitee Go + ACR 内测部署文档](./docs/deployment-gitee-go-acr.md)。该方案继续使用宿主机 Nginx、Certbot 和持久化 SQLite，不在 1 核 1 GB ECS 上构建镜像。
 
 外部模型密钥只能通过服务端环境变量提供，不能提交到 Git、返回给浏览器或记录到日志。
 

@@ -70,7 +70,6 @@ python3 --version
 node --version
 npm --version
 nginx -v
-gunicorn --version
 ```
 
 服务器全局已经安装 Gunicorn 也没有问题，但项目仍会在自己的 `.venv` 里安装锁定版本，避免系统 Gunicorn 与项目 Python 依赖不一致。
@@ -94,6 +93,7 @@ cd /opt/oral-sp
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -c apps/api/constraints.txt ./apps/api
+.venv/bin/gunicorn --version
 ```
 
 这会在项目虚拟环境中安装 Django、Gunicorn 及后端依赖。
