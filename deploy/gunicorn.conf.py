@@ -8,6 +8,7 @@ keepalive = 5
 max_requests = 1000
 max_requests_jitter = 100
 preload_app = True
+control_socket_disable = True
 accesslog = "-"
 errorlog = "-"
 capture_output = True
