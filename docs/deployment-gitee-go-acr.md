@@ -5,9 +5,10 @@
 - Gitee 私有仓库，`main` 分支。
 - Gitee Go 在云端测试并构建镜像。
 - 阿里云 ACR 个人版，广州地域。
-- 阿里云 ECS，Debian 13，1 核 1 GB。
+- 阿里云 ECS，Debian 13，x86_64，1 核 1 GB。
 - SQLite 保存在宿主机，不迁移本地测试数据。
 - 宿主机 Nginx 和 Certbot 负责双域名及 HTTPS。
+- ECS 通过 SSH 手动部署，不安装 Gitee Go Agent。
 
 ## 1. 部署结构
 
@@ -41,30 +42,25 @@ oral-sp-teacher
 
 Gitee Go 推送镜像时使用公网地址；广州 ECS 拉取镜像时优先使用 VPC 地址。ACR 个人版仅适合当前开发内测，没有 SLA，正式生产前需要重新评估。
 
-## 3. 配置 Gitee Go
+## 3. Gitee Go 流水线
 
-先在 Gitee 的凭证管理中创建“Docker 仓库账号密码”凭证：
+当前已经创建“Docker 仓库账号密码”凭证：
 
 ```text
-凭证名称：建议 aliyun-acr
-仓库地址：crpi-iyetp24mk5qki59e.cn-guangzhou.personal.cr.aliyuncs.com
-用户名：ACR 控制台“访问凭证”页面显示的登录名
-密码：ACR 独立的 Registry 登录密码
+凭证名称：oral-sp-gitee-go
+凭证 ID：6156e620-74a7-013f-1849-323791aaa193
 ```
 
-不要使用阿里云控制台登录密码，也不要把 Registry 密码写入流水线 YAML、仓库或聊天记录。
+凭证 ID 是安全引用，可以保存在流水线中；ACR 用户名和 Registry 密码只保存在 Gitee 凭证管理中，不写入仓库。
 
-仓库中的 [流水线模板](../.workflow/oral-sp-acr.yml.example) 已经配置镜像地址、Dockerfile、构建编号和手动部署阶段。由于凭证和主机组必须由 Gitee Go 安全绑定，模板不会被自动执行。
+仓库中的 [正式流水线](../.workflow/oral-sp-acr.yml) 会在 `main` 分支收到提交后自动执行：
 
-在 Gitee Go 中创建流水线后：
+1. 构建 API 镜像并运行 Ruff 和后端测试。
+2. 构建学生端镜像并运行前端测试与生产构建。
+3. 构建教师端镜像并运行前端测试与生产构建。
+4. 使用同一个 `build-N` 标签推送到三个 ACR 仓库。
 
-1. 以模板内容为基础创建流水线。
-2. 在三个“镜像构建”任务中选择同一个 `aliyun-acr` 凭证。
-3. 在“部署内测环境”阶段选择 ECS 主机组。
-4. 确认部署阶段为手动触发。
-5. 让 Gitee Go 保存正式的 `.workflow/oral-sp-acr.yml`。
-
-三个 Dockerfile 都会在镜像构建期间运行对应测试；测试失败时不会进入手动部署阶段。
+任意镜像测试或构建失败时，流水线会失败。部署不属于流水线，避免在 1 GB ECS 上安装常驻 Gitee Go Agent；确认三个镜像均已推送后，再通过 SSH 发布指定的 `build-N` 版本。
 
 ## 4. 安装 Docker Engine
 
@@ -197,15 +193,7 @@ sudo certbot renew --dry-run
 
 ## 9. 日常发布与回滚
 
-正常发布：Gitee Go 自动完成镜像构建，然后由有权限的人手动触发“部署内测环境”阶段。主机部署任务执行：
-
-```bash
-cd /opt/oral-sp
-git pull --ff-only origin main
-sudo ./deploy/container-deploy.sh build-${GITEE_PIPELINE_BUILD_NUMBER}
-```
-
-也可以 SSH 登录服务器手动部署指定版本：
+正常发布：提交到 `main` 后，等待 Gitee Go 自动完成三个镜像的测试、构建和推送。在流水线记录中确认构建编号，例如 `12`，然后 SSH 登录 ECS 发布对应的 `build-12`：
 
 ```bash
 cd /opt/oral-sp
@@ -241,7 +229,6 @@ curl --fail https://manage.wishine.top/api/health/ready/
 ## 官方参考
 
 - [Gitee Go 镜像构建](https://help.gitee.com/gitee-go/plugin/image-build-and-deployment)
-- [Gitee Go Shell 主机任务](https://help.gitee.com/gitee-go/plugin/shell)
 - [ACR 个人版推送与拉取](https://help.aliyun.com/zh/acr/user-guide/use-a-container-registry-personal-edition-instance-to-push-and-pull-images)
 - [新版 ACR 个人版访问域名](https://help.aliyun.com/zh/acr/user-guide/individual-edition-instance-independent-domain-name-capacity-limit)
 - [Docker Engine 安装到 Debian](https://docs.docker.com/engine/install/debian/)

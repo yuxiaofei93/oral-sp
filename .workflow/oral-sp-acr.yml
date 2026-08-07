@@ -1,0 +1,40 @@
+version: "1.0"
+name: oral-sp-acr
+displayName: 口腔模拟问诊系统-ACR
+triggers:
+  trigger: auto
+  push:
+    branches:
+      precise:
+        - main
+stages:
+  - stage:
+    name: build_images
+    displayName: 测试并构建镜像
+    strategy: naturally
+    trigger: auto
+    steps:
+      - step: build@docker
+        name: build_api
+        displayName: 构建 API 镜像
+        type: cert
+        certificate: 6156e620-74a7-013f-1849-323791aaa193
+        tag: oral-sp/oral-sp-api:build-${GITEE_PIPELINE_BUILD_NUMBER}
+        dockerfile: apps/api/Dockerfile.production
+        isCache: true
+      - step: build@docker
+        name: build_student
+        displayName: 构建学生端镜像
+        type: cert
+        certificate: 6156e620-74a7-013f-1849-323791aaa193
+        tag: oral-sp/oral-sp-student:build-${GITEE_PIPELINE_BUILD_NUMBER}
+        dockerfile: apps/web/Dockerfile.student
+        isCache: true
+      - step: build@docker
+        name: build_teacher
+        displayName: 构建教师端镜像
+        type: cert
+        certificate: 6156e620-74a7-013f-1849-323791aaa193
+        tag: oral-sp/oral-sp-teacher:build-${GITEE_PIPELINE_BUILD_NUMBER}
+        dockerfile: apps/web/Dockerfile.teacher
+        isCache: true
