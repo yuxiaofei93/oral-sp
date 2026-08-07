@@ -1,0 +1,67 @@
+name: oral-sp
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  api:
+    image: ${ACR_ENDPOINT:?ACR_ENDPOINT is required}/${ACR_NAMESPACE:-oral-sp}/${API_REPOSITORY:-oral-sp-api}:${IMAGE_TAG:?IMAGE_TAG is required}
+    env_file:
+      - .env.production
+    environment:
+      DATABASE_URL: sqlite:////app/var/production.sqlite3
+      MEDIA_ROOT: /app/var/private-media
+    volumes:
+      - ./var:/app/var
+    ports:
+      - 127.0.0.1:8000:8000
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    mem_limit: 512m
+    mem_reservation: 256m
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  web-student:
+    image: ${ACR_ENDPOINT:?ACR_ENDPOINT is required}/${ACR_NAMESPACE:-oral-sp}/${STUDENT_REPOSITORY:-oral-sp-student}:${IMAGE_TAG:?IMAGE_TAG is required}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:5173:80
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=16m
+      - /var/run:size=1m
+    mem_limit: 64m
+    pids_limit: 64
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  web-teacher:
+    image: ${ACR_ENDPOINT:?ACR_ENDPOINT is required}/${ACR_NAMESPACE:-oral-sp}/${TEACHER_REPOSITORY:-oral-sp-teacher}:${IMAGE_TAG:?IMAGE_TAG is required}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:5174:80
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=16m
+      - /var/run:size=1m
+    mem_limit: 64m
+    pids_limit: 64
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging

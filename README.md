@@ -135,6 +135,8 @@ LLM_TIMEOUT_SECONDS=30
 
 当前阿里云内测机采用 SQLite、Gunicorn、Nginx 和 Certbot，不需要 Docker 或 PostgreSQL。双域名、HTTPS、systemd、SQLite 备份和更新回滚流程见 [阿里云 Debian 13 原生部署文档](./docs/deployment-aliyun-debian.md)。服务器使用本地 `.env.production`，不要直接复用开发 `.env`。
 
+如采用 Gitee Go 云端构建、阿里云 ACR 托管镜像、ECS 仅拉取运行的容器方案，见 [Gitee Go + ACR 内测部署文档](./docs/deployment-gitee-go-acr.md)。该方案继续使用宿主机 Nginx、Certbot 和持久化 SQLite，不在 1 核 1 GB ECS 上构建镜像。
+
 外部模型密钥只能通过服务端环境变量提供，不能提交到 Git、返回给浏览器或记录到日志。
 
 ## 数据保留清理

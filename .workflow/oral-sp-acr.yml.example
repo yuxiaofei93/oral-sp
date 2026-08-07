@@ -1,0 +1,62 @@
+# 此文件是模板，不会被 Gitee Go 自动执行。
+# 请在 Gitee Go 可视化编辑器中为三个 build@docker 任务绑定同一个 ACR
+# Docker 仓库凭证，再由平台保存为 .workflow/oral-sp-acr.yml。
+# 不要把 Registry 用户名或密码直接写进仓库。
+
+version: "1.0"
+name: oral-sp-acr
+displayName: 口腔模拟问诊系统-ACR
+triggers:
+  trigger: auto
+  push:
+    branches:
+      precise:
+        - main
+stages:
+  - stage:
+    name: build-images
+    displayName: 测试并构建镜像
+    strategy: naturally
+    trigger: auto
+    steps:
+      - step: build@docker
+        name: build-api
+        displayName: 构建 API 镜像
+        repository: crpi-iyetp24mk5qki59e.cn-guangzhou.personal.cr.aliyuncs.com
+        username: REPLACE_IN_GITEE_GO_UI
+        password: REPLACE_IN_GITEE_GO_UI
+        tag: oral-sp/oral-sp-api:build-${GITEE_PIPELINE_BUILD_NUMBER}
+        dockerfile: apps/api/Dockerfile.production
+        isCache: true
+      - step: build@docker
+        name: build-student
+        displayName: 构建学生端镜像
+        repository: crpi-iyetp24mk5qki59e.cn-guangzhou.personal.cr.aliyuncs.com
+        username: REPLACE_IN_GITEE_GO_UI
+        password: REPLACE_IN_GITEE_GO_UI
+        tag: oral-sp/oral-sp-student:build-${GITEE_PIPELINE_BUILD_NUMBER}
+        dockerfile: apps/web/Dockerfile.student
+        isCache: true
+      - step: build@docker
+        name: build-teacher
+        displayName: 构建教师端镜像
+        repository: crpi-iyetp24mk5qki59e.cn-guangzhou.personal.cr.aliyuncs.com
+        username: REPLACE_IN_GITEE_GO_UI
+        password: REPLACE_IN_GITEE_GO_UI
+        tag: oral-sp/oral-sp-teacher:build-${GITEE_PIPELINE_BUILD_NUMBER}
+        dockerfile: apps/web/Dockerfile.teacher
+        isCache: true
+  - stage:
+    name: deploy-internal-test
+    displayName: 部署内测环境
+    strategy: naturally
+    trigger: manual
+    steps:
+      - step: shell@agent
+        name: deploy-ecs
+        displayName: 部署到广州 ECS
+        hostGroupID: REPLACE_IN_GITEE_GO_UI
+        script: |
+          cd /opt/oral-sp
+          git pull --ff-only origin main
+          sudo ./deploy/container-deploy.sh build-${GITEE_PIPELINE_BUILD_NUMBER}

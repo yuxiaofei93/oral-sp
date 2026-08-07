@@ -1,0 +1,23 @@
+FROM node:24-alpine AS build
+
+WORKDIR /app
+
+ENV VITE_PORTAL=teacher \
+    VITE_STUDENT_ORIGIN=https://wenzhen.wishine.top \
+    VITE_TEACHER_ORIGIN=https://manage.wishine.top
+
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY apps/web/ ./
+RUN npm test && npm run build:teacher
+
+FROM nginx:1.29-alpine
+
+COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist/teacher /usr/share/nginx/html
+
+EXPOSE 80
+
+HEALTHCHECK --interval=20s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --output-document=- http://127.0.0.1/ >/dev/null || exit 1

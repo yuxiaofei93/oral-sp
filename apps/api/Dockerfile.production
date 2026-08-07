@@ -1,0 +1,44 @@
+FROM python:3.13-slim AS test
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY apps/api/pyproject.toml apps/api/constraints.txt apps/api/manage.py ./
+COPY apps/api/config ./config
+COPY apps/api/modules ./modules
+COPY apps/api/tests ./tests
+
+RUN python -m pip install --upgrade pip && \
+    python -m pip install -c constraints.txt '.[dev]' && \
+    ruff check config modules tests && \
+    pytest
+
+FROM python:3.13-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY apps/api/pyproject.toml apps/api/constraints.txt apps/api/manage.py ./
+COPY apps/api/config ./config
+COPY apps/api/modules ./modules
+
+RUN python -m pip install --upgrade pip && \
+    python -m pip install -c constraints.txt . && \
+    useradd --create-home --uid 10001 app && \
+    mkdir -p /app/var/private-media && \
+    chown -R app:app /app
+
+USER app
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=4 \
+    CMD ["python", "-c", "import urllib.request; request = urllib.request.Request('http://127.0.0.1:8000/api/health/ready/', headers={'Host': 'wenzhen.wishine.top', 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(request, timeout=4).read()"]
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--worker-class", "gthread", "--threads", "4", "--timeout", "120", "--graceful-timeout", "30", "--max-requests", "1000", "--max-requests-jitter", "100", "--access-logfile", "-", "--error-logfile", "-", "config.wsgi:application"]
