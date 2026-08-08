@@ -102,7 +102,7 @@ def make_user(identifier: str, role_code: str):
     return user
 
 
-def make_exam_data(*, suffix="1"):
+def make_exam_data(*, suffix="1", patient_prompt=""):
     teacher = make_user(f"1390000000{suffix}", RoleCode.TEACHER)
     student = make_user(f"1380000000{suffix}", RoleCode.STUDENT)
     case = create_case_with_draft(
@@ -113,6 +113,8 @@ def make_exam_data(*, suffix="1"):
     update_draft(
         draft=draft,
         data={
+            "patient_prompt_mode": "custom" if patient_prompt else "default",
+            "patient_prompt": patient_prompt,
             "patient_profile": {
                 "display_name": "陈女士",
                 "opening_statement": "医生您好，我的牙龈总是疼。",
@@ -321,8 +323,8 @@ def test_local_router_matches_fact_content():
 
 
 class DiagnosisLeakingGateway(PatientGateway):
-    def answer(self, *, question, facts, history):
-        del question, history
+    def answer(self, *, question, facts, history, patient_prompt):
+        del question, history, patient_prompt
         return GatewayResult(
             answer="医生，我这就是慢性牙周炎。",
             fact_codes=[facts[0].code],
@@ -354,6 +356,7 @@ def test_diagnosis_leak_is_replaced_by_safe_fact_response_and_audited():
 class SemanticRoutingGateway(PatientGateway):
     def __init__(self):
         self.histories = []
+        self.patient_prompts = []
 
     def route(self, *, question, facts, history):
         assert question == "不舒服从什么时候开始的？"
@@ -368,9 +371,10 @@ class SemanticRoutingGateway(PatientGateway):
             output_tokens=8,
         )
 
-    def answer(self, *, question, facts, history):
+    def answer(self, *, question, facts, history, patient_prompt):
         del question
         assert history == self.histories[-1]
+        self.patient_prompts.append(patient_prompt)
         return GatewayResult(
             answer="差不多有三年了。",
             fact_codes=[facts[0].code],
@@ -384,18 +388,23 @@ class SemanticRoutingGateway(PatientGateway):
 
 @pytest.mark.django_db
 def test_semantic_router_maps_natural_question_without_teacher_keyword():
-    _, student, assignment = make_exam_data(suffix="0")
+    _, student, assignment = make_exam_data(
+        suffix="0",
+        patient_prompt="请表现得有些紧张，只用一两句话回答。",
+    )
     session = start_session(assignment=assignment, student=student).session
 
+    gateway = SemanticRoutingGateway()
     exchange = ask_patient(
         session=session,
         student=student,
         content="不舒服从什么时候开始的？",
         client_message_id="semantic_route_question_01",
-        gateway=SemanticRoutingGateway(),
+        gateway=gateway,
     )
 
     assert exchange.patient_message.content == "差不多有三年了。"
+    assert gateway.patient_prompts == ["请表现得有些紧张，只用一两句话回答。"]
     route_call = session.model_calls.get(prompt_version="patient-route-v1")
     assert route_call.provider == "deepseek"
     assert route_call.matched_fact_codes == ["history.duration"]
@@ -404,8 +413,8 @@ def test_semantic_router_maps_natural_question_without_teacher_keyword():
 
 
 class WrittenFactRepeatingGateway(PatientGateway):
-    def answer(self, *, question, facts, history):
-        del question, history
+    def answer(self, *, question, facts, history, patient_prompt):
+        del question, history, patient_prompt
         return GatewayResult(
             answer=facts[0].patient_expression,
             fact_codes=[facts[0].code],
@@ -432,7 +441,7 @@ def test_written_fact_is_replaced_by_spoken_response_and_audited():
     call = session.model_calls.get(patient_message__isnull=False)
     assert call.status == ModelCallStatus.FAILED
     assert call.error_code == "response_not_conversational"
-    assert call.prompt_version == "patient-answer-v3"
+    assert call.prompt_version == "patient-answer-v4"
 
 
 @pytest.mark.django_db

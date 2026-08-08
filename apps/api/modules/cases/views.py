@@ -11,12 +11,14 @@ from .serializers import (
     CaseCreateSerializer,
     CaseDraftSerializer,
     CaseListSerializer,
+    PatientPromptTemplateSerializer,
     PublishedVersionSerializer,
 )
 from .services import (
     DraftConflictError,
     PublishValidationError,
     create_case_with_draft,
+    get_patient_prompt_template,
     publish_draft,
     update_draft,
 )
@@ -41,6 +43,20 @@ class TeacherCaseListCreateView(APIView):
         case = create_case_with_draft(user=request.user, **serializer.validated_data)
         draft = case.versions.get(status=VersionStatus.DRAFT)
         return Response(CaseDraftSerializer(draft).data, status=status.HTTP_201_CREATED)
+
+
+class TeacherPatientPromptTemplateView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def get(self, request):
+        return Response(PatientPromptTemplateSerializer(get_patient_prompt_template()).data)
+
+    def patch(self, request):
+        template = get_patient_prompt_template()
+        serializer = PatientPromptTemplateSerializer(template, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(updated_by=request.user)
+        return Response(PatientPromptTemplateSerializer(template).data)
 
 
 class TeacherCaseDraftView(APIView):
@@ -88,4 +104,3 @@ class TeacherCasePublishView(APIView):
             },
             status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK,
         )
-

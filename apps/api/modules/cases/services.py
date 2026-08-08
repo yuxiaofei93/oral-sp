@@ -15,9 +15,16 @@ from .models import (
     CaseVersion,
     DiagnosisRule,
     PatientProfile,
+    PatientPromptMode,
+    PatientPromptTemplate,
     ScoringItem,
     TestDefinition,
     VersionStatus,
+)
+from .prompts import (
+    DEFAULT_PATIENT_PROMPT,
+    PATIENT_PROMPT_TEMPLATE_ID,
+    PATIENT_PROMPT_TEMPLATE_NAME,
 )
 
 
@@ -33,6 +40,33 @@ class PublishValidationError(Exception):
 class PublishResult:
     version: CaseVersion
     created: bool
+
+
+def get_patient_prompt_template() -> PatientPromptTemplate:
+    template, _ = PatientPromptTemplate.objects.get_or_create(
+        pk=PATIENT_PROMPT_TEMPLATE_ID,
+        defaults={
+            "name": PATIENT_PROMPT_TEMPLATE_NAME,
+            "content": DEFAULT_PATIENT_PROMPT,
+        },
+    )
+    return template
+
+
+def default_patient_prompt() -> str:
+    template = PatientPromptTemplate.objects.filter(pk=PATIENT_PROMPT_TEMPLATE_ID).first()
+    if template and template.content.strip():
+        return template.content.strip()
+    return DEFAULT_PATIENT_PROMPT
+
+
+def effective_patient_prompt(version: CaseVersion) -> str:
+    configured = version.patient_prompt.strip()
+    if version.patient_prompt_mode == PatientPromptMode.CUSTOM:
+        return configured or DEFAULT_PATIENT_PROMPT
+    if version.status == VersionStatus.PUBLISHED and configured:
+        return configured
+    return default_patient_prompt()
 
 
 def create_case_with_draft(*, title_internal: str, user) -> Case:
@@ -111,6 +145,7 @@ def draft_content(draft: CaseVersion) -> dict:
         "is_exam_mode",
         "time_limit_minutes",
         "enabled_stages",
+        "patient_prompt_mode",
     ]
     profile_fields = [
         "display_name",
@@ -146,6 +181,7 @@ def draft_content(draft: CaseVersion) -> dict:
     }
     profile = draft.patient_profile
     content = {field: _json_value(getattr(draft, field)) for field in scalar_fields}
+    content["patient_prompt"] = effective_patient_prompt(draft)
     content["patient_profile"] = {
         field: _json_value(getattr(profile, field)) for field in profile_fields
     }
@@ -176,6 +212,7 @@ def publish_draft(*, draft: CaseVersion, user) -> PublishResult:
 
         content = draft_content(locked)
         digest = _content_hash(content)
+        patient_prompt = effective_patient_prompt(locked)
         latest = (
             CaseVersion.objects.filter(case=locked.case, status=VersionStatus.PUBLISHED)
             .order_by("-version_number")
@@ -196,6 +233,8 @@ def publish_draft(*, draft: CaseVersion, user) -> PublishResult:
             is_exam_mode=locked.is_exam_mode,
             time_limit_minutes=locked.time_limit_minutes,
             enabled_stages=locked.enabled_stages,
+            patient_prompt_mode=locked.patient_prompt_mode,
+            patient_prompt=patient_prompt,
             based_on=latest,
             created_by=user,
             published_at=timezone.now(),

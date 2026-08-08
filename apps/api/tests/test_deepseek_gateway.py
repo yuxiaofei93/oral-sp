@@ -92,6 +92,7 @@ def test_deepseek_patient_gateway_disables_thinking_and_retries_empty_json(monke
             )
         ],
         history=[],
+        patient_prompt="请表现得有些紧张，但回答要简短。",
     )
 
     assert len(requests) == 2
@@ -103,10 +104,8 @@ def test_deepseek_patient_gateway_disables_thinking_and_retries_empty_json(monke
     assert body["model"] == "deepseek-v4-flash"
     assert body["response_format"] == {"type": "json_object"}
     assert body["thinking"] == {"type": "disabled"}
-    assert (
-        "回答规则：只聊与本次口腔疾病问诊相关的事情，偏离话题要礼貌纠正并引导回问诊。"
-        in body["messages"][0]["content"]
-    )
+    assert "请表现得有些紧张，但回答要简短。" in body["messages"][0]["content"]
+    assert "只能依据 allowed_facts 中提供的信息" in body["messages"][0]["content"]
     assert result.answer == "差不多有三年了。"
     assert result.model == "DeepSeek-V4-Flash-0731"
     assert result.input_tokens == 30

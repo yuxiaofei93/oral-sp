@@ -6,6 +6,7 @@ from .models import (
     CaseVersion,
     DiagnosisRule,
     PatientProfile,
+    PatientPromptTemplate,
     ScoringItem,
     TestDefinition,
 )
@@ -17,4 +18,4 @@ admin.site.register(CaseFact)
 admin.site.register(TestDefinition)
 admin.site.register(DiagnosisRule)
 admin.site.register(ScoringItem)
-
+admin.site.register(PatientPromptTemplate)

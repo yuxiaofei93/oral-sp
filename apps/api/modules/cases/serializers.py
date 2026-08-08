@@ -6,9 +6,12 @@ from .models import (
     CaseVersion,
     DiagnosisRule,
     PatientProfile,
+    PatientPromptMode,
+    PatientPromptTemplate,
     ScoringItem,
     TestDefinition,
 )
+from .services import default_patient_prompt, effective_patient_prompt
 
 
 class StringListField(serializers.ListField):
@@ -62,6 +65,25 @@ class ScoringItemSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
+class PatientPromptTemplateSerializer(serializers.ModelSerializer):
+    content = serializers.CharField(max_length=8000, trim_whitespace=False)
+    updated_by_name = serializers.CharField(
+        source="updated_by.display_name",
+        read_only=True,
+        default="",
+    )
+
+    class Meta:
+        model = PatientPromptTemplate
+        fields = ["id", "name", "content", "updated_by_name", "updated_at"]
+        read_only_fields = ["id", "name", "updated_by_name", "updated_at"]
+
+    def validate_content(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError("默认提示词不能为空。")
+        return value.strip()
+
+
 class CaseDraftSerializer(serializers.ModelSerializer):
     case_id = serializers.UUIDField(source="case.id", read_only=True)
     case_code = serializers.CharField(source="case.code", read_only=True)
@@ -70,6 +92,14 @@ class CaseDraftSerializer(serializers.ModelSerializer):
     tests = TestDefinitionSerializer(many=True, required=False)
     diagnosis_rules = DiagnosisRuleSerializer(many=True, required=False)
     scoring_items = ScoringItemSerializer(many=True, required=False)
+    patient_prompt = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=8000,
+        trim_whitespace=False,
+    )
+    effective_patient_prompt = serializers.SerializerMethodField()
+    default_patient_prompt = serializers.SerializerMethodField()
     enabled_stages = StringListField(required=False)
     expected_updated_at = serializers.DateTimeField(write_only=True, required=False)
 
@@ -86,6 +116,10 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             "is_exam_mode",
             "time_limit_minutes",
             "enabled_stages",
+            "patient_prompt_mode",
+            "patient_prompt",
+            "effective_patient_prompt",
+            "default_patient_prompt",
             "created_at",
             "updated_at",
             "expected_updated_at",
@@ -95,7 +129,40 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             "diagnosis_rules",
             "scoring_items",
         ]
-        read_only_fields = ["id", "status", "version_number", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "status",
+            "version_number",
+            "effective_patient_prompt",
+            "default_patient_prompt",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_effective_patient_prompt(self, version: CaseVersion) -> str:
+        return effective_patient_prompt(version)
+
+    def get_default_patient_prompt(self, version: CaseVersion) -> str:
+        del version
+        return default_patient_prompt()
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        current_mode = getattr(self.instance, "patient_prompt_mode", PatientPromptMode.DEFAULT)
+        current_prompt = getattr(self.instance, "patient_prompt", "")
+        mode = attrs.get("patient_prompt_mode", current_mode)
+        prompt = attrs.get("patient_prompt", current_prompt)
+        if mode == PatientPromptMode.CUSTOM and not prompt.strip():
+            raise serializers.ValidationError(
+                {"patient_prompt": "使用自定义提示词时，提示词不能为空。"}
+            )
+        if mode == PatientPromptMode.DEFAULT and (
+            "patient_prompt_mode" in attrs or "patient_prompt" in attrs
+        ):
+            attrs["patient_prompt"] = ""
+        elif "patient_prompt" in attrs:
+            attrs["patient_prompt"] = prompt.strip()
+        return attrs
 
 
 class CaseCreateSerializer(serializers.Serializer):

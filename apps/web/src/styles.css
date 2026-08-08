@@ -1166,6 +1166,17 @@ h1 {
   min-height: auto;
 }
 
+.prompt-template-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.prompt-template-actions span {
+  color: #647a75;
+  font-size: 13px;
+}
+
 .case-list {
   display: grid;
   gap: 12px;

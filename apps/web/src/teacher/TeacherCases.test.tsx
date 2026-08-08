@@ -14,6 +14,10 @@ const createdDraft = {
   is_exam_mode: true,
   time_limit_minutes: 20,
   enabled_stages: ['interview'],
+  patient_prompt_mode: 'default',
+  patient_prompt: '',
+  effective_patient_prompt: '默认患者问诊提示词。',
+  default_patient_prompt: '默认患者问诊提示词。',
   created_at: '2026-08-08T00:00:00Z',
   updated_at: '2026-08-08T00:00:00Z',
   patient_profile: {

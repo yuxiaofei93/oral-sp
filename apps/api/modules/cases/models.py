@@ -2,9 +2,16 @@ import uuid
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
+from django.core.validators import (
+    MaxLengthValidator,
+    MaxValueValidator,
+    MinValueValidator,
+    RegexValidator,
+)
 from django.db import models
 from django.db.models import Q
+
+from .prompts import DEFAULT_PATIENT_PROMPT, PATIENT_PROMPT_TEMPLATE_NAME
 
 
 def default_enabled_stages() -> list[str]:
@@ -61,6 +68,31 @@ class Difficulty(models.TextChoices):
     ADVANCED = "advanced", "高级"
 
 
+class PatientPromptMode(models.TextChoices):
+    DEFAULT = "default", "默认模板"
+    CUSTOM = "custom", "自定义提示词"
+
+
+class PatientPromptTemplate(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    name = models.CharField(max_length=80, default=PATIENT_PROMPT_TEMPLATE_NAME)
+    content = models.TextField(
+        default=DEFAULT_PATIENT_PROMPT,
+        validators=[MaxLengthValidator(8000)],
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="patient_prompt_templates_updated",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class CaseVersion(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     case = models.ForeignKey(Case, on_delete=models.PROTECT, related_name="versions")
@@ -78,6 +110,12 @@ class CaseVersion(models.Model):
         validators=[MinValueValidator(1), MaxValueValidator(240)],
     )
     enabled_stages = models.JSONField(default=default_enabled_stages)
+    patient_prompt_mode = models.CharField(
+        max_length=16,
+        choices=PatientPromptMode.choices,
+        default=PatientPromptMode.DEFAULT,
+    )
+    patient_prompt = models.TextField(blank=True, validators=[MaxLengthValidator(8000)])
     based_on = models.ForeignKey(
         "self",
         null=True,

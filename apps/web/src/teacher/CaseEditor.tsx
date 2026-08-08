@@ -13,6 +13,7 @@ import {
 
 const editorSections = [
   { id: 'basic-info', label: '基础信息' },
+  { id: 'patient-prompt', label: '患者提示词' },
   { id: 'patient-facts', label: '病情信息' },
   { id: 'case-tests', label: '检查资料' },
   { id: 'diagnosis-rules', label: '诊断规则' },
@@ -166,6 +167,23 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     }))
   }
 
+  function setPatientPromptMode(mode: CaseDraft['patient_prompt_mode']) {
+    updateDraft((current) => ({
+      ...current,
+      patient_prompt_mode: mode,
+      patient_prompt: mode === 'custom' ? current.default_patient_prompt : '',
+      effective_patient_prompt: current.default_patient_prompt,
+    }))
+  }
+
+  function setPatientPrompt(value: string) {
+    updateDraft((current) => ({
+      ...current,
+      patient_prompt: value,
+      effective_patient_prompt: value,
+    }))
+  }
+
   function draftPayload(source: CaseDraft): Partial<CaseDraft> {
     return {
       title_internal: source.title_internal,
@@ -173,6 +191,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
       is_exam_mode: source.is_exam_mode,
       time_limit_minutes: source.time_limit_minutes,
       enabled_stages: source.enabled_stages,
+      patient_prompt_mode: source.patient_prompt_mode,
+      patient_prompt: source.patient_prompt,
       patient_profile: source.patient_profile,
       facts: source.facts.map((fact) => ({
         ...fact,
@@ -359,6 +379,42 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                   value={draft.patient_profile.opening_statement}
                   onChange={(event) => setProfile('opening_statement', event.target.value)}
                 />
+              </label>
+            </div>
+          </EditorCard>
+
+          <EditorCard id="patient-prompt" title="AI 患者提示词">
+            <p className="section-help">
+              默认使用统一模板；如需调整患者的语气或回答方式，可为当前病例单独编辑。
+            </p>
+            <div className="form-grid">
+              <label>
+                提示词来源
+                <select
+                  value={draft.patient_prompt_mode}
+                  onChange={(event) => setPatientPromptMode(event.target.value as CaseDraft['patient_prompt_mode'])}
+                >
+                  <option value="default">默认模板</option>
+                  <option value="custom">当前病例自定义</option>
+                </select>
+              </label>
+              <label className="form-grid__wide">
+                患者问诊提示词
+                <textarea
+                  aria-label="患者问诊提示词"
+                  rows={12}
+                  maxLength={8000}
+                  readOnly={draft.patient_prompt_mode === 'default'}
+                  value={draft.patient_prompt_mode === 'default'
+                    ? draft.default_patient_prompt
+                    : draft.patient_prompt}
+                  onChange={(event) => setPatientPrompt(event.target.value)}
+                />
+                <small>
+                  {draft.patient_prompt_mode === 'default'
+                    ? '当前病例跟随默认模板；默认模板更新后，草稿会使用新内容。'
+                    : `${draft.patient_prompt.length} / 8000 字；仅影响当前病例。`}
+                </small>
               </label>
             </div>
           </EditorCard>

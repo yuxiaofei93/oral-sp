@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from modules.accounts.models import RoleCode
 from modules.cases.models import DisclosureMode, VersionStatus
+from modules.cases.services import effective_patient_prompt
 
 from .gateways import (
     PATIENT_ANSWER_PROMPT_VERSION,
@@ -575,11 +576,13 @@ def ask_patient(
         )
         return ExchangeResult(student_message, patient_message, reused)
 
+    patient_prompt = effective_patient_prompt(session.case_version)
     try:
         result = patient_gateway.answer(
             question=content,
             facts=selected_facts,
             history=history,
+            patient_prompt=patient_prompt,
         )
     except GatewayError as error:
         student_message.response_status = ResponseStatus.FAILED
@@ -601,6 +604,7 @@ def ask_patient(
                 question=content,
                 facts=selected_facts,
                 history=history,
+                patient_prompt=patient_prompt,
             ),
             matched_fact_codes=[fact.code for fact in selected_facts],
             status=ModelCallStatus.FAILED,
@@ -643,6 +647,7 @@ def ask_patient(
             question=content,
             facts=selected_facts,
             history=history,
+            patient_prompt=patient_prompt,
         ),
         call_status=call_status,
         call_error=call_error,

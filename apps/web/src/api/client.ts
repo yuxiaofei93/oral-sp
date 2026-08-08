@@ -104,6 +104,10 @@ export type CaseDraft = {
   is_exam_mode: boolean
   time_limit_minutes: number
   enabled_stages: string[]
+  patient_prompt_mode: 'default' | 'custom'
+  patient_prompt: string
+  effective_patient_prompt: string
+  default_patient_prompt: string
   created_at: string
   updated_at: string
   patient_profile: PatientProfile
@@ -111,6 +115,14 @@ export type CaseDraft = {
   tests: CaseTest[]
   diagnosis_rules: DiagnosisRule[]
   scoring_items: ScoringItem[]
+}
+
+export type PatientPromptTemplate = {
+  id: number
+  name: string
+  content: string
+  updated_by_name: string
+  updated_at: string
 }
 
 export type CaseSummary = {
@@ -434,6 +446,8 @@ const validationFieldLabels: Record<string, string> = {
   title_internal: '病例名称',
   time_limit_minutes: '考试限时',
   enabled_stages: '病例阶段',
+  patient_prompt_mode: '提示词来源',
+  patient_prompt: '患者问诊提示词',
   display_name: '化名',
   age: '年龄',
   sex: '性别',
@@ -607,6 +621,21 @@ export async function listTeacherCases(): Promise<CaseSummary[]> {
 
 export function createTeacherCase(): Promise<CaseDraft> {
   return mutate<CaseDraft>('POST', '/api/teacher/cases/', {})
+}
+
+export async function getPatientPromptTemplate(): Promise<PatientPromptTemplate> {
+  const response = await fetch('/api/teacher/cases/patient-prompt-template/', {
+    credentials: 'same-origin',
+  })
+  return parseResponse<PatientPromptTemplate>(response)
+}
+
+export function savePatientPromptTemplate(content: string): Promise<PatientPromptTemplate> {
+  return mutate<PatientPromptTemplate>(
+    'PATCH',
+    '/api/teacher/cases/patient-prompt-template/',
+    { content },
+  )
 }
 
 export async function getCaseDraft(caseId: string): Promise<CaseDraft> {
