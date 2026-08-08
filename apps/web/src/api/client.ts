@@ -5,6 +5,7 @@ export type CurrentUser = {
   email: string
   display_name: string
   roles: UserRole[]
+  class_names: string[]
 }
 
 type AuthPayload = {

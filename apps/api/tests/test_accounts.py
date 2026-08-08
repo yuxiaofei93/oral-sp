@@ -118,6 +118,7 @@ def test_registration_assigns_student_role_and_consumes_code():
     assert response.status_code == 201
     assert response.json()["email"] == email
     assert response.json()["roles"] == [RoleCode.STUDENT]
+    assert response.json()["class_names"] == [class_group.name]
     student = User.objects.get(email=email)
     assert student.check_password(PASSWORD)
     assert student.email_verified_at is not None
@@ -127,6 +128,7 @@ def test_registration_assigns_student_role_and_consumes_code():
     me_response = client.get(reverse("auth-me"))
     assert me_response.status_code == 200
     assert me_response.json()["display_name"] == "测试学生"
+    assert me_response.json()["class_names"] == [class_group.name]
 
     assert client.post(reverse("auth-logout")).status_code == 403
     logout_response = csrf_post(client, reverse("auth-logout"), {})
@@ -215,6 +217,7 @@ def test_login_normalizes_email_and_returns_a_generic_error():
     )
     assert response.status_code == 200
     assert response.json()["email"] == "student@example.com"
+    assert response.json()["class_names"] == []
 
 
 @pytest.mark.django_db

@@ -46,6 +46,7 @@ describe('AuthPanel', () => {
           email: 'student@example.com',
           display_name: '测试学生',
           roles: ['student'],
+          class_names: ['A 班'],
         }), { status: 201 }))
       }
       if (url.endsWith('/student/assignments/')) {
@@ -97,9 +98,9 @@ describe('AuthPanel', () => {
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'MolarTraining!2026' } })
     fireEvent.click(screen.getByRole('button', { name: '注册' }))
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: '欢迎，测试学生' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: '你好，测试学生' })).toBeInTheDocument())
     expect(screen.queryByText('当前账号')).not.toBeInTheDocument()
-    expect(screen.getByText(/student@example.com/)).toBeInTheDocument()
+    expect(screen.getByText('student@example.com · A 班 · 学生')).toBeInTheDocument()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(7))
   })
 

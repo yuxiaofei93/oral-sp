@@ -12,16 +12,24 @@ from .verification import VerificationCodeError, consume_verification_code
 
 class UserSerializer(serializers.ModelSerializer):
     roles = serializers.SerializerMethodField()
+    class_names = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "display_name", "roles"]
+        fields = ["id", "email", "display_name", "roles", "class_names"]
 
     def get_roles(self, user: User) -> list[str]:
         roles = list(user.roles.values_list("code", flat=True))
         if user.is_superuser and RoleCode.ADMINISTRATOR not in roles:
             roles.append(RoleCode.ADMINISTRATOR)
         return sorted(roles)
+
+    def get_class_names(self, user: User) -> list[str]:
+        return list(
+            user.class_memberships.filter(class_group__is_active=True)
+            .order_by("class_group__code")
+            .values_list("class_group__name", flat=True)
+        )
 
 
 class NormalizedEmailField(serializers.EmailField):

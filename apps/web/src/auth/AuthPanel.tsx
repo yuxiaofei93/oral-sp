@@ -84,6 +84,13 @@ function canAccessPortal(user: CurrentUser, portal: Portal) {
     : user.roles.some((role) => role === 'teacher' || role === 'administrator')
 }
 
+function accountMeta(user: CurrentUser) {
+  const details = [user.email]
+  if (user.roles.includes('student')) details.push(...user.class_names)
+  details.push(user.roles.map((role) => roleNames[role]).join('、'))
+  return details.join(' · ')
+}
+
 export function AuthPanel({ portal }: AuthPanelProps) {
   const [mode, setMode] = useState<Mode>('login')
   const [user, setUser] = useState<CurrentUser | null>()
@@ -276,10 +283,8 @@ export function AuthPanel({ portal }: AuthPanelProps) {
       <div className="authenticated-area">
         <section className="auth-card auth-card--account" aria-labelledby="welcome-title">
           <div>
-            <h2 id="welcome-title">欢迎，{user.display_name}</h2>
-            <p className="account-meta">
-              {user.email} · {user.roles.map((role) => roleNames[role]).join('、')}
-            </p>
+            <h2 id="welcome-title">你好，{user.display_name}</h2>
+            <p className="account-meta">{accountMeta(user)}</p>
           </div>
           <button className="button button--secondary" onClick={handleLogout} disabled={submitting}>
             退出登录
