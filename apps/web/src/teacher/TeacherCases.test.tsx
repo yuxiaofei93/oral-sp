@@ -42,7 +42,7 @@ describe('TeacherCases', () => {
     vi.restoreAllMocks()
   })
 
-  it('creates an unnamed draft and enters teaching settings immediately', async () => {
+  it('creates an unnamed draft and enters basic information immediately', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input)
       if (url.endsWith('/teacher/cases/') && !init?.method) {
@@ -65,7 +65,7 @@ describe('TeacherCases', () => {
     fireEvent.click(await screen.findByRole('button', { name: '新建病例' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '教学设置' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: '基础信息' })).toBeInTheDocument()
     })
     expect(screen.getByRole('heading', { name: '未命名病例' })).toBeInTheDocument()
   })

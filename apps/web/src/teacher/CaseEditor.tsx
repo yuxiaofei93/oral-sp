@@ -12,8 +12,7 @@ import {
 } from '../api/client'
 
 const editorSections = [
-  { id: 'teaching-settings', label: '教学设置' },
-  { id: 'patient-profile', label: '患者身份' },
+  { id: 'basic-info', label: '基础信息' },
   { id: 'patient-facts', label: '患者事实' },
   { id: 'case-tests', label: '检查资料' },
   { id: 'diagnosis-rules', label: '诊断规则' },
@@ -217,7 +216,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
         </nav>
 
         <div className="editor-content">
-          <EditorCard id="teaching-settings" title="教学设置">
+          <EditorCard id="basic-info" title="基础信息">
             <div className="form-grid">
               <label>
                 病例名称（仅教师可见）
@@ -233,11 +232,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                   onChange={(event) => setField('time_limit_minutes', Number(event.target.value))}
                 />
               </label>
-            </div>
-          </EditorCard>
-
-          <EditorCard id="patient-profile" title="患者身份与表达方式">
-            <div className="form-grid">
               <label>
                 化名
                 <input value={draft.patient_profile.display_name} onChange={(event) => setProfile('display_name', event.target.value)} />
@@ -264,14 +258,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
               <label>
                 职业
                 <input value={draft.patient_profile.occupation} onChange={(event) => setProfile('occupation', event.target.value)} />
-              </label>
-              <label>
-                性格与配合程度
-                <input value={draft.patient_profile.personality} onChange={(event) => setProfile('personality', event.target.value)} />
-              </label>
-              <label>
-                当前情绪
-                <input value={draft.patient_profile.emotion} onChange={(event) => setProfile('emotion', event.target.value)} />
               </label>
               <label className="form-grid__wide">
                 患者开场白(必填)
