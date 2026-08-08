@@ -326,9 +326,7 @@ export function StudentAssignments() {
     <section className="student-workspace" aria-labelledby="student-tasks-title">
       <header className="workspace-header">
         <div>
-          <p className="eyebrow">STUDENT EXAMS</p>
-          <h2 id="student-tasks-title">我的问诊任务</h2>
-          <p>每个任务仅有一次作答机会。开始后由服务端记录倒计时。</p>
+          <h2 id="student-tasks-title">问诊任务</h2>
         </div>
       </header>
       {error && <p className="form-error">{error}</p>}

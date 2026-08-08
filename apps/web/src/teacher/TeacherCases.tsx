@@ -73,9 +73,7 @@ export function TeacherCases() {
     <section className="teacher-workspace" aria-labelledby="teacher-cases-title">
       <header className="workspace-header">
         <div>
-          <p className="eyebrow">TEACHER WORKSPACE</p>
-          <h2 id="teacher-cases-title">结构化病例</h2>
-          <p>用标准表单维护病例事实、检查、诊断和评分规则，不需要编写提示词。</p>
+          <h2 id="teacher-cases-title">病例库</h2>
         </div>
         <button className="button" type="button" disabled={loading} onClick={() => void handleCreate()}>
           新建病例

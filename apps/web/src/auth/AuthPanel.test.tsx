@@ -274,6 +274,6 @@ describe('AuthPanel', () => {
       'href',
       'http://localhost:5173/',
     )
-    expect(screen.queryByRole('heading', { name: '我的问诊任务' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '问诊任务' })).not.toBeInTheDocument()
   })
 })

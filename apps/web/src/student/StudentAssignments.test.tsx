@@ -87,6 +87,9 @@ describe('StudentAssignments', () => {
     })
 
     render(<StudentAssignments />)
+    expect(await screen.findByRole('heading', { name: '问诊任务' })).toBeInTheDocument()
+    expect(screen.queryByText('STUDENT EXAMS')).not.toBeInTheDocument()
+    expect(screen.queryByText('每个任务仅有一次作答机会。开始后由服务端记录倒计时。')).not.toBeInTheDocument()
     await waitFor(() => screen.getByRole('button', { name: '开始作答' }))
     fireEvent.click(screen.getByRole('button', { name: '开始作答' }))
     await waitFor(() => screen.getByRole('heading', { name: '牙周问诊练习' }))

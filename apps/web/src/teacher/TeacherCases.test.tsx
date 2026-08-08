@@ -59,6 +59,9 @@ describe('TeacherCases', () => {
     })
 
     render(<TeacherCases />)
+    expect(await screen.findByRole('heading', { name: '病例库' })).toBeInTheDocument()
+    expect(screen.queryByText('TEACHER WORKSPACE')).not.toBeInTheDocument()
+    expect(screen.queryByText('用标准表单维护病例事实、检查、诊断和评分规则，不需要编写提示词。')).not.toBeInTheDocument()
     fireEvent.click(await screen.findByRole('button', { name: '新建病例' }))
 
     await waitFor(() => {
