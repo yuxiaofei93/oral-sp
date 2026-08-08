@@ -4,9 +4,9 @@ import {
   ApiError,
   TeachingClass,
   createTeachingClass,
-  deleteTeachingClass,
   listTeachingClasses,
   removeClassStudent,
+  transferClassStudent,
 } from '../api/client'
 
 export function ClassManagement() {
@@ -15,6 +15,8 @@ export function ClassManagement() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [transferStudentId, setTransferStudentId] = useState('')
+  const [transferTargetClassId, setTransferTargetClassId] = useState('')
 
   async function loadData() {
     setLoading(true)
@@ -60,18 +62,32 @@ export function ClassManagement() {
     }
   }
 
-  async function handleDelete(classGroup: TeachingClass) {
-    if (!globalThis.confirm(`确定删除班级“${classGroup.name}”吗？历史任务和记录会保留。`)) return
+  function startTransfer(studentId: string) {
+    const firstTarget = classes.find((item) => item.id !== selectedClassId)
+    setTransferStudentId(studentId)
+    setTransferTargetClassId(firstTarget?.id ?? '')
+    setError('')
+    setMessage('')
+  }
+
+  async function handleTransfer(studentId: string, studentName: string) {
+    if (!selectedClass || !transferTargetClassId) return
+    const targetClass = classes.find((item) => item.id === transferTargetClassId)
+    if (!targetClass) return
+    if (!globalThis.confirm(
+      `确定将“${studentName}”转入“${targetClass.name}”吗？已有任务名单不会改变。`,
+    )) return
     setLoading(true)
     setError('')
     setMessage('')
     try {
-      await deleteTeachingClass(classGroup.id)
-      if (selectedClassId === classGroup.id) setSelectedClassId('')
-      setMessage('班级已删除，历史任务和记录保持不变。')
+      await transferClassStudent(selectedClass.id, studentId, targetClass.id)
+      setTransferStudentId('')
+      setTransferTargetClassId('')
+      setMessage(`学生已转入“${targetClass.name}”，已有任务名单保持不变。`)
       await loadData()
     } catch (requestError: unknown) {
-      setError(requestError instanceof ApiError ? requestError.message : '班级删除失败。')
+      setError(requestError instanceof ApiError ? requestError.message : '学生转班失败。')
     } finally {
       setLoading(false)
     }
@@ -131,14 +147,6 @@ export function ClassManagement() {
                 >
                   管理学生
                 </button>
-                <button
-                  className="text-button text-button--danger"
-                  type="button"
-                  disabled={loading}
-                  onClick={() => handleDelete(classGroup)}
-                >
-                  删除班级
-                </button>
               </div>
             </header>
           </article>
@@ -156,14 +164,62 @@ export function ClassManagement() {
               {selectedClass.students.map((student) => (
                 <article key={student.id}>
                   <div><strong>{student.display_name}</strong><span>{student.email}</span></div>
-                  <button
-                    className="text-button text-button--danger"
-                    type="button"
-                    disabled={loading}
-                    onClick={() => handleRemoveStudent(student.id)}
-                  >
-                    移出班级
-                  </button>
+                  <div className="roster-list__actions">
+                    {transferStudentId === student.id ? (
+                      <>
+                        <label className="roster-list__transfer-field">
+                          <span>转入班级</span>
+                          <select
+                            aria-label={`选择${student.display_name}的目标班级`}
+                            value={transferTargetClassId}
+                            onChange={(event) => setTransferTargetClassId(event.target.value)}
+                            disabled={loading}
+                          >
+                            {classes.filter((item) => item.id !== selectedClass.id).map((item) => (
+                              <option key={item.id} value={item.id}>{item.code} · {item.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          className="text-button"
+                          type="button"
+                          disabled={loading || !transferTargetClassId}
+                          onClick={() => handleTransfer(student.id, student.display_name)}
+                        >
+                          确认转班
+                        </button>
+                        <button
+                          className="text-button"
+                          type="button"
+                          disabled={loading}
+                          onClick={() => {
+                            setTransferStudentId('')
+                            setTransferTargetClassId('')
+                          }}
+                        >
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="text-button"
+                        type="button"
+                        disabled={loading || classes.length < 2}
+                        title={classes.length < 2 ? '请先创建另一个班级' : undefined}
+                        onClick={() => startTransfer(student.id)}
+                      >
+                        转班
+                      </button>
+                    )}
+                    <button
+                      className="text-button text-button--danger"
+                      type="button"
+                      disabled={loading}
+                      onClick={() => handleRemoveStudent(student.id)}
+                    >
+                      移出班级
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>

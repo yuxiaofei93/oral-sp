@@ -39,6 +39,8 @@ describe('ClassManagement', () => {
     expect(screen.getByRole('heading', { name: 'A 班学生名单' })).toBeInTheDocument()
     expect(screen.getByText('学生甲')).toBeInTheDocument()
     expect(screen.getByText('student@example.com')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '删除班级' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '转班' })).toBeDisabled()
   })
 
   it('creates a class without selecting a course', async () => {
@@ -78,16 +80,31 @@ describe('ClassManagement', () => {
     expect(screen.getByText('班级已创建，学生注册时可以选择该班级。')).toBeInTheDocument()
   })
 
-  it('archives a class while keeping historical records', async () => {
-    let classes = [classRecord]
+  it('transfers a student to another class while keeping historical rosters', async () => {
+    const targetClass = {
+      ...classRecord,
+      id: 'class-2',
+      code: 'CLASS-B',
+      name: 'B 班',
+      student_count: 0,
+      students: [],
+    }
+    let classes = [classRecord, targetClass]
     vi.spyOn(globalThis, 'confirm').mockReturnValue(true)
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input)
       if (url.endsWith('/csrf/')) {
         return Promise.resolve(new Response('{"csrf_token":"teacher-csrf"}', { status: 200 }))
       }
-      if (url.endsWith('/teacher/teaching/classes/class-1/') && init?.method === 'DELETE') {
-        classes = []
+      if (
+        url.endsWith('/teacher/teaching/classes/class-1/students/student-1/')
+        && init?.method === 'PATCH'
+      ) {
+        expect(JSON.parse(String(init.body))).toEqual({ target_class_id: 'class-2' })
+        classes = [
+          { ...classRecord, student_count: 0, students: [] },
+          { ...targetClass, student_count: 1, students: classRecord.students },
+        ]
         return Promise.resolve(new Response(null, { status: 204 }))
       }
       if (url.endsWith('/teacher/teaching/classes/')) {
@@ -97,9 +114,13 @@ describe('ClassManagement', () => {
     })
 
     render(<ClassManagement />)
-    await waitFor(() => screen.getByRole('button', { name: '删除班级' }))
-    fireEvent.click(screen.getByRole('button', { name: '删除班级' }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: '管理学生' })).toHaveLength(2))
+    fireEvent.click(screen.getAllByRole('button', { name: '管理学生' })[0])
+    fireEvent.click(screen.getByRole('button', { name: '转班' }))
+    expect(screen.getByLabelText('选择学生甲的目标班级')).toHaveValue('class-2')
+    fireEvent.click(screen.getByRole('button', { name: '确认转班' }))
 
-    expect(await screen.findByText('班级已删除，历史任务和记录保持不变。')).toBeInTheDocument()
+    expect(await screen.findByText('学生已转入“B 班”，已有任务名单保持不变。')).toBeInTheDocument()
+    expect(screen.getByText('班级中还没有学生。')).toBeInTheDocument()
   })
 })

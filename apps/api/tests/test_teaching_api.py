@@ -113,6 +113,109 @@ def test_teacher_archives_class_without_deleting_historical_structure():
 
 
 @pytest.mark.django_db
+def test_teacher_transfers_student_to_another_owned_class():
+    teacher = make_user("teacher-transfer", RoleCode.TEACHER)
+    student = make_user("student-transfer", RoleCode.STUDENT)
+    source_class = ClassGroup.objects.create(
+        code="TRANSFER-A",
+        name="原班级",
+        created_by=teacher,
+    )
+    target_class = ClassGroup.objects.create(
+        code="TRANSFER-B",
+        name="目标班级",
+        created_by=teacher,
+    )
+    ClassMembership.objects.create(class_group=source_class, student=student)
+    client = APIClient()
+    client.force_authenticate(teacher)
+
+    response = client.patch(
+        reverse(
+            "teacher-class-roster-member",
+            kwargs={"class_id": source_class.id, "student_id": student.id},
+        ),
+        {"target_class_id": str(target_class.id)},
+        format="json",
+    )
+
+    assert response.status_code == 204
+    assert not ClassMembership.objects.filter(
+        class_group=source_class,
+        student=student,
+    ).exists()
+    assert ClassMembership.objects.filter(
+        class_group=target_class,
+        student=student,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_teacher_cannot_transfer_student_to_another_teachers_class():
+    teacher = make_user("teacher-transfer-owner", RoleCode.TEACHER)
+    other_teacher = make_user("teacher-transfer-other", RoleCode.TEACHER)
+    student = make_user("student-transfer-private", RoleCode.STUDENT)
+    source_class = ClassGroup.objects.create(
+        code="TRANSFER-PRIVATE-A",
+        name="原班级",
+        created_by=teacher,
+    )
+    target_class = ClassGroup.objects.create(
+        code="TRANSFER-PRIVATE-B",
+        name="其他教师班级",
+        created_by=other_teacher,
+    )
+    ClassMembership.objects.create(class_group=source_class, student=student)
+    client = APIClient()
+    client.force_authenticate(teacher)
+
+    response = client.patch(
+        reverse(
+            "teacher-class-roster-member",
+            kwargs={"class_id": source_class.id, "student_id": student.id},
+        ),
+        {"target_class_id": str(target_class.id)},
+        format="json",
+    )
+
+    assert response.status_code == 404
+    assert ClassMembership.objects.filter(
+        class_group=source_class,
+        student=student,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_teacher_cannot_transfer_student_to_the_same_class():
+    teacher = make_user("teacher-transfer-same", RoleCode.TEACHER)
+    student = make_user("student-transfer-same", RoleCode.STUDENT)
+    class_group = ClassGroup.objects.create(
+        code="TRANSFER-SAME",
+        name="当前班级",
+        created_by=teacher,
+    )
+    ClassMembership.objects.create(class_group=class_group, student=student)
+    client = APIClient()
+    client.force_authenticate(teacher)
+
+    response = client.patch(
+        reverse(
+            "teacher-class-roster-member",
+            kwargs={"class_id": class_group.id, "student_id": student.id},
+        ),
+        {"target_class_id": str(class_group.id)},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_student_transfer"
+    assert ClassMembership.objects.filter(
+        class_group=class_group,
+        student=student,
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_student_cannot_access_class_management_api():
     student = make_user("student-no-access", RoleCode.STUDENT)
     client = APIClient()

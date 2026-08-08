@@ -698,12 +698,18 @@ export function createTeachingClass(payload: {
   return mutate('POST', '/api/teacher/teaching/classes/', payload)
 }
 
-export function deleteTeachingClass(classId: string): Promise<void> {
-  return mutate('DELETE', `/api/teacher/teaching/classes/${classId}/`)
-}
-
 export function removeClassStudent(classId: string, studentId: string): Promise<void> {
   return mutate('DELETE', `/api/teacher/teaching/classes/${classId}/students/${studentId}/`)
+}
+
+export function transferClassStudent(
+  classId: string,
+  studentId: string,
+  targetClassId: string,
+): Promise<void> {
+  return mutate('PATCH', `/api/teacher/teaching/classes/${classId}/students/${studentId}/`, {
+    target_class_id: targetClassId,
+  })
 }
 
 export async function listTeacherAssignments(): Promise<TeacherAssignment[]> {

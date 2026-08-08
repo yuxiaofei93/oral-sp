@@ -783,6 +783,28 @@ h1 {
   gap: 3px;
 }
 
+.roster-list article > .roster-list__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.roster-list__transfer-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.roster-list__transfer-field select {
+  min-height: 38px;
+  border: 1px solid #cbd9d6;
+  border-radius: 9px;
+  padding: 7px 10px;
+  color: #19332f;
+  background: #fff;
+}
+
 .text-button--danger {
   color: #a64034;
 }
@@ -1402,6 +1424,12 @@ h1 {
   .review-score-grid article {
     align-items: stretch;
     grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .roster-list article > .roster-list__actions,
+  .roster-list__transfer-field {
+    align-items: stretch;
     flex-direction: column;
   }
 }

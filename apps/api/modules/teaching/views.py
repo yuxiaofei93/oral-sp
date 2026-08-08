@@ -8,12 +8,17 @@ from modules.accounts.models import RoleCode
 from modules.accounts.permissions import IsTeacherOrAdministrator
 
 from .models import ClassGroup, ClassMembership
-from .serializers import ClassGroupCreateSerializer, ClassGroupSerializer
+from .serializers import (
+    ClassGroupCreateSerializer,
+    ClassGroupSerializer,
+    StudentTransferSerializer,
+)
 from .services import (
     TeachingError,
     archive_class_group,
     create_class_group,
     remove_student,
+    transfer_student,
 )
 
 
@@ -37,7 +42,7 @@ def teacher_class_queryset(user):
 def teaching_error_response(error: TeachingError) -> Response:
     return Response(
         {"detail": str(error), "code": error.code},
-        status=status.HTTP_403_FORBIDDEN,
+        status=getattr(error, "status_code", status.HTTP_400_BAD_REQUEST),
     )
 
 
@@ -69,6 +74,29 @@ class TeacherClassDetailView(APIView):
 
 class TeacherClassRosterMemberView(APIView):
     permission_classes = [IsTeacherOrAdministrator]
+
+    def patch(self, request, class_id, student_id):
+        class_group = get_object_or_404(teacher_class_queryset(request.user), pk=class_id)
+        membership = get_object_or_404(
+            ClassMembership.objects.select_related("class_group"),
+            class_group=class_group,
+            student_id=student_id,
+        )
+        serializer = StudentTransferSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_class = get_object_or_404(
+            teacher_class_queryset(request.user),
+            pk=serializer.validated_data["target_class"].pk,
+        )
+        try:
+            transfer_student(
+                membership=membership,
+                target_class=target_class,
+                user=request.user,
+            )
+        except TeachingError as error:
+            return teaching_error_response(error)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def delete(self, request, class_id, student_id):
         class_group = get_object_or_404(teacher_class_queryset(request.user), pk=class_id)

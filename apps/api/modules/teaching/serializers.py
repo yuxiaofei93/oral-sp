@@ -40,3 +40,10 @@ class ClassGroupCreateSerializer(serializers.Serializer):
         if ClassGroup.objects.filter(code=value).exists():
             raise serializers.ValidationError("班级编号已经存在。")
         return value
+
+
+class StudentTransferSerializer(serializers.Serializer):
+    target_class_id = serializers.PrimaryKeyRelatedField(
+        source="target_class",
+        queryset=ClassGroup.objects.filter(is_active=True),
+    )
