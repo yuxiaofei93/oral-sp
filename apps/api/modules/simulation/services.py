@@ -10,13 +10,17 @@ from modules.accounts.models import RoleCode
 from modules.cases.models import DisclosureMode, VersionStatus
 
 from .gateways import (
+    PATIENT_ANSWER_PROMPT_VERSION,
+    PATIENT_ROUTE_PROMPT_VERSION,
     GatewayError,
     GatewayResult,
     PatientFact,
     PatientGateway,
     RoutingResult,
+    answer_repeats_written_fact,
     get_patient_gateway,
     request_hash,
+    spoken_patient_fallback,
 )
 from .models import (
     AIEvaluationRun,
@@ -424,6 +428,7 @@ def _save_patient_response(
                 student_message=locked_student,
                 provider=result.provider,
                 model=result.model,
+                prompt_version=PATIENT_ANSWER_PROMPT_VERSION,
                 request_hash=hashed_request,
                 matched_fact_codes=result.fact_codes,
                 status=ModelCallStatus.FAILED,
@@ -452,6 +457,7 @@ def _save_patient_response(
             patient_message=patient_message,
             provider=result.provider,
             model=result.model,
+            prompt_version=PATIENT_ANSWER_PROMPT_VERSION,
             request_hash=hashed_request,
             matched_fact_codes=result.fact_codes,
             status=call_status,
@@ -476,7 +482,7 @@ def _save_routing_call(
         student_message=student_message,
         provider=result.provider,
         model=result.model,
-        prompt_version="patient-route-v1",
+        prompt_version=PATIENT_ROUTE_PROMPT_VERSION,
         request_hash=hashed_request,
         matched_fact_codes=result.fact_codes,
         status=status,
@@ -545,7 +551,7 @@ def ask_patient(
             model=(
                 getattr(client, "model", "") or os.environ.get("LLM_MODEL", "unavailable")
             ),
-            prompt_version="patient-route-v1",
+            prompt_version=PATIENT_ROUTE_PROMPT_VERSION,
             request_hash=route_hash,
             matched_fact_codes=[],
             status=ModelCallStatus.FAILED,
@@ -591,6 +597,7 @@ def ask_patient(
             model=(
                 getattr(client, "model", "") or os.environ.get("LLM_MODEL", "unavailable")
             ),
+            prompt_version=PATIENT_ANSWER_PROMPT_VERSION,
             request_hash=request_hash(
                 question=content,
                 facts=selected_facts,
@@ -603,14 +610,16 @@ def ask_patient(
         raise ModelUnavailableError("患者模型暂时不可用，请稍后重试。") from error
 
     allowed_codes = {fact.code for fact in selected_facts}
-    invalid = (
+    response_not_conversational = answer_repeats_written_fact(result.answer, selected_facts)
+    response_validation_failed = (
         not result.fact_codes
         or not set(result.fact_codes).issubset(allowed_codes)
         or _diagnosis_leaked(session, result.answer)
     )
+    invalid = response_validation_failed or response_not_conversational
     if invalid:
         result = GatewayResult(
-            answer=" ".join(fact.patient_expression for fact in selected_facts),
+            answer=spoken_patient_fallback(selected_facts, question=content),
             fact_codes=[fact.code for fact in selected_facts],
             provider=result.provider,
             model=result.model,
@@ -619,7 +628,11 @@ def ask_patient(
             output_tokens=result.output_tokens,
         )
         call_status = ModelCallStatus.FAILED
-        call_error = "response_validation_failed"
+        call_error = (
+            "response_validation_failed"
+            if response_validation_failed
+            else "response_not_conversational"
+        )
     else:
         call_status = ModelCallStatus.SUCCEEDED
         call_error = ""

@@ -285,7 +285,7 @@ def test_question_is_idempotent_and_sent_messages_are_immutable():
         client_message_id="question_0001",
     )
 
-    assert first.patient_message.content == "牙龈疼痛病程约三年"
+    assert first.patient_message.content == "差不多有三年了。"
     assert second.reused is True
     assert second.patient_message.id == first.patient_message.id
     assert Message.objects.filter(session=session).count() == 2
@@ -309,7 +309,7 @@ def test_local_router_matches_fact_content():
         client_message_id="question_fact_content_01",
     )
 
-    assert exchange.patient_message.content == "牙龈疼痛病程约三年"
+    assert exchange.patient_message.content == "差不多有三年了。"
 
 
 class DiagnosisLeakingGateway(PatientGateway):
@@ -337,7 +337,7 @@ def test_diagnosis_leak_is_replaced_by_safe_fact_response_and_audited():
         gateway=DiagnosisLeakingGateway(),
     )
 
-    assert exchange.patient_message.content == "牙龈疼痛病程约三年"
+    assert exchange.patient_message.content == "差不多有三年了。"
     call = session.model_calls.get(patient_message__isnull=False)
     assert call.status == ModelCallStatus.FAILED
     assert call.error_code == "response_validation_failed"
@@ -364,7 +364,7 @@ class SemanticRoutingGateway(PatientGateway):
         del question
         assert history == self.histories[-1]
         return GatewayResult(
-            answer=facts[0].patient_expression,
+            answer="差不多有三年了。",
             fact_codes=[facts[0].code],
             provider="deepseek",
             model="deepseek-v4-flash",
@@ -387,12 +387,44 @@ def test_semantic_router_maps_natural_question_without_teacher_keyword():
         gateway=SemanticRoutingGateway(),
     )
 
-    assert exchange.patient_message.content == "牙龈疼痛病程约三年"
+    assert exchange.patient_message.content == "差不多有三年了。"
     route_call = session.model_calls.get(prompt_version="patient-route-v1")
     assert route_call.provider == "deepseek"
     assert route_call.matched_fact_codes == ["history.duration"]
     answer_call = session.model_calls.get(patient_message__isnull=False)
     assert answer_call.matched_fact_codes == ["history.duration"]
+
+
+class WrittenFactRepeatingGateway(PatientGateway):
+    def answer(self, *, question, facts, history):
+        del question, history
+        return GatewayResult(
+            answer=facts[0].patient_expression,
+            fact_codes=[facts[0].code],
+            provider="test-provider",
+            model="written-note-model",
+            latency_ms=10,
+        )
+
+
+@pytest.mark.django_db
+def test_written_fact_is_replaced_by_spoken_response_and_audited():
+    _, student, assignment = make_exam_data(suffix="0")
+    session = start_session(assignment=assignment, student=student).session
+
+    exchange = ask_patient(
+        session=session,
+        student=student,
+        content="牙龈疼痛有多久了？",
+        client_message_id="written_fact_question_01",
+        gateway=WrittenFactRepeatingGateway(),
+    )
+
+    assert exchange.patient_message.content == "差不多有三年了。"
+    call = session.model_calls.get(patient_message__isnull=False)
+    assert call.status == ModelCallStatus.FAILED
+    assert call.error_code == "response_not_conversational"
+    assert call.prompt_version == "patient-answer-v2"
 
 
 @pytest.mark.django_db
@@ -530,7 +562,7 @@ def test_student_api_runs_idempotent_interview_exchange():
     second = client.post(message_url, payload, format="json")
 
     assert first.status_code == 200
-    assert first.json()["patient_message"]["content"] == "牙龈疼痛病程约三年"
+    assert first.json()["patient_message"]["content"] == "差不多有三年了。"
     assert second.status_code == 200
     assert second.json()["reused"] is True
     assert second.json()["patient_message"]["id"] == first.json()["patient_message"]["id"]

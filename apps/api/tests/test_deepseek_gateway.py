@@ -1,7 +1,11 @@
 import json
 
 from modules.simulation.ai_evaluation import OpenAICompatibleAIEvaluationGateway
-from modules.simulation.gateways import OpenAICompatiblePatientGateway, PatientFact
+from modules.simulation.gateways import (
+    OpenAICompatiblePatientGateway,
+    PatientFact,
+    spoken_patient_fallback,
+)
 
 
 class JsonResponse:
@@ -24,6 +28,22 @@ def configure_deepseek(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.setenv("LLM_MODEL", "deepseek-v4-flash")
     monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "12")
+
+
+def test_spoken_fallback_answers_the_question_without_losing_fact_meaning():
+    facts = [
+        PatientFact(
+            code="history.duration",
+            patient_expression="牙龈疼痛病程约三年",
+            certainty="certain",
+        )
+    ]
+
+    assert spoken_patient_fallback(facts, question="疼了多久？") == "差不多有三年了。"
+    assert (
+        spoken_patient_fallback(facts, question="牙龈怎么不舒服？")
+        == "我牙龈疼，差不多有三年了。"
+    )
 
 
 def test_deepseek_patient_gateway_disables_thinking_and_retries_empty_json(monkeypatch):
@@ -134,6 +154,73 @@ def test_deepseek_patient_gateway_routes_semantic_question_to_fact_code(monkeypa
     assert result.fact_codes == ["history.duration"]
     assert result.confidence == 0.96
     assert result.input_tokens == 80
+
+
+def test_patient_gateway_retries_a_verbatim_written_fact_as_spoken_language(monkeypatch):
+    configure_deepseek(monkeypatch)
+    requests = []
+    responses = iter(
+        [
+            JsonResponse(
+                {
+                    "model": "deepseek-v4-flash",
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {
+                                "content": (
+                                    '{"answer":"嗯，牙龈疼痛病程约三年。",'
+                                    '"fact_codes":["history.duration"]}'
+                                )
+                            },
+                        }
+                    ],
+                }
+            ),
+            JsonResponse(
+                {
+                    "model": "deepseek-v4-flash",
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {
+                                "content": (
+                                    '{"answer":"差不多有三年了。",'
+                                    '"fact_codes":["history.duration"]}'
+                                )
+                            },
+                        }
+                    ],
+                }
+            ),
+        ]
+    )
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        requests.append(json.loads(request.data.decode("utf-8")))
+        return next(responses)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    result = OpenAICompatiblePatientGateway(provider="deepseek").answer(
+        question="疼了多久？",
+        facts=[
+            PatientFact(
+                code="history.duration",
+                patient_expression="牙龈疼痛病程约三年",
+                certainty="certain",
+            )
+        ],
+        history=[],
+    )
+
+    assert result.answer == "差不多有三年了。"
+    assert len(requests) == 2
+    assert "不要逐字复制" in requests[0]["messages"][0]["content"]
+    assert any(
+        "上一版回答仍在照抄" in message["content"]
+        for message in requests[1]["messages"]
+    )
 
 
 def test_deepseek_ai_evaluation_uses_low_reasoning_effort(monkeypatch):
