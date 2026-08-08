@@ -432,7 +432,7 @@ def test_written_fact_is_replaced_by_spoken_response_and_audited():
     call = session.model_calls.get(patient_message__isnull=False)
     assert call.status == ModelCallStatus.FAILED
     assert call.error_code == "response_not_conversational"
-    assert call.prompt_version == "patient-answer-v2"
+    assert call.prompt_version == "patient-answer-v3"
 
 
 @pytest.mark.django_db
@@ -447,10 +447,14 @@ def test_unrelated_question_uses_system_default_response_after_empty_route():
         client_message_id="unrelated_question_01",
     )
 
-    assert exchange.patient_message.content == "这个我不太清楚。"
+    assert (
+        exchange.patient_message.content
+        == "这个我不太清楚。要不我们还是聊聊我这次口腔不舒服的情况吧。"
+    )
     assert session.model_calls.filter(prompt_version="patient-route-v1").count() == 1
     answer_call = session.model_calls.get(patient_message__isnull=False)
     assert answer_call.provider == "rules"
+    assert answer_call.model == "unknown-fact-policy-v2"
     assert answer_call.matched_fact_codes == []
 
 

@@ -561,10 +561,10 @@ def ask_patient(
     selected_facts = [fact_by_code[code] for code in route.fact_codes]
     if not selected_facts:
         result = GatewayResult(
-            answer="这个我不太清楚。",
+            answer="这个我不太清楚。要不我们还是聊聊我这次口腔不舒服的情况吧。",
             fact_codes=[],
             provider="rules",
-            model="unknown-fact-policy-v1",
+            model="unknown-fact-policy-v2",
             latency_ms=1,
         )
         patient_message = _save_patient_response(
