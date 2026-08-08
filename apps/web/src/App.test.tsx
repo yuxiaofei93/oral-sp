@@ -18,7 +18,7 @@ describe('App', () => {
     render(<App />)
 
     expect(screen.getByRole('heading', { name: '口腔门诊模拟问诊系统' })).toBeInTheDocument()
-    expect(screen.getByText('面向口腔医学教学的模拟患者问诊与临床思维训练平台。')).toBeInTheDocument()
+    expect(screen.queryByText('面向口腔医学教学的模拟患者问诊与临床思维训练平台。')).not.toBeInTheDocument()
     expect(screen.queryByText('仅用于教学模拟，不用于真实患者诊疗。')).not.toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument())
     expect(screen.queryByRole('heading', { name: '学生登录' })).not.toBeInTheDocument()
@@ -59,6 +59,7 @@ describe('App', () => {
 
     const { unmount } = render(<PortalApp portal="teacher" />)
     expect(screen.getByRole('heading', { name: '口腔模拟问诊系统管理后台' })).toBeInTheDocument()
+    expect(screen.queryByText('口腔医学模拟问诊的病例、班级与教学任务管理平台。')).not.toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument())
     expect(screen.queryByRole('heading', { name: '教师登录' })).not.toBeInTheDocument()
     expect(screen.queryByText('请使用已由管理员授权的教师或管理员账号登录。')).not.toBeInTheDocument()

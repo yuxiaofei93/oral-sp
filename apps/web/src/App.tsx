@@ -8,18 +8,15 @@ export function PortalApp({ portal }: { portal: Portal }) {
   const portalCopy = portal === 'student'
     ? {
         title: '口腔门诊模拟问诊系统',
-        summary: '面向口腔医学教学的模拟患者问诊与临床思维训练平台。',
       }
     : {
         title: '口腔模拟问诊系统管理后台',
-        summary: '口腔医学模拟问诊的病例、班级与教学任务管理平台。',
       }
 
   return (
     <main className={`shell shell--portal shell--${portal}`}>
       <header className="portal-header" aria-labelledby="portal-title">
         <h1 id="portal-title">{portalCopy.title}</h1>
-        <p className="summary">{portalCopy.summary}</p>
       </header>
 
       <AuthPanel portal={portal} />
