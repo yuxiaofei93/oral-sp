@@ -81,7 +81,7 @@ describe('CaseEditor', () => {
     expect(screen.getByRole('heading', { name: '基础信息' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '教学设置' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '患者身份与表达方式' })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '患者事实库（0）' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '患者信息 [0点]' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '检查资料（0）' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '诊断规则（0）' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '评分规则（0）' })).toBeInTheDocument()
@@ -98,6 +98,7 @@ describe('CaseEditor', () => {
     expect(screen.getByLabelText('患者开场白(必填)')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '添加事实信息点' }))
+    expect(screen.getByRole('heading', { name: '患者信息 [1点]' })).toBeInTheDocument()
     expect(screen.getByText('信息点 1')).toBeInTheDocument()
     expect(screen.queryByLabelText('信息点编码')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('标准事实')).not.toBeInTheDocument()
@@ -106,14 +107,15 @@ describe('CaseEditor', () => {
     expect(screen.queryByLabelText('病例未提供时的回答')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('事实点分值')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('必问信息点')).not.toBeInTheDocument()
-    const factContentInput = screen.getByLabelText('事实内容')
+    expect(screen.getByText('填写患者病情相关信息，AI 会在问诊中以患者口吻自然表达。')).toBeInTheDocument()
+    const factContentInput = screen.getByLabelText('内容')
     fireEvent.change(factContentInput, { target: { value: '病程约三年' } })
     factContentInput.focus()
     expect(screen.queryByLabelText('语义路由提示词（可选，逗号分隔）')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('典型同义问法（可选，逗号分隔）')).not.toBeInTheDocument()
     await waitFor(() => expect(savedBodies).toHaveLength(1), { timeout: 2000 })
     await waitFor(() => expect(screen.getByText('已自动保存')).toBeInTheDocument())
-    expect(screen.getByLabelText('事实内容')).toBe(factContentInput)
+    expect(screen.getByLabelText('内容')).toBe(factContentInput)
     expect(factContentInput).toHaveFocus()
     expect(savedBodies[0]).toMatchObject({
       title_internal: '牙龈疼痛教学病例',
@@ -159,7 +161,7 @@ describe('CaseEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加检查' }))
 
     expect(await screen.findByText(
-      '患者事实 1 / 事实内容：该字段不能为空。；检查资料 1 / 检查名称：该字段不能为空。',
+      '患者事实 1 / 内容：该字段不能为空。；检查资料 1 / 检查名称：该字段不能为空。',
       {},
       { timeout: 2000 },
     )).toBeInTheDocument()

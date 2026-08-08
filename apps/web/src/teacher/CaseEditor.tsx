@@ -363,7 +363,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
             </div>
           </EditorCard>
 
-          <EditorCard id="patient-facts" title={`患者事实库（${draft.facts.length}）`}>
+          <EditorCard id="patient-facts" title={`患者信息 [${draft.facts.length}点]`}>
             <p className="section-help">每个事实都是独立信息点。AI 只能围绕这些事实回答，未定义内容不得补齐。</p>
             <div className="repeat-list">
               {draft.facts.map((fact, index) => (
@@ -376,9 +376,9 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                   </div>
                   <div className="form-grid">
                     <label className="form-grid__wide">
-                      事实内容
+                      内容
                       <textarea
-                        aria-label="事实内容"
+                        aria-label="内容"
                         rows={3}
                         value={fact.standard_fact}
                         onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? {
@@ -387,7 +387,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                           patient_expression: event.target.value,
                         } : item))}
                       />
-                      <small>填写患者相关事实，AI 会在问诊中以患者口吻自然表达。</small>
+                      <small>填写患者病情相关信息，AI 会在问诊中以患者口吻自然表达。</small>
                     </label>
                     <label>
                       披露方式
