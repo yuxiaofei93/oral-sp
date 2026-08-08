@@ -45,7 +45,6 @@ export type PatientProfile = {
 export type CaseFact = {
   id?: number
   code: string
-  category: string
   standard_fact: string
   patient_expression: string
   disclosure_mode: string
@@ -463,7 +462,6 @@ const validationFieldLabels: Record<string, string> = {
 
 const contextualValidationFieldLabels: Record<string, string> = {
   'facts.code': '信息点编码',
-  'facts.category': '事实分类',
   'tests.code': '检查编码',
   'tests.name': '检查名称',
   'diagnosis_rules.name': '诊断名称',

@@ -24,7 +24,6 @@ class PatientFact:
     patient_expression: str
     certainty: str
     standard_fact: str = ""
-    category: str = ""
     disclosure_mode: str = "on_question"
 
 
@@ -311,7 +310,6 @@ class OpenAICompatiblePatientGateway(PatientGateway):
         fact_payload = [
             {
                 "code": fact.code,
-                "category": fact.category,
                 "standard_fact": fact.standard_fact,
                 "patient_expression": fact.patient_expression,
                 "disclosure_mode": fact.disclosure_mode,

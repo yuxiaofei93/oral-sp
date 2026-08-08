@@ -120,7 +120,6 @@ def make_exam_data(*, suffix="1"):
             "facts": [
                 {
                     "code": "history.duration",
-                    "category": "present_illness",
                     "standard_fact": "牙龈疼痛病程约三年",
                 }
             ],

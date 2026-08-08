@@ -334,7 +334,6 @@ def _patient_facts(session: SimulationSession) -> list[PatientFact]:
             code=fact.code,
             standard_fact=fact.standard_fact,
             patient_expression=fact.patient_expression,
-            category=fact.category,
             disclosure_mode=fact.disclosure_mode,
             certainty=fact.certainty,
         )

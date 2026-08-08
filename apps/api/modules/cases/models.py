@@ -188,18 +188,6 @@ class PatientProfile(VersionOwnedModel):
     voice_id = models.CharField(max_length=120, blank=True)
 
 
-class FactCategory(models.TextChoices):
-    CHIEF_COMPLAINT = "chief_complaint", "主诉"
-    PRESENT_ILLNESS = "present_illness", "现病史"
-    PAST_HISTORY = "past_history", "既往史"
-    MEDICATION = "medication", "用药史"
-    ALLERGY = "allergy", "过敏史"
-    PERSONAL = "personal", "个人史"
-    FAMILY = "family", "家族史"
-    CONCERN = "concern", "患者担忧"
-    OTHER = "other", "其他"
-
-
 class DisclosureMode(models.TextChoices):
     ACTIVE = "active", "主动披露"
     ON_QUESTION = "on_question", "被问到后披露"
@@ -216,7 +204,6 @@ class FactCertainty(models.TextChoices):
 class CaseFact(VersionOwnedModel):
     version = models.ForeignKey(CaseVersion, on_delete=models.CASCADE, related_name="facts")
     code = models.CharField(max_length=80)
-    category = models.CharField(max_length=32, choices=FactCategory.choices)
     standard_fact = models.TextField()
     patient_expression = models.TextField()
     disclosure_mode = models.CharField(

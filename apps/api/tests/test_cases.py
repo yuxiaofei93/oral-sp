@@ -61,7 +61,6 @@ def test_teacher_can_create_and_update_structured_case_draft():
             "facts": [
                 {
                     "code": "history.duration",
-                    "category": "present_illness",
                     "standard_fact": "病程约三年",
                 }
             ],
@@ -95,7 +94,6 @@ def test_publish_creates_immutable_snapshot_and_is_idempotent():
             "facts": [
                 {
                     "code": "chief.issue",
-                    "category": "chief_complaint",
                     "standard_fact": "口腔疼痛",
                 }
             ],
@@ -119,7 +117,6 @@ def test_publish_creates_immutable_snapshot_and_is_idempotent():
             "facts": [
                 {
                     "code": "new.fact",
-                    "category": "other",
                     "standard_fact": "新事实",
                 }
             ]

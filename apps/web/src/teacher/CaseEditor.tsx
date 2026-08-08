@@ -36,7 +36,6 @@ const emptyFact = (facts: CaseFact[]): CaseFact => {
 
   return {
     code: `fact.${nextCodeNumber}`,
-    category: 'present_illness',
     standard_fact: '',
     patient_expression: '',
     disclosure_mode: 'on_question',
@@ -381,20 +380,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                     </button>
                   </div>
                   <div className="form-grid">
-                    <label>
-                      分类
-                      <select value={fact.category} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, category: event.target.value } : item))}>
-                        <option value="chief_complaint">主诉</option>
-                        <option value="present_illness">现病史</option>
-                        <option value="past_history">既往史</option>
-                        <option value="medication">用药史</option>
-                        <option value="allergy">过敏史</option>
-                        <option value="personal">个人史</option>
-                        <option value="family">家族史</option>
-                        <option value="concern">患者担忧</option>
-                        <option value="other">其他</option>
-                      </select>
-                    </label>
                     <label className="form-grid__wide">
                       事实内容
                       <textarea

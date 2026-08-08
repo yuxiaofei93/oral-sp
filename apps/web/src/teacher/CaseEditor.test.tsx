@@ -93,6 +93,7 @@ describe('CaseEditor', () => {
     expect(screen.queryByLabelText('信息点编码')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('标准事实')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('患者口语表达')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('分类')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('病例未提供时的回答')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('事实点分值')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('必问信息点')).not.toBeInTheDocument()
