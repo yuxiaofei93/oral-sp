@@ -1,4 +1,4 @@
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, OuterRef, Prefetch, Q, Subquery
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -184,9 +184,18 @@ class TeacherAssignmentOptionView(APIView):
     permission_classes = [IsTeacherOrAdministrator]
 
     def get(self, request):
+        latest_version_number = (
+            CaseVersion.objects.filter(
+                case_id=OuterRef("case_id"),
+                status=VersionStatus.PUBLISHED,
+            )
+            .order_by("-version_number")
+            .values("version_number")[:1]
+        )
         case_versions = CaseVersion.objects.filter(
             status=VersionStatus.PUBLISHED,
             case__is_active=True,
+            version_number=Subquery(latest_version_number),
         ).select_related("case")
         class_groups = ClassGroup.objects.filter(is_active=True).annotate(
             student_count=Count("memberships", distinct=True)

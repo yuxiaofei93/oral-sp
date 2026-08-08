@@ -539,6 +539,12 @@ def test_student_api_runs_idempotent_interview_exchange():
 @pytest.mark.django_db
 def test_assignment_options_only_include_teachers_published_cases_and_classes():
     teacher, _, assignment = make_exam_data(suffix="0")
+    draft = assignment.case_version.case.versions.get(status=VersionStatus.DRAFT)
+    update_draft(
+        draft=draft,
+        data={"title_internal": "牙龈疼痛标准病例（更新）"},
+    )
+    latest_version = publish_draft(draft=draft, user=teacher).version
     client = APIClient()
     client.force_authenticate(teacher)
 
@@ -547,15 +553,30 @@ def test_assignment_options_only_include_teachers_published_cases_and_classes():
     assert response.status_code == 200
     assert response.json()["case_versions"] == [
         {
-            "id": str(assignment.case_version_id),
+            "id": str(latest_version.id),
             "case_code": assignment.case_version.case.code,
-            "title": "牙龈疼痛标准病例",
-            "version_number": 1,
+            "title": "牙龈疼痛标准病例（更新）",
+            "version_number": 2,
             "suggested_duration_minutes": 20,
         }
     ]
     assert response.json()["class_groups"][0]["id"] == str(assignment.class_group_id)
     assert response.json()["class_groups"][0]["student_count"] == 1
+
+    stale_assignment = client.post(
+        reverse("teacher-assignment-list"),
+        {
+            "title": "旧版本任务",
+            "case_version_id": str(assignment.case_version_id),
+            "class_group_id": str(assignment.class_group_id),
+            "duration_minutes": 20,
+            "opens_at": timezone.now(),
+            "deadline_at": timezone.now() + timedelta(days=1),
+        },
+        format="json",
+    )
+    assert stale_assignment.status_code == 403
+    assert "最新发布版本" in stale_assignment.json()["detail"]
 
 
 def complete_scored_session(*, session, student, correct: bool):

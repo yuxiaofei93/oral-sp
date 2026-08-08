@@ -110,6 +110,14 @@ def create_assignment(
         raise AssignmentUnavailableError("只能发布已经生成版本号的病例。")
     if not case_version.case.is_active:
         raise AssignmentUnavailableError("该病例已经停用，不能发布新任务。")
+    latest_version_id = (
+        case_version.case.versions.filter(status=VersionStatus.PUBLISHED)
+        .order_by("-version_number")
+        .values_list("id", flat=True)
+        .first()
+    )
+    if case_version.id != latest_version_id:
+        raise AssignmentUnavailableError("只能使用该病例的最新发布版本创建任务。")
     if not class_group.is_active:
         raise AssignmentUnavailableError("该班级已经停用，不能发布新任务。")
     can_use_case = case_version.case.created_by_id == user.id
