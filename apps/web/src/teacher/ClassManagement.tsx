@@ -6,6 +6,7 @@ import {
   createTeachingClass,
   listTeachingClasses,
   removeClassStudent,
+  setTeachingClassActive,
   transferClassStudent,
 } from '../api/client'
 
@@ -38,6 +39,10 @@ export function ClassManagement() {
     () => classes.find((item) => item.id === selectedClassId),
     [classes, selectedClassId],
   )
+  const transferTargets = useMemo(
+    () => classes.filter((item) => item.is_active && item.id !== selectedClassId),
+    [classes, selectedClassId],
+  )
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -63,7 +68,7 @@ export function ClassManagement() {
   }
 
   function startTransfer(studentId: string) {
-    const firstTarget = classes.find((item) => item.id !== selectedClassId)
+    const firstTarget = transferTargets[0]
     setTransferStudentId(studentId)
     setTransferTargetClassId(firstTarget?.id ?? '')
     setError('')
@@ -73,7 +78,7 @@ export function ClassManagement() {
   async function handleTransfer(studentId: string, studentName: string) {
     if (!selectedClass || !transferTargetClassId) return
     const targetClass = classes.find((item) => item.id === transferTargetClassId)
-    if (!targetClass) return
+    if (!targetClass?.is_active) return
     if (!globalThis.confirm(
       `确定将“${studentName}”转入“${targetClass.name}”吗？已有任务名单不会改变。`,
     )) return
@@ -88,6 +93,30 @@ export function ClassManagement() {
       await loadData()
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '学生转班失败。')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleClassStatus(classGroup: TeachingClass) {
+    const nextActive = !classGroup.is_active
+    const confirmed = globalThis.confirm(nextActive
+      ? `确定激活班级“${classGroup.name}”吗？激活后可用于学生注册、转班和发布新任务。`
+      : `确定冻结班级“${classGroup.name}”吗？已有学生、任务和答卷会保留。`)
+    if (!confirmed) return
+    setLoading(true)
+    setError('')
+    setMessage('')
+    try {
+      await setTeachingClassActive(classGroup.id, nextActive)
+      setTransferStudentId('')
+      setTransferTargetClassId('')
+      setMessage(nextActive
+        ? `班级“${classGroup.name}”已激活。`
+        : `班级“${classGroup.name}”已冻结，历史记录保持不变。`)
+      await loadData()
+    } catch (requestError: unknown) {
+      setError(requestError instanceof ApiError ? requestError.message : '班级状态更新失败。')
     } finally {
       setLoading(false)
     }
@@ -132,10 +161,18 @@ export function ClassManagement() {
 
       <div className="class-list">
         {classes.map((classGroup) => (
-          <article key={classGroup.id}>
+          <article
+            className={classGroup.is_active ? undefined : 'class-list__item--inactive'}
+            key={classGroup.id}
+          >
             <header className="class-list__header">
               <div>
-                <span>{classGroup.code}</span>
+                <div className="class-list__identity">
+                  <span>{classGroup.code}</span>
+                  <span className={`class-status ${classGroup.is_active ? '' : 'class-status--inactive'}`}>
+                    {classGroup.is_active ? '正常' : '已冻结'}
+                  </span>
+                </div>
                 <h3>{classGroup.name}</h3>
                 <p>{classGroup.student_count} 名学生</p>
               </div>
@@ -146,6 +183,14 @@ export function ClassManagement() {
                   onClick={() => setSelectedClassId(classGroup.id)}
                 >
                   管理学生
+                </button>
+                <button
+                  className={`text-button ${classGroup.is_active ? 'text-button--danger' : ''}`}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleClassStatus(classGroup)}
+                >
+                  {classGroup.is_active ? '冻结班级' : '激活班级'}
                 </button>
               </div>
             </header>
@@ -175,7 +220,7 @@ export function ClassManagement() {
                             onChange={(event) => setTransferTargetClassId(event.target.value)}
                             disabled={loading}
                           >
-                            {classes.filter((item) => item.id !== selectedClass.id).map((item) => (
+                            {transferTargets.map((item) => (
                               <option key={item.id} value={item.id}>{item.code} · {item.name}</option>
                             ))}
                           </select>
@@ -204,8 +249,8 @@ export function ClassManagement() {
                       <button
                         className="text-button"
                         type="button"
-                        disabled={loading || classes.length < 2}
-                        title={classes.length < 2 ? '请先创建另一个班级' : undefined}
+                        disabled={loading || transferTargets.length === 0}
+                        title={transferTargets.length === 0 ? '请先创建或激活另一个班级' : undefined}
                         onClick={() => startTransfer(student.id)}
                       >
                         转班

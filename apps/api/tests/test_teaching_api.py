@@ -81,6 +81,11 @@ def test_teacher_cannot_view_or_modify_another_teachers_class():
     assert client.delete(
         reverse("teacher-class-detail", kwargs={"class_id": class_group.id})
     ).status_code == 404
+    assert client.patch(
+        reverse("teacher-class-detail", kwargs={"class_id": class_group.id}),
+        {"is_active": False},
+        format="json",
+    ).status_code == 404
     assert client.delete(
         reverse(
             "teacher-class-roster-member",
@@ -109,7 +114,41 @@ def test_teacher_archives_class_without_deleting_historical_structure():
     class_group.refresh_from_db()
     assert class_group.is_active is False
     assert ClassGroup.objects.filter(pk=class_group.id).exists()
-    assert client.get(reverse("teacher-class-list")).json() == []
+    archived_class = client.get(reverse("teacher-class-list")).json()[0]
+    assert archived_class["id"] == str(class_group.id)
+    assert archived_class["is_active"] is False
+
+
+@pytest.mark.django_db
+def test_teacher_freezes_and_reactivates_owned_class():
+    teacher = make_user("teacher-status", RoleCode.TEACHER)
+    class_group = ClassGroup.objects.create(
+        code="STATUS-A",
+        name="状态班级",
+        created_by=teacher,
+    )
+    client = APIClient()
+    client.force_authenticate(teacher)
+
+    freeze_response = client.patch(
+        reverse("teacher-class-detail", kwargs={"class_id": class_group.id}),
+        {"is_active": False},
+        format="json",
+    )
+
+    assert freeze_response.status_code == 204
+    class_group.refresh_from_db()
+    assert class_group.is_active is False
+
+    activate_response = client.patch(
+        reverse("teacher-class-detail", kwargs={"class_id": class_group.id}),
+        {"is_active": True},
+        format="json",
+    )
+
+    assert activate_response.status_code == 204
+    class_group.refresh_from_db()
+    assert class_group.is_active is True
 
 
 @pytest.mark.django_db

@@ -698,6 +698,12 @@ export function createTeachingClass(payload: {
   return mutate('POST', '/api/teacher/teaching/classes/', payload)
 }
 
+export function setTeachingClassActive(classId: string, isActive: boolean): Promise<void> {
+  return mutate('PATCH', `/api/teacher/teaching/classes/${classId}/`, {
+    is_active: isActive,
+  })
+}
+
 export function removeClassStudent(classId: string, studentId: string): Promise<void> {
   return mutate('DELETE', `/api/teacher/teaching/classes/${classId}/students/${studentId}/`)
 }

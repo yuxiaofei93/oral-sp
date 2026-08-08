@@ -32,9 +32,13 @@ def create_class_group(*, code: str, name: str, user) -> ClassGroup:
 
 
 def archive_class_group(*, class_group: ClassGroup, user) -> None:
+    set_class_group_active(class_group=class_group, is_active=False, user=user)
+
+
+def set_class_group_active(*, class_group: ClassGroup, is_active: bool, user) -> None:
     if not can_manage_class(class_group=class_group, user=user):
         raise TeachingPermissionError("你没有该班级的管理权限。")
-    ClassGroup.objects.filter(pk=class_group.pk).update(is_active=False)
+    ClassGroup.objects.filter(pk=class_group.pk).update(is_active=is_active)
 
 
 def remove_student(*, membership: ClassMembership, user) -> None:

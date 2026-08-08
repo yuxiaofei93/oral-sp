@@ -42,6 +42,10 @@ class ClassGroupCreateSerializer(serializers.Serializer):
         return value
 
 
+class ClassGroupStatusSerializer(serializers.Serializer):
+    is_active = serializers.BooleanField()
+
+
 class StudentTransferSerializer(serializers.Serializer):
     target_class_id = serializers.PrimaryKeyRelatedField(
         source="target_class",

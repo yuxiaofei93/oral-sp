@@ -11,6 +11,7 @@ from .models import ClassGroup, ClassMembership
 from .serializers import (
     ClassGroupCreateSerializer,
     ClassGroupSerializer,
+    ClassGroupStatusSerializer,
     StudentTransferSerializer,
 )
 from .services import (
@@ -18,22 +19,25 @@ from .services import (
     archive_class_group,
     create_class_group,
     remove_student,
+    set_class_group_active,
     transfer_student,
 )
 
 
-def teacher_class_queryset(user):
+def teacher_class_queryset(user, *, active_only=False):
     memberships = ClassMembership.objects.select_related("student").order_by(
         "student__display_name",
         "student__email",
     )
     queryset = (
-        ClassGroup.objects.filter(is_active=True)
+        ClassGroup.objects.all()
         .select_related("created_by")
         .annotate(student_count=Count("memberships", distinct=True))
         .prefetch_related(Prefetch("memberships", queryset=memberships))
-        .order_by("code")
+        .order_by("-is_active", "code")
     )
+    if active_only:
+        queryset = queryset.filter(is_active=True)
     if user.is_superuser or user.has_role(RoleCode.ADMINISTRATOR):
         return queryset
     return queryset.filter(created_by=user)
@@ -63,6 +67,20 @@ class TeacherClassListCreateView(APIView):
 class TeacherClassDetailView(APIView):
     permission_classes = [IsTeacherOrAdministrator]
 
+    def patch(self, request, class_id):
+        class_group = get_object_or_404(teacher_class_queryset(request.user), pk=class_id)
+        serializer = ClassGroupStatusSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            set_class_group_active(
+                class_group=class_group,
+                is_active=serializer.validated_data["is_active"],
+                user=request.user,
+            )
+        except TeachingError as error:
+            return teaching_error_response(error)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     def delete(self, request, class_id):
         class_group = get_object_or_404(teacher_class_queryset(request.user), pk=class_id)
         try:
@@ -85,7 +103,7 @@ class TeacherClassRosterMemberView(APIView):
         serializer = StudentTransferSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         target_class = get_object_or_404(
-            teacher_class_queryset(request.user),
+            teacher_class_queryset(request.user, active_only=True),
             pk=serializer.validated_data["target_class"].pk,
         )
         try:

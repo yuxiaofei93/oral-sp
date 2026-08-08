@@ -721,6 +721,11 @@ h1 {
   background: #fff;
 }
 
+.class-list > article.class-list__item--inactive {
+  border-color: #d6dddb;
+  background: #f8faf9;
+}
+
 .class-list header h3,
 .class-list header span,
 .class-list header p,
@@ -744,6 +749,26 @@ h1 {
 
 .class-list__header p {
   margin: 0;
+}
+
+.class-list__identity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.class-list header .class-status {
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #126047;
+  background: #daf4e8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.class-list header .class-status--inactive {
+  color: #526b66;
+  background: #e3eae8;
 }
 
 .class-list__header .class-list__actions {

@@ -34,6 +34,8 @@ describe('ClassManagement', () => {
     await waitFor(() => screen.getByRole('heading', { name: 'A 班' }))
     expect(screen.queryByText('创建班级并查看学生名单；学生注册时可自行选择有效班级。')).not.toBeInTheDocument()
     expect(screen.getByText('1 名学生')).toBeInTheDocument()
+    expect(screen.getByText('正常')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '冻结班级' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '管理学生' }))
 
     expect(screen.getByRole('heading', { name: 'A 班学生名单' })).toBeInTheDocument()
@@ -41,6 +43,49 @@ describe('ClassManagement', () => {
     expect(screen.getByText('student@example.com')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '删除班级' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '转班' })).toBeDisabled()
+  })
+
+  it('lists frozen classes and supports freezing and reactivating a class', async () => {
+    const frozenClass = {
+      ...classRecord,
+      id: 'class-2',
+      code: 'CLASS-B',
+      name: 'B 班',
+      is_active: false,
+      student_count: 0,
+      students: [],
+    }
+    let classes = [classRecord, frozenClass]
+    vi.spyOn(globalThis, 'confirm').mockReturnValue(true)
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input)
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"teacher-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/teacher/teaching/classes/class-1/') && init?.method === 'PATCH') {
+        const { is_active: isActive } = JSON.parse(String(init.body)) as { is_active: boolean }
+        classes = classes.map((item) => item.id === 'class-1'
+          ? { ...item, is_active: isActive }
+          : item)
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      if (url.endsWith('/teacher/teaching/classes/')) {
+        return Promise.resolve(new Response(JSON.stringify(classes), { status: 200 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<ClassManagement />)
+    await waitFor(() => expect(screen.getByText('已冻结')).toBeInTheDocument())
+    expect(screen.getByRole('heading', { name: 'B 班' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '冻结班级' }))
+    expect(await screen.findByText('班级“A 班”已冻结，历史记录保持不变。')).toBeInTheDocument()
+    expect(screen.getAllByText('已冻结')).toHaveLength(2)
+
+    fireEvent.click(screen.getAllByRole('button', { name: '激活班级' })[0])
+    expect(await screen.findByText('班级“A 班”已激活。')).toBeInTheDocument()
+    expect(screen.getByText('正常')).toBeInTheDocument()
   })
 
   it('creates a class without selecting a course', async () => {
