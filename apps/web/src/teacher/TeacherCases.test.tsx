@@ -86,4 +86,57 @@ describe('TeacherCases', () => {
     })
     expect(screen.getByRole('heading', { name: '未命名病例' })).toBeInTheDocument()
   })
+
+  it('returns to and refreshes the case list after publishing', async () => {
+    let listRequests = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input)
+      if (url.endsWith('/teacher/cases/') && !init?.method) {
+        listRequests += 1
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 'case-1',
+          code: 'CASE-000001',
+          is_active: true,
+          created_at: '2026-08-08T00:00:00Z',
+          draft: {
+            id: 'draft-1',
+            title_internal: '未命名病例',
+            updated_at: '2026-08-08T00:00:00Z',
+          },
+          latest_published: listRequests > 1 ? {
+            id: 'version-1',
+            version_number: 1,
+            published_at: '2026-08-08T00:01:00Z',
+          } : null,
+        }]), { status: 200 }))
+      }
+      if (url.endsWith('/teacher/cases/case-1/draft/')) {
+        return Promise.resolve(new Response(JSON.stringify(createdDraft), { status: 200 }))
+      }
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"case-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/teacher/cases/case-1/publish/')) {
+        expect(init?.method).toBe('POST')
+        return Promise.resolve(new Response(JSON.stringify({
+          created: true,
+          version: {
+            id: 'version-1',
+            version_number: 1,
+            published_at: '2026-08-08T00:01:00Z',
+            content_hash: 'hash',
+          },
+        }), { status: 201 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<TeacherCases />)
+    fireEvent.click(await screen.findByRole('button', { name: '编辑病例' }))
+    fireEvent.click(await screen.findByRole('button', { name: '发布病例' }))
+
+    expect(await screen.findByRole('heading', { name: '病例库' })).toBeInTheDocument()
+    expect(await screen.findByText('已发布 v1')).toBeInTheDocument()
+    expect(listRequests).toBe(2)
+  })
 })

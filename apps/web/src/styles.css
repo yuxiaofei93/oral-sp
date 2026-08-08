@@ -1454,6 +1454,16 @@ h1 {
   margin-top: 16px;
 }
 
+.case-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.case-editor__actions .save-state {
+  text-align: right;
+}
+
 .case-editor__layout {
   display: grid;
   grid-template-columns: minmax(160px, 190px) minmax(0, 1fr);
@@ -1560,40 +1570,6 @@ h1 {
   text-align: right;
 }
 
-.publish-summary {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-.publish-summary div {
-  display: grid;
-  gap: 5px;
-  padding: 18px;
-  border-radius: 14px;
-  background: #eef5f2;
-}
-
-.publish-summary strong {
-  font-size: 28px;
-}
-
-.publish-summary span {
-  color: #647a75;
-}
-
-.release-checklist {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding-left: 22px;
-  color: #6d5c3e;
-}
-
-.release-checklist .is-ready {
-  color: #176f60;
-}
-
 @media (max-width: 900px) {
   .case-editor__layout {
     grid-template-columns: 1fr;
@@ -1621,7 +1597,6 @@ h1 {
   }
 
   .form-grid,
-  .publish-summary,
   .assignment-form,
   .progress-grid,
   .statistics-summary,
@@ -1633,6 +1608,15 @@ h1 {
 
   .form-grid__wide {
     grid-column: auto;
+  }
+
+  .case-editor__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .case-editor__actions .save-state {
+    text-align: left;
   }
 
   .case-list__meta {

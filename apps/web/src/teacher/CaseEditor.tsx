@@ -18,7 +18,6 @@ const editorSections = [
   { id: 'case-tests', label: '检查资料' },
   { id: 'diagnosis-rules', label: '诊断规则' },
   { id: 'scoring-rules', label: '评分规则' },
-  { id: 'publish-check', label: '预览发布' },
 ]
 
 const AUTO_SAVE_DELAY_MS = 500
@@ -135,7 +134,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
   const [revision, setRevision] = useState(0)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const [publishing, setPublishing] = useState(false)
-  const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const draftRef = useRef(initialDraft)
   const revisionRef = useRef(0)
@@ -152,7 +150,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     setDraft(updated)
     setRevision(nextRevision)
     setSaveStatus('dirty')
-    setMessage('')
     setError('')
   }
 
@@ -275,18 +272,13 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     clearAutoSaveTimer()
     setPublishing(true)
     setError('')
-    setMessage('')
     if (!(await persistLatestDraft())) {
       setPublishing(false)
       return
     }
     try {
-      const result = await publishCase(draftRef.current.case_id)
-      setMessage(
-        result.created
-          ? `病例 v${result.version.version_number} 已发布，后续编辑不会改变该版本。`
-          : `当前内容与 v${result.version.version_number} 相同，无需重复发布。`,
-      )
+      await publishCase(draftRef.current.case_id)
+      onClose()
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '发布失败，请稍后重试。')
     } finally {
@@ -302,7 +294,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
         ? '修改将在片刻后自动保存'
         : saveStatus === 'error'
           ? '自动保存失败'
-          : message || '已自动保存'
+          : '已自动保存'
 
   return (
     <section className="case-editor" aria-labelledby="case-editor-title">
@@ -314,8 +306,15 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
           <p className="eyebrow">{draft.case_code} · 草稿</p>
           <h2 id="case-editor-title">{draft.title_internal}</h2>
         </div>
-        <span className="save-state" aria-live="polite">{saveStateText}</span>
+        <div className="case-editor__actions">
+          <span className="save-state" aria-live="polite">{saveStateText}</span>
+          <button className="button" type="button" onClick={handlePublish} disabled={publishing}>
+            {publishing ? '正在发布…' : '发布病例'}
+          </button>
+        </div>
       </header>
+
+      {error && <p className="form-error editor-error">{error}</p>}
 
       <div className="case-editor__layout">
         <nav className="editor-steps" aria-label="病例编辑导航">
@@ -566,28 +565,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
             </div>
             <button className="button button--secondary" type="button" onClick={() => setField('scoring_items', [...draft.scoring_items, emptyScoringItem(draft.scoring_items.length)])}>添加评分项</button>
           </EditorCard>
-
-          <EditorCard id="publish-check" title="发布前检查">
-            <div className="publish-summary">
-              <div><strong>{draft.facts.length}</strong><span>病情信息</span></div>
-              <div><strong>{draft.tests.length}</strong><span>检查资料</span></div>
-              <div><strong>{draft.diagnosis_rules.length}</strong><span>诊断规则</span></div>
-              <div><strong>{draft.scoring_items.length}</strong><span>评分项</span></div>
-            </div>
-            <ul className="release-checklist">
-              <li className={draft.patient_profile.opening_statement ? 'is-ready' : ''}>患者开场白已填写</li>
-              <li className={draft.facts.length > 0 ? 'is-ready' : ''}>至少包含一条病情信息</li>
-              <li>发布后生成不可变版本；草稿仍可继续编辑并发布下一版</li>
-              <li>学生在教师统一发布反馈前看不到诊断和标准答案</li>
-            </ul>
-            <button className="button" type="button" onClick={handlePublish} disabled={publishing}>
-              {publishing ? '正在发布…' : '发布病例'}
-            </button>
-          </EditorCard>
         </div>
       </div>
-
-      {error && <p className="form-error editor-error">{error}</p>}
     </section>
   )
 }
