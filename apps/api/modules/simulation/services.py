@@ -190,13 +190,13 @@ def close_assignment(*, assignment: CaseAssignment) -> CaseAssignment:
 def release_feedback(*, assignment: CaseAssignment) -> CaseAssignment:
     current = CaseAssignment.objects.get(pk=assignment.pk)
     if current.status != AssignmentStatus.CLOSED:
-        raise FeedbackUnavailableError("必须先收卷，才能统一发布反馈。")
+        raise FeedbackUnavailableError("必须先结束任务，才能统一发布反馈。")
     for session in SimulationSession.objects.filter(assignment=current):
         generate_assessment(session)
     with transaction.atomic():
         locked = CaseAssignment.objects.select_for_update().get(pk=assignment.pk)
         if locked.status != AssignmentStatus.CLOSED:
-            raise FeedbackUnavailableError("必须先收卷，才能统一发布反馈。")
+            raise FeedbackUnavailableError("必须先结束任务，才能统一发布反馈。")
         if AIEvaluationRun.objects.filter(
             session__assignment=locked,
             status=AIEvaluationStatus.RUNNING,
@@ -264,7 +264,7 @@ def start_session(*, assignment: CaseAssignment, student) -> StartSessionResult:
             or now < locked_assignment.opens_at
             or now >= locked_assignment.deadline_at
         ):
-            raise AssignmentUnavailableError("该考试任务当前不可进入。")
+            raise AssignmentUnavailableError("该问诊任务当前不可进入。")
 
         existing = SimulationSession.objects.filter(
             assignment=locked_assignment,

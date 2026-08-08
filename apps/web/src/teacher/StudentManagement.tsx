@@ -112,7 +112,7 @@ export function StudentManagement() {
     const targetClass = activeClasses.find((item) => item.id === targetClassId)
     if (!targetClass) return
     if (!globalThis.confirm(
-      `确定将“${selectedStudent.display_name}”调整到“${targetClass.name}”吗？已有考试任务名单不会改变。`,
+      `确定将“${selectedStudent.display_name}”调整到“${targetClass.name}”吗？已有问诊任务名单不会改变。`,
     )) return
 
     setLoading(true)

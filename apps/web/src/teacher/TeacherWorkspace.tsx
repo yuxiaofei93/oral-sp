@@ -18,7 +18,7 @@ export function TeacherWorkspace({ isAdministrator = false }: { isAdministrator?
         <button className={tab === 'prompt_template' ? 'is-active' : ''} type="button" onClick={() => setTab('prompt_template')}>提示词模板</button>
         <button className={tab === 'classes' ? 'is-active' : ''} type="button" onClick={() => setTab('classes')}>班级管理</button>
         {isAdministrator && <button className={tab === 'students' ? 'is-active' : ''} type="button" onClick={() => setTab('students')}>学员管理</button>}
-        <button className={tab === 'assignments' ? 'is-active' : ''} type="button" onClick={() => setTab('assignments')}>考试任务</button>
+        <button className={tab === 'assignments' ? 'is-active' : ''} type="button" onClick={() => setTab('assignments')}>问诊任务</button>
       </nav>
       {tab === 'cases' && <TeacherCases />}
       {tab === 'prompt_template' && <PatientPromptTemplateEditor />}

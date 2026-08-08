@@ -333,7 +333,7 @@ export function TeacherResponses({
     <section className="teacher-workspace" aria-labelledby="assignment-responses-title">
       <header className="workspace-header">
         <div>
-          <button className="text-button" type="button" onClick={onClose}>← 返回考试任务</button>
+          <button className="text-button" type="button" onClick={onClose}>← 返回问诊任务</button>
           <h2 id="assignment-responses-title">{assignment.title}答卷</h2>
           <p>{assignment.class_name} · {assignment.student_count} 人</p>
         </div>

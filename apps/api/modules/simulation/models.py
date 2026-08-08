@@ -12,7 +12,7 @@ from modules.teaching.models import ClassGroup
 
 class AssignmentStatus(models.TextChoices):
     OPEN = "open", "进行中"
-    CLOSED = "closed", "已收卷"
+    CLOSED = "closed", "已结束"
 
 
 class CaseAssignment(models.Model):

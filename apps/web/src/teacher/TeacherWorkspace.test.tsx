@@ -16,6 +16,7 @@ describe('TeacherWorkspace', () => {
 
     const { rerender } = render(<TeacherWorkspace isAdministrator />)
     expect(screen.getByRole('button', { name: '学员管理' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '问诊任务' })).toBeInTheDocument()
 
     rerender(<TeacherWorkspace />)
     expect(screen.queryByRole('button', { name: '学员管理' })).not.toBeInTheDocument()

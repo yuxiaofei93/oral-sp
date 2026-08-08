@@ -185,6 +185,7 @@ describe('TeacherResponses', () => {
 
     render(<TeacherResponses assignment={assignment} onClose={vi.fn()} />)
     await waitFor(() => screen.getByText('学生甲'))
+    expect(screen.getByRole('button', { name: '← 返回问诊任务' })).toBeInTheDocument()
     expect(screen.getByText('88.89%')).toBeInTheDocument()
     expect(screen.getByText('疼痛部位')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '导出 CSV' })).toHaveAttribute('href', '/api/teacher/assignments/assignment-1/export.csv')

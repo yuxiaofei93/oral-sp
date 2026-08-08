@@ -60,6 +60,7 @@ describe('TeacherAssignments', () => {
 
     render(<TeacherAssignments />)
     await waitFor(() => screen.getByRole('button', { name: '发布新任务' }))
+    expect(screen.getByRole('heading', { name: '问诊任务' })).toBeInTheDocument()
     expect(screen.queryByText('EXAM ASSIGNMENTS')).not.toBeInTheDocument()
     expect(screen.queryByText('选择已发布病例和有学生的班级，为整场问诊设置限时。')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '发布新任务' }))
@@ -73,6 +74,7 @@ describe('TeacherAssignments', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认发布任务' }))
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '牙周问诊考试' })).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '结束任务' })).toBeInTheDocument()
     expect(screen.getAllByText('12', { selector: 'strong' })).toHaveLength(2)
   })
 })
