@@ -98,6 +98,7 @@ describe('AuthPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '注册' }))
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '欢迎，测试学生' })).toBeInTheDocument())
+    expect(screen.queryByText('当前账号')).not.toBeInTheDocument()
     expect(screen.getByText(/student@example.com/)).toBeInTheDocument()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(7))
   })

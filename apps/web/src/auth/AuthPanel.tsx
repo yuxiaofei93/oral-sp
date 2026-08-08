@@ -234,7 +234,6 @@ export function AuthPanel({ portal }: AuthPanelProps) {
       <div className="authenticated-area">
         <section className="auth-card auth-card--account" aria-labelledby="welcome-title">
           <div>
-            <p className="auth-card__hint">当前账号</p>
             <h2 id="welcome-title">欢迎，{user.display_name}</h2>
             <p className="account-meta">
               {user.email} · {user.roles.map((role) => roleNames[role]).join('、')}
