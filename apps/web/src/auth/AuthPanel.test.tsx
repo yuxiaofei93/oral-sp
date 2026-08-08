@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AuthPanel } from './AuthPanel'
@@ -6,6 +6,7 @@ import { AuthPanel } from './AuthPanel'
 describe('AuthPanel', () => {
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -68,8 +69,26 @@ describe('AuthPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
     await screen.findByRole('dialog', { name: '确认邮箱地址' })
+    vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: '确认发送' }))
-    expect(await screen.findByText('验证码已发送，请查收邮件。')).toBeInTheDocument()
+    await act(async () => {
+      for (let step = 0; step < 10; step += 1) await Promise.resolve()
+    })
+    expect(screen.getByText('验证码已发送，请查收邮件。')).toBeInTheDocument()
+
+    const resendButton = screen.getByRole('button', { name: '60 秒后重试' })
+    expect(resendButton).toBeDisabled()
+    fireEvent.click(resendButton)
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+
+    act(() => vi.advanceTimersByTime(1000))
+    expect(screen.getByRole('button', { name: '59 秒后重试' })).toBeDisabled()
+
+    for (let second = 0; second < 59; second += 1) {
+      act(() => vi.advanceTimersByTime(1000))
+    }
+    expect(screen.getByRole('button', { name: '获取验证码' })).toBeEnabled()
+    vi.useRealTimers()
 
     fireEvent.change(screen.getByLabelText('姓名'), { target: { value: '测试学生' } })
     fireEvent.change(screen.getByLabelText('班级'), { target: { value: 'class-1' } })

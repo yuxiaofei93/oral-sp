@@ -24,6 +24,8 @@ type CodeConfirmation = {
   mode: Exclude<Mode, 'login'>
 }
 
+const CODE_RESEND_SECONDS = 60
+
 const roleNames = {
   student: '学生',
   teacher: '教师',
@@ -46,6 +48,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [codeSending, setCodeSending] = useState(false)
+  const [codeResendSeconds, setCodeResendSeconds] = useState(0)
   const codeSendingRef = useRef(false)
   const [codeConfirmation, setCodeConfirmation] = useState<CodeConfirmation | null>(null)
   const [error, setError] = useState('')
@@ -65,6 +68,16 @@ export function AuthPanel({ portal }: AuthPanelProps) {
         setUser(null)
       })
   }, [])
+
+  useEffect(() => {
+    if (codeResendSeconds <= 0) return
+
+    const timer = window.setTimeout(() => {
+      setCodeResendSeconds((seconds) => Math.max(0, seconds - 1))
+    }, 1000)
+
+    return () => window.clearTimeout(timer)
+  }, [codeResendSeconds])
 
   function changeMode(nextMode: Mode) {
     setMode(nextMode)
@@ -126,6 +139,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
   }
 
   function requestCodeConfirmation() {
+    if (codeResendSeconds > 0) return
     const normalizedEmail = email.trim()
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
       setError('请先输入有效的邮箱地址。')
@@ -149,6 +163,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
       } else {
         await requestPasswordResetCode(codeConfirmation.email)
       }
+      setCodeResendSeconds(CODE_RESEND_SECONDS)
       setNotice('验证码已发送，请查收邮件。')
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '验证码发送失败，请稍后重试。')
@@ -297,10 +312,14 @@ export function AuthPanel({ portal }: AuthPanelProps) {
               <button
                 className="button button--secondary"
                 type="button"
-                disabled={codeSending || codeConfirmation !== null}
+                disabled={codeSending || codeConfirmation !== null || codeResendSeconds > 0}
                 onClick={requestCodeConfirmation}
               >
-                {codeSending ? '发送中…' : '获取验证码'}
+                {codeSending
+                  ? '发送中…'
+                  : codeResendSeconds > 0
+                    ? `${codeResendSeconds} 秒后重试`
+                    : '获取验证码'}
               </button>
             </span>
           </label>
