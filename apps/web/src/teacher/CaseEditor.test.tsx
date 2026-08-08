@@ -86,6 +86,7 @@ describe('CaseEditor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '添加事实信息点' }))
     expect(screen.getByText('信息点 1')).toBeInTheDocument()
+    expect(screen.queryByLabelText('信息点编码')).not.toBeInTheDocument()
     const tagInput = screen.getByLabelText('语义路由提示词（可选，逗号分隔）')
     fireEvent.change(tagInput, { target: { value: '多久' } })
     fireEvent.change(tagInput, { target: { value: '多久，' } })
@@ -98,7 +99,7 @@ describe('CaseEditor', () => {
     expect(savedBodies[0]).toMatchObject({
       title_internal: '牙龈疼痛教学病例',
       patient_profile: draft.patient_profile,
-      facts: [{ semantic_tags: ['多久', '病程', '多长时间'] }],
+      facts: [{ code: 'fact.1', semantic_tags: ['多久', '病程', '多长时间'] }],
       tests: [],
       diagnosis_rules: [],
       scoring_items: [],

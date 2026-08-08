@@ -20,21 +20,32 @@ const editorSections = [
   { id: 'publish-check', label: '预览发布' },
 ]
 
-const emptyFact = (order: number): CaseFact => ({
-  code: `fact.${order + 1}`,
-  category: 'present_illness',
-  standard_fact: '',
-  patient_expression: '',
-  semantic_tags: [],
-  synonyms: [],
-  disclosure_mode: 'on_question',
-  certainty: 'certain',
-  unknown_response: '这个我不太清楚。',
-  is_required: false,
-  score: '0.00',
-  teacher_notes: '',
-  display_order: order,
-})
+const emptyFact = (facts: CaseFact[]): CaseFact => {
+  const nextCodeNumber = facts.reduce((maximum, fact) => {
+    const match = /^fact\.(\d+)$/.exec(fact.code)
+    return match ? Math.max(maximum, Number(match[1])) : maximum
+  }, 0) + 1
+  const nextDisplayOrder = facts.reduce(
+    (maximum, fact) => Math.max(maximum, fact.display_order),
+    -1,
+  ) + 1
+
+  return {
+    code: `fact.${nextCodeNumber}`,
+    category: 'present_illness',
+    standard_fact: '',
+    patient_expression: '',
+    semantic_tags: [],
+    synonyms: [],
+    disclosure_mode: 'on_question',
+    certainty: 'certain',
+    unknown_response: '这个我不太清楚。',
+    is_required: false,
+    score: '0.00',
+    teacher_notes: '',
+    display_order: nextDisplayOrder,
+  }
+}
 
 const emptyTest = (order: number): CaseTest => ({
   code: `test.${order + 1}`,
@@ -283,10 +294,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                   </div>
                   <div className="form-grid">
                     <label>
-                      信息点编码
-                      <input value={fact.code} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, code: event.target.value } : item))} />
-                    </label>
-                    <label>
                       分类
                       <select value={fact.category} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, category: event.target.value } : item))}>
                         <option value="chief_complaint">主诉</option>
@@ -349,7 +356,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                 </article>
               ))}
             </div>
-            <button className="button button--secondary" type="button" onClick={() => setField('facts', [...draft.facts, emptyFact(draft.facts.length)])}>
+            <button className="button button--secondary" type="button" onClick={() => setField('facts', [...draft.facts, emptyFact(draft.facts)])}>
               添加事实信息点
             </button>
           </EditorCard>
