@@ -430,6 +430,95 @@ export class ApiError extends Error {
   }
 }
 
+const validationFieldLabels: Record<string, string> = {
+  patient_profile: '患者身份',
+  facts: '患者事实',
+  tests: '检查资料',
+  diagnosis_rules: '诊断规则',
+  scoring_items: '评分规则',
+  title_internal: '病例名称',
+  time_limit_minutes: '考试限时',
+  enabled_stages: '病例阶段',
+  display_name: '化名',
+  age: '年龄',
+  sex: '性别',
+  occupation: '职业',
+  personality: '性格与配合程度',
+  emotion: '当前情绪',
+  opening_statement: '患者开场白',
+  code: '编码',
+  category: '分类',
+  standard_fact: '标准事实',
+  patient_expression: '患者口语表达',
+  semantic_tags: '语义路由提示词',
+  synonyms: '典型同义问法',
+  disclosure_mode: '披露方式',
+  certainty: '患者确定程度',
+  unknown_response: '病例未提供时的回答',
+  score: '事实点分值',
+  name: '名称',
+  result_text: '向学生释放的结果',
+  teacher_interpretation: '教师标准解读',
+  diagnosis_type: '诊断类型',
+  aliases: '可接受同义词',
+  supporting_evidence: '支持证据',
+  label: '评分名称',
+  dimension: '评分维度',
+  max_score: '满分',
+  evaluation_method: '评价方式',
+  matching_config: '规则依据',
+}
+
+const contextualValidationFieldLabels: Record<string, string> = {
+  'facts.code': '信息点编码',
+  'facts.category': '事实分类',
+  'tests.code': '检查编码',
+  'tests.name': '检查名称',
+  'diagnosis_rules.name': '诊断名称',
+  'scoring_items.code': '评分编码',
+  'scoring_items.label': '评分名称',
+}
+
+type ValidationErrorPath = Array<string | number>
+
+function validationErrorPathLabel(path: ValidationErrorPath): string {
+  const labels: string[] = []
+  const root = typeof path[0] === 'string' ? path[0] : ''
+  for (const segment of path) {
+    if (typeof segment === 'number') {
+      const lastIndex = labels.length - 1
+      if (lastIndex >= 0) labels[lastIndex] = `${labels[lastIndex]} ${segment + 1}`
+      continue
+    }
+    if (segment === 'non_field_errors') continue
+    labels.push(
+      contextualValidationFieldLabels[`${root}.${segment}`]
+      ?? validationFieldLabels[segment]
+      ?? segment,
+    )
+  }
+  return labels.join(' / ') || '请求内容'
+}
+
+function collectValidationErrors(value: unknown, path: ValidationErrorPath = []): string[] {
+  if (typeof value === 'string') {
+    return [`${validationErrorPathLabel(path)}：${value}`]
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => (
+      typeof item === 'string'
+        ? collectValidationErrors(item, path)
+        : collectValidationErrors(item, [...path, index])
+    ))
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => key !== 'detail' && key !== 'request_id')
+      .flatMap(([key, item]) => collectValidationErrors(item, [...path, key]))
+  }
+  return []
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (response.status === 204) return undefined as T
 
@@ -441,13 +530,9 @@ async function parseResponse<T>(response: Response): Promise<T> {
       const record = data as Record<string, unknown>
       if (typeof record.detail === 'string') message = record.detail
       if (typeof record.request_id === 'string') bodyRequestId = record.request_id
-      const values = Object.entries(record)
-        .filter(([key]) => key !== 'request_id' && key !== 'detail')
-        .map(([, value]) => value)
-      const first = values[0]
       if (message === '请求失败，请稍后重试。') {
-        if (typeof first === 'string') message = first
-        if (Array.isArray(first) && typeof first[0] === 'string') message = first[0]
+        const validationErrors = [...new Set(collectValidationErrors(record))]
+        if (validationErrors.length > 0) message = validationErrors.join('；')
       }
     }
     const requestId = response.headers.get('X-Request-ID') || bodyRequestId

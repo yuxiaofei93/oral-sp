@@ -101,6 +101,42 @@ describe('CaseEditor', () => {
     })
   })
 
+  it('shows nested draft validation errors with section and item context', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input)
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"case-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/draft/')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              facts: [
+                {
+                  standard_fact: ['该字段不能为空。'],
+                  patient_expression: ['该字段不能为空。'],
+                },
+              ],
+              tests: [{ name: ['该字段不能为空。'] }],
+            }),
+            { status: 400 },
+          ),
+        )
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<CaseEditor initialDraft={draft} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: '添加事实信息点' }))
+    fireEvent.click(screen.getByRole('button', { name: '添加检查' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存全部修改' }))
+
+    expect(await screen.findByText(
+      '患者事实 1 / 标准事实：该字段不能为空。；患者事实 1 / 患者口语表达：该字段不能为空。；检查资料 1 / 检查名称：该字段不能为空。',
+    )).toBeInTheDocument()
+    expect(screen.queryByText('请求失败，请稍后重试。')).not.toBeInTheDocument()
+  })
+
   it('saves all pending changes before publishing', async () => {
     const requestOrder: string[] = []
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
