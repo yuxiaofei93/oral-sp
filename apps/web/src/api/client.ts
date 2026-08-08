@@ -48,8 +48,6 @@ export type CaseFact = {
   category: string
   standard_fact: string
   patient_expression: string
-  semantic_tags: string[]
-  synonyms: string[]
   disclosure_mode: string
   certainty: string
   unknown_response: string
@@ -449,10 +447,8 @@ const validationFieldLabels: Record<string, string> = {
   opening_statement: '患者开场白',
   code: '编码',
   category: '分类',
-  standard_fact: '标准事实',
-  patient_expression: '患者口语表达',
-  semantic_tags: '语义路由提示词',
-  synonyms: '典型同义问法',
+  standard_fact: '事实内容',
+  patient_expression: '事实内容',
   disclosure_mode: '披露方式',
   certainty: '患者确定程度',
   unknown_response: '病例未提供时的回答',

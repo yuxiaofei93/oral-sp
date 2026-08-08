@@ -88,6 +88,8 @@ def update_draft(*, draft: CaseVersion, data: dict) -> CaseVersion:
             manager.all().delete()
             for item in nested[name]:
                 item.pop("id", None)
+                if name == "facts":
+                    item["patient_expression"] = item["standard_fact"]
                 model.objects.create(version=locked, **item)
 
         locked.save()

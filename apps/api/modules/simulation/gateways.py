@@ -2,7 +2,6 @@ import hashlib
 import json
 import math
 import os
-import re
 import time
 import urllib.error
 import urllib.request
@@ -22,8 +21,6 @@ class PatientFact:
     certainty: str
     standard_fact: str = ""
     category: str = ""
-    semantic_tags: tuple[str, ...] = ()
-    synonyms: tuple[str, ...] = ()
     disclosure_mode: str = "on_question"
 
 
@@ -162,15 +159,24 @@ class PatientGateway:
     ) -> RoutingResult:
         started = time.monotonic()
         normalized_question = question.casefold()
+        question_pairs = {
+            normalized_question[index:index + 2]
+            for index in range(len(normalized_question) - 1)
+            if all(character.isalnum() for character in normalized_question[index:index + 2])
+        }
         selected = []
         for fact in facts:
-            triggers = [
-                term.strip()
-                for value in [*fact.semantic_tags, *fact.synonyms]
-                for term in re.split(r"[,，、;；\n]", str(value))
-                if term.strip()
-            ]
-            if any(trigger.casefold() in normalized_question for trigger in triggers):
+            fact_content = fact.standard_fact.strip().casefold()
+            fact_pairs = {
+                fact_content[index:index + 2]
+                for index in range(len(fact_content) - 1)
+                if all(character.isalnum() for character in fact_content[index:index + 2])
+            }
+            if fact_content and (
+                fact_content in normalized_question
+                or normalized_question in fact_content
+                or bool(question_pairs & fact_pairs)
+            ):
                 selected.append(fact.code)
         return RoutingResult(
             fact_codes=selected,
@@ -228,8 +234,6 @@ class OpenAICompatiblePatientGateway(PatientGateway):
                 "category": fact.category,
                 "standard_fact": fact.standard_fact,
                 "patient_expression": fact.patient_expression,
-                "semantic_hints": list(fact.semantic_tags),
-                "example_questions": list(fact.synonyms),
                 "disclosure_mode": fact.disclosure_mode,
             }
             for fact in facts
@@ -375,8 +379,6 @@ def request_hash(
                 "standard_fact": fact.standard_fact,
                 "expression": fact.patient_expression,
                 "certainty": fact.certainty,
-                "semantic_tags": fact.semantic_tags,
-                "synonyms": fact.synonyms,
                 "disclosure_mode": fact.disclosure_mode,
             }
             for fact in facts

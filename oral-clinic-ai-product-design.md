@@ -170,9 +170,7 @@ stateDiagram-v2
 
 - 系统自动生成的信息点编码，编辑者无需填写。
 - 信息分类，如现病史、既往史、过敏史、用药史。
-- 标准事实。
-- 患者口语化表达示例。
-- 触发问法或语义标签。
+- 事实内容；AI 在问诊中根据事实以患者口吻自然表达。
 - 披露方式：主动、被问到后、永不向患者角色披露。
 - 患者是否确定：确定、模糊、记不清、不理解。
 - 同义表达。
@@ -464,9 +462,7 @@ AI 患者不得：
       "key": "history.duration",
       "category": "present_illness",
       "value": "约3年",
-      "patient_expression": "差不多有三年了。",
       "disclosure": "on_question",
-      "semantic_tags": ["病程", "多久", "什么时候开始"],
       "required": true,
       "score": 2
     },
@@ -474,9 +470,7 @@ AI 患者不得：
       "key": "history.triggers",
       "category": "present_illness",
       "value": "刷牙和刺激性食物时疼痛明显",
-      "patient_expression": "刷牙，还有吃辣的、刺激性的东西时会更痛。",
       "disclosure": "on_question",
-      "semantic_tags": ["诱因", "刷牙", "饮食", "加重"],
       "required": true,
       "score": 2
     }

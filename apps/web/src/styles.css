@@ -1119,6 +1119,13 @@ h1 {
   font-weight: 650;
 }
 
+.form-grid label small {
+  color: #647a75;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
 .form-grid input,
 .form-grid textarea,
 .form-grid select {

@@ -323,8 +323,6 @@ def _patient_facts(session: SimulationSession) -> list[PatientFact]:
             standard_fact=fact.standard_fact,
             patient_expression=fact.patient_expression,
             category=fact.category,
-            semantic_tags=tuple(fact.semantic_tags),
-            synonyms=tuple(fact.synonyms),
             disclosure_mode=fact.disclosure_mode,
             certainty=fact.certainty,
         )

@@ -35,8 +35,6 @@ const emptyFact = (facts: CaseFact[]): CaseFact => {
     category: 'present_illness',
     standard_fact: '',
     patient_expression: '',
-    semantic_tags: [],
-    synonyms: [],
     disclosure_mode: 'on_question',
     certainty: 'certain',
     unknown_response: '这个我不太清楚。',
@@ -156,7 +154,10 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
       time_limit_minutes: draft.time_limit_minutes,
       enabled_stages: draft.enabled_stages,
       patient_profile: draft.patient_profile,
-      facts: draft.facts,
+      facts: draft.facts.map((fact) => ({
+        ...fact,
+        patient_expression: fact.standard_fact,
+      })),
       tests: draft.tests,
       diagnosis_rules: draft.diagnosis_rules,
       scoring_items: draft.scoring_items,
@@ -308,20 +309,18 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                       </select>
                     </label>
                     <label className="form-grid__wide">
-                      标准事实
-                      <textarea rows={2} value={fact.standard_fact} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, standard_fact: event.target.value } : item))} />
-                    </label>
-                    <label className="form-grid__wide">
-                      患者口语表达
-                      <textarea rows={2} value={fact.patient_expression} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, patient_expression: event.target.value } : item))} />
-                    </label>
-                    <label>
-                      语义路由提示词（可选，逗号分隔）
-                      <DelimitedListInput value={fact.semantic_tags} onChange={(value) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, semantic_tags: value } : item))} />
-                    </label>
-                    <label>
-                      典型同义问法（可选，逗号分隔）
-                      <DelimitedListInput value={fact.synonyms} onChange={(value) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, synonyms: value } : item))} />
+                      事实内容
+                      <textarea
+                        aria-label="事实内容"
+                        rows={3}
+                        value={fact.standard_fact}
+                        onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? {
+                          ...item,
+                          standard_fact: event.target.value,
+                          patient_expression: event.target.value,
+                        } : item))}
+                      />
+                      <small>填写患者相关事实，AI 会在问诊中以患者口吻自然表达。</small>
                     </label>
                     <label>
                       披露方式

@@ -121,10 +121,7 @@ def make_exam_data(*, suffix="1"):
                 {
                     "code": "history.duration",
                     "category": "present_illness",
-                    "standard_fact": "病程约三年",
-                    "patient_expression": "差不多有三年了。",
-                    "semantic_tags": ["多久", "病程"],
-                    "synonyms": ["多长时间"],
+                    "standard_fact": "牙龈疼痛病程约三年",
                     "is_required": True,
                     "score": "2.00",
                 }
@@ -278,17 +275,17 @@ def test_question_is_idempotent_and_sent_messages_are_immutable():
     first = ask_patient(
         session=session,
         student=student,
-        content="这个情况有多久了？",
+        content="牙龈疼痛有多久了？",
         client_message_id="question_0001",
     )
     second = ask_patient(
         session=session,
         student=student,
-        content="这个情况有多久了？",
+        content="牙龈疼痛有多久了？",
         client_message_id="question_0001",
     )
 
-    assert first.patient_message.content == "差不多有三年了。"
+    assert first.patient_message.content == "牙龈疼痛病程约三年"
     assert second.reused is True
     assert second.patient_message.id == first.patient_message.id
     assert Message.objects.filter(session=session).count() == 2
@@ -301,22 +298,18 @@ def test_question_is_idempotent_and_sent_messages_are_immutable():
 
 
 @pytest.mark.django_db
-def test_question_matches_legacy_tags_joined_with_chinese_delimiters():
+def test_local_router_matches_fact_content():
     _, student, assignment = make_exam_data(suffix="0")
-    assignment.case_version.facts.filter(code="history.duration").update(
-        semantic_tags=["多久、病程"],
-        synonyms=["多长时间；几年"],
-    )
     session = start_session(assignment=assignment, student=student).session
 
     exchange = ask_patient(
         session=session,
         student=student,
-        content="请问这个情况有多久了？",
-        client_message_id="question_delimiter_01",
+        content="牙龈疼痛有多久了？",
+        client_message_id="question_fact_content_01",
     )
 
-    assert exchange.patient_message.content == "差不多有三年了。"
+    assert exchange.patient_message.content == "牙龈疼痛病程约三年"
 
 
 class DiagnosisLeakingGateway(PatientGateway):
@@ -339,12 +332,12 @@ def test_diagnosis_leak_is_replaced_by_safe_fact_response_and_audited():
     exchange = ask_patient(
         session=session,
         student=student,
-        content="你的病程有多久？",
+        content="你的牙龈疼痛有多久？",
         client_message_id="question_0002",
         gateway=DiagnosisLeakingGateway(),
     )
 
-    assert exchange.patient_message.content == "差不多有三年了。"
+    assert exchange.patient_message.content == "牙龈疼痛病程约三年"
     call = session.model_calls.get(patient_message__isnull=False)
     assert call.status == ModelCallStatus.FAILED
     assert call.error_code == "response_validation_failed"
@@ -384,10 +377,6 @@ class SemanticRoutingGateway(PatientGateway):
 @pytest.mark.django_db
 def test_semantic_router_maps_natural_question_without_teacher_keyword():
     _, student, assignment = make_exam_data(suffix="0")
-    assignment.case_version.facts.filter(code="history.duration").update(
-        semantic_tags=[],
-        synonyms=[],
-    )
     session = start_session(assignment=assignment, student=student).session
 
     exchange = ask_patient(
@@ -398,7 +387,7 @@ def test_semantic_router_maps_natural_question_without_teacher_keyword():
         gateway=SemanticRoutingGateway(),
     )
 
-    assert exchange.patient_message.content == "差不多有三年了。"
+    assert exchange.patient_message.content == "牙龈疼痛病程约三年"
     route_call = session.model_calls.get(prompt_version="patient-route-v1")
     assert route_call.provider == "deepseek"
     assert route_call.matched_fact_codes == ["history.duration"]
@@ -536,12 +525,12 @@ def test_student_api_runs_idempotent_interview_exchange():
     assert started.json()["session"]["opening_statement"] == "医生您好，我的牙龈总是疼。"
 
     message_url = reverse("student-session-message", kwargs={"session_id": session_id})
-    payload = {"content": "病程有多久？", "client_message_id": "api_question_0001"}
+    payload = {"content": "牙龈疼痛有多久？", "client_message_id": "api_question_0001"}
     first = client.post(message_url, payload, format="json")
     second = client.post(message_url, payload, format="json")
 
     assert first.status_code == 200
-    assert first.json()["patient_message"]["content"] == "差不多有三年了。"
+    assert first.json()["patient_message"]["content"] == "牙龈疼痛病程约三年"
     assert second.status_code == 200
     assert second.json()["reused"] is True
     assert second.json()["patient_message"]["id"] == first.json()["patient_message"]["id"]

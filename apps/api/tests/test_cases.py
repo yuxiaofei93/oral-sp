@@ -63,8 +63,6 @@ def test_teacher_can_create_and_update_structured_case_draft():
                     "code": "history.duration",
                     "category": "present_illness",
                     "standard_fact": "病程约三年",
-                    "patient_expression": "差不多三年了。",
-                    "semantic_tags": ["病程", "多久"],
                     "is_required": True,
                     "score": "2.00",
                 }
@@ -76,6 +74,8 @@ def test_teacher_can_create_and_update_structured_case_draft():
     assert updated.status_code == 200
     assert updated.json()["patient_profile"]["age"] == 55
     assert updated.json()["facts"][0]["code"] == "history.duration"
+    assert updated.json()["facts"][0]["standard_fact"] == "病程约三年"
+    assert updated.json()["facts"][0]["patient_expression"] == "病程约三年"
 
 
 @pytest.mark.django_db
@@ -99,7 +99,6 @@ def test_publish_creates_immutable_snapshot_and_is_idempotent():
                     "code": "chief.issue",
                     "category": "chief_complaint",
                     "standard_fact": "口腔疼痛",
-                    "patient_expression": "嘴里有点痛。",
                 }
             ],
         },
@@ -124,7 +123,6 @@ def test_publish_creates_immutable_snapshot_and_is_idempotent():
                     "code": "new.fact",
                     "category": "other",
                     "standard_fact": "新事实",
-                    "patient_expression": "新回答",
                 }
             ]
         },

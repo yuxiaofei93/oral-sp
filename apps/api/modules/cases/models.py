@@ -219,8 +219,6 @@ class CaseFact(VersionOwnedModel):
     category = models.CharField(max_length=32, choices=FactCategory.choices)
     standard_fact = models.TextField()
     patient_expression = models.TextField()
-    semantic_tags = models.JSONField(default=list, blank=True)
-    synonyms = models.JSONField(default=list, blank=True)
     disclosure_mode = models.CharField(
         max_length=24,
         choices=DisclosureMode.choices,

@@ -87,19 +87,21 @@ describe('CaseEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加事实信息点' }))
     expect(screen.getByText('信息点 1')).toBeInTheDocument()
     expect(screen.queryByLabelText('信息点编码')).not.toBeInTheDocument()
-    const tagInput = screen.getByLabelText('语义路由提示词（可选，逗号分隔）')
-    fireEvent.change(tagInput, { target: { value: '多久' } })
-    fireEvent.change(tagInput, { target: { value: '多久，' } })
-    expect(tagInput).toHaveValue('多久，')
-    fireEvent.change(tagInput, { target: { value: '多久，病程；多长时间' } })
-    fireEvent.blur(tagInput)
-    expect(tagInput).toHaveValue('多久，病程，多长时间')
+    expect(screen.queryByLabelText('标准事实')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('患者口语表达')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('事实内容'), { target: { value: '病程约三年' } })
+    expect(screen.queryByLabelText('语义路由提示词（可选，逗号分隔）')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('典型同义问法（可选，逗号分隔）')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '保存全部修改' }))
     await waitFor(() => expect(savedBodies).toHaveLength(1))
     expect(savedBodies[0]).toMatchObject({
       title_internal: '牙龈疼痛教学病例',
       patient_profile: draft.patient_profile,
-      facts: [{ code: 'fact.1', semantic_tags: ['多久', '病程', '多长时间'] }],
+      facts: [{
+        code: 'fact.1',
+        standard_fact: '病程约三年',
+        patient_expression: '病程约三年',
+      }],
       tests: [],
       diagnosis_rules: [],
       scoring_items: [],
@@ -137,7 +139,7 @@ describe('CaseEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存全部修改' }))
 
     expect(await screen.findByText(
-      '患者事实 1 / 标准事实：该字段不能为空。；患者事实 1 / 患者口语表达：该字段不能为空。；检查资料 1 / 检查名称：该字段不能为空。',
+      '患者事实 1 / 事实内容：该字段不能为空。；检查资料 1 / 检查名称：该字段不能为空。',
     )).toBeInTheDocument()
     expect(screen.queryByText('请求失败，请稍后重试。')).not.toBeInTheDocument()
   })
