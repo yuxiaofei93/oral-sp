@@ -124,9 +124,7 @@ export function TeacherAssignments() {
     <section className="teacher-workspace" aria-labelledby="teacher-assignments-title">
       <header className="workspace-header">
         <div>
-          <p className="eyebrow">EXAM ASSIGNMENTS</p>
           <h2 id="teacher-assignments-title">考试任务</h2>
-          <p>选择已发布病例和有学生的班级，为整场问诊设置限时。</p>
         </div>
         <button className="button" type="button" onClick={() => setCreating((value) => !value)}>
           {creating ? '取消发布' : '发布新任务'}

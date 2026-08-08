@@ -99,7 +99,6 @@ export function ClassManagement() {
       <header className="workspace-header">
         <div>
           <h2 id="class-management-title">班级管理</h2>
-          <p>创建班级并查看学生名单；学生注册时可自行选择有效班级。</p>
         </div>
       </header>
 

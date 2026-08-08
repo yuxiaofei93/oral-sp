@@ -32,6 +32,7 @@ describe('ClassManagement', () => {
 
     render(<ClassManagement />)
     await waitFor(() => screen.getByRole('heading', { name: 'A 班' }))
+    expect(screen.queryByText('创建班级并查看学生名单；学生注册时可自行选择有效班级。')).not.toBeInTheDocument()
     expect(screen.getByText('1 名学生')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '管理学生' }))
 

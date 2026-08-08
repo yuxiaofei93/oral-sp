@@ -60,6 +60,8 @@ describe('TeacherAssignments', () => {
 
     render(<TeacherAssignments />)
     await waitFor(() => screen.getByRole('button', { name: '发布新任务' }))
+    expect(screen.queryByText('EXAM ASSIGNMENTS')).not.toBeInTheDocument()
+    expect(screen.queryByText('选择已发布病例和有学生的班级，为整场问诊设置限时。')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '发布新任务' }))
     await waitFor(() => screen.getByRole('option', { name: /OM-001/ }))
     fireEvent.change(screen.getByLabelText('任务名称'), { target: { value: '牙周问诊考试' } })
