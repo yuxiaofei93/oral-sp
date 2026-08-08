@@ -329,30 +329,31 @@ sudo crontab -e
 
 ## 14. 更新部署
 
-每次更新前备份：
+首次获取更新脚本：
 
 ```bash
 cd /home/nick/oral-sp
-sudo ./deploy/backup.sh
 git pull --ff-only
-.venv/bin/python -m pip install -c apps/api/constraints.txt ./apps/api
-./deploy/build-frontends.sh
-sudo systemctl stop oral-sp-api
-sudo -u www-data ./deploy/manage-production.sh migrate
-sudo systemctl start oral-sp-api
-sudo systemctl status oral-sp-api --no-pager
 ```
 
-如果本次提交修改了 systemd 或 Nginx 配置，再执行：
+以后每次代码更新只需运行：
 
 ```bash
-sudo install -m 644 deploy/oral-sp-api.service /etc/systemd/system/oral-sp-api.service
-sudo install -m 644 deploy/nginx/oral-sp.conf /etc/nginx/sites-available/oral-sp
-sudo systemctl daemon-reload
-sudo nginx -t
-sudo systemctl reload nginx
-sudo systemctl restart oral-sp-api
+cd /home/nick/oral-sp
+./deploy/update-production.sh
 ```
+
+脚本会在工作区干净且远程分支可快进时，依次执行 SQLite 备份、Git 更新、后端依赖安装、前端构建、数据库迁移、API 重启和就绪检查。它不会更新或重载 Nginx，也不会修改证书。
+
+如果代码已经手动拉取，或需要重试上次失败的部署，强制重新部署当前版本：
+
+```bash
+./deploy/update-production.sh --force
+```
+
+不要使用 `sudo ./deploy/update-production.sh`；脚本会在需要备份、迁移和重启服务时自行调用 `sudo`。
+
+systemd 或 Nginx 配置变更不属于该脚本的范围，需要另行安装和重载。
 
 数据库迁移不一定可通过切换 Git 提交自动逆转。回滚前根据该版本的迁移情况决定是否恢复 SQLite 备份。
 
