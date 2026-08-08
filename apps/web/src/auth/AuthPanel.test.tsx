@@ -83,6 +83,46 @@ describe('AuthPanel', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(7))
   })
 
+  it('shows the request ID when verification email delivery fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input)
+      if (url.endsWith('/me/')) {
+        return Promise.resolve(new Response('{"detail":"not authenticated"}', { status: 403 }))
+      }
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"test-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/registration-classes/')) {
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 'class-1', code: 'CLASS-A', name: 'A 班', teacher_name: '教师甲',
+        }]), { status: 200 }))
+      }
+      if (url.endsWith('/verification-codes/registration/')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          detail: '验证码邮件发送失败，请稍后重试。',
+          request_id: 'mail-failure-123',
+        }), {
+          status: 503,
+          headers: { 'X-Request-ID': 'mail-failure-123' },
+        }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<AuthPanel portal="student" />)
+    await waitFor(() => screen.getByRole('button', { name: '登录' }))
+    fireEvent.click(screen.getByRole('button', { name: '注册' }))
+    await waitFor(() => screen.getByRole('option', { name: 'CLASS-A · A 班（教师甲）' }))
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'student@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '获取验证码' }))
+    await screen.findByRole('dialog', { name: '确认邮箱地址' })
+    fireEvent.click(screen.getByRole('button', { name: '确认发送' }))
+
+    expect(await screen.findByText(
+      '验证码邮件发送失败，请稍后重试。（问题编号：mail-failure-123）',
+    )).toBeInTheDocument()
+  })
+
   it('rejects mismatched registration passwords before calling the registration API', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input)

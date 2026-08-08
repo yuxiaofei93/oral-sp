@@ -368,6 +368,15 @@ sudo certbot certificates
 sudo -u www-data /home/nick/oral-sp/deploy/manage-production.sh check
 ```
 
+API 应用日志是单行 JSON。页面显示服务端错误时会附带问题编号，可直接在 journal 中关联请求和业务异常：
+
+```bash
+sudo journalctl -u oral-sp-api --since "24 hours ago" --no-pager -o cat \
+  | grep -F '替换为问题编号'
+```
+
+完整的日志字段、邮件事件和排查流程见 [生产问题定位手册](./production-troubleshooting.md)。
+
 - `oral-sp-api` 启动失败：优先检查 `.env.production`、SQLite 目录权限和 `journalctl`。
 - 网站出现 `502 Bad Gateway`：检查 Gunicorn 是否监听 `127.0.0.1:8010`。
 - 证书失败：检查 DNS A 记录、80/443 安全组和错误 AAAA 记录。

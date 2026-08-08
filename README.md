@@ -12,6 +12,7 @@
 - 本地私有媒体存储，不依赖 S3 或 MinIO。
 - 适配 1 核 1 GB 主机的单 worker 和低内存数据库配置。
 - API 存活及数据库就绪检查。
+- JSON 应用日志、请求问题编号、邮件投递事件和生产配置检查。
 - 邮箱验证码注册、邮箱加密码登录、忘记密码和当前用户接口。
 - 学生、教师、管理员角色及班级基础数据模型。
 - 教师病例列表和七步式结构化病例编辑器。
@@ -140,6 +141,8 @@ LLM_TIMEOUT_SECONDS=30
 1 核 1 GB 主机只运行一个 API worker。MVP 不在同一台机器运行 MinIO、Redis、Celery 或本地大模型。建议配置 1–2 GB swap，并在真实课堂前用预期人数进行一次并发测试。
 
 当前阿里云内测机采用 SQLite、Gunicorn、Nginx 和 Certbot，不需要 Docker 或 PostgreSQL。双域名、HTTPS、systemd、SQLite 备份和更新回滚流程见 [阿里云 Debian 13 原生部署文档](./docs/deployment-aliyun-debian.md)。服务器使用本地 `.env.production`，不要直接复用开发 `.env`。
+
+页面出现服务端错误时会显示问题编号。提供问题编号、发生时间、域名和操作步骤后，可按 [生产问题定位手册](./docs/production-troubleshooting.md) 从 systemd journal 关联请求日志和业务异常。
 
 外部模型密钥只能通过服务端环境变量提供，不能提交到 Git、返回给浏览器或记录到日志。
 

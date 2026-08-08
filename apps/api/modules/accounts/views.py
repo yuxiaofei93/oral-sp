@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from modules.core.observability import current_request_id
 from modules.teaching.models import ClassGroup
 
 from .models import User, VerificationPurpose
@@ -72,7 +73,7 @@ def verification_error_response(error):
         return response
     if isinstance(error, VerificationEmailError):
         return Response(
-            {"detail": str(error)},
+            {"detail": str(error), "request_id": current_request_id()},
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
     return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)

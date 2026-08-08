@@ -433,6 +433,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly details?: unknown,
+    readonly requestId?: string,
   ) {
     super(message)
   }
@@ -444,13 +445,25 @@ async function parseResponse<T>(response: Response): Promise<T> {
   const data: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     let message = '请求失败，请稍后重试。'
+    let bodyRequestId = ''
     if (data && typeof data === 'object') {
-      const values = Object.values(data)
+      const record = data as Record<string, unknown>
+      if (typeof record.detail === 'string') message = record.detail
+      if (typeof record.request_id === 'string') bodyRequestId = record.request_id
+      const values = Object.entries(record)
+        .filter(([key]) => key !== 'request_id' && key !== 'detail')
+        .map(([, value]) => value)
       const first = values[0]
-      if (typeof first === 'string') message = first
-      if (Array.isArray(first) && typeof first[0] === 'string') message = first[0]
+      if (message === '请求失败，请稍后重试。') {
+        if (typeof first === 'string') message = first
+        if (Array.isArray(first) && typeof first[0] === 'string') message = first[0]
+      }
     }
-    throw new ApiError(message, response.status, data)
+    const requestId = response.headers.get('X-Request-ID') || bodyRequestId
+    const displayMessage = response.status >= 500 && requestId
+      ? `${message}（问题编号：${requestId}）`
+      : message
+    throw new ApiError(displayMessage, response.status, data, requestId || undefined)
   }
   return data as T
 }
