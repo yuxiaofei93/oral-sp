@@ -122,35 +122,6 @@ def _covered_facts(session):
     return covered
 
 
-def _fact_evaluation(*, fact, covered_calls, scoring_item=None) -> Evaluation:
-    calls = covered_calls.get(fact.code, [])
-    matched = bool(calls)
-    message_ids = []
-    excerpts = []
-    for call in calls:
-        message_ids.extend([str(call.student_message_id), str(call.patient_message_id)])
-        excerpts.append(f"学生：{call.student_message.content}\n患者：{call.patient_message.content}")
-    max_score = _money(scoring_item.max_score if scoring_item else fact.score)
-    return Evaluation(
-        scoring_item=scoring_item,
-        code=scoring_item.code if scoring_item else f"fact:{fact.code}",
-        label=scoring_item.label if scoring_item else fact.standard_fact[:240],
-        dimension=scoring_item.dimension if scoring_item else ScoringDimension.HISTORY,
-        evaluation_method=EvaluationMethod.RULE,
-        score=max_score if matched else Decimal("0.00"),
-        max_score=max_score,
-        decision=ScoreDecision.ACHIEVED if matched else ScoreDecision.MISSED,
-        confidence=Decimal("1.0000"),
-        message_ids=list(dict.fromkeys(message_ids)),
-        submission_ids=[],
-        evidence_excerpt="\n\n".join(excerpts)[:2000],
-        standard_answer=fact.standard_fact,
-        reason="已在问诊中覆盖该事实点。" if matched else "问诊记录中未覆盖该事实点。",
-        is_student_visible=scoring_item.is_student_visible if scoring_item else True,
-        source="history_facts",
-    )
-
-
 def _history_evaluation(item, session, config, covered_calls) -> Evaluation:
     requested_codes = [str(code) for code in config.get("fact_codes", [])]
     facts = list(session.case_version.facts.filter(code__in=requested_codes))
@@ -337,30 +308,9 @@ def _build_evaluations(session: SimulationSession) -> list[Evaluation]:
     submissions = {item.submission_type: item for item in session.submissions.all()}
     covered_calls = _covered_facts(session)
     scoring_items = list(session.case_version.scoring_items.all())
-    referenced_fact_codes = {
-        str(code)
-        for item in scoring_items
-        if item.evaluation_method == EvaluationMethod.RULE
-        and (
-            (item.matching_config or {}).get("source") == "history_facts"
-            or (
-                not (item.matching_config or {}).get("source")
-                and item.dimension == ScoringDimension.HISTORY
-            )
-        )
-        for code in (item.matching_config or {}).get("fact_codes", [])
-    }
-    explicit_codes = {item.code for item in scoring_items}
-
-    evaluations = [
-        _fact_evaluation(fact=fact, covered_calls=covered_calls)
-        for fact in session.case_version.facts.filter(score__gt=0)
-        if fact.code not in referenced_fact_codes and f"fact:{fact.code}" not in explicit_codes
-    ]
-    evaluations.extend(
+    return [
         _evaluate_item(item, session, submissions, covered_calls) for item in scoring_items
-    )
-    return evaluations
+    ]
 
 
 def _feedback_lists(evaluations: list[Evaluation]):

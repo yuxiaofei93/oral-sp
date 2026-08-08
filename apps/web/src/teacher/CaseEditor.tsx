@@ -41,8 +41,6 @@ const emptyFact = (facts: CaseFact[]): CaseFact => {
     patient_expression: '',
     disclosure_mode: 'on_question',
     certainty: 'certain',
-    is_required: false,
-    score: '0.00',
     teacher_notes: '',
     display_order: nextDisplayOrder,
   }
@@ -427,14 +425,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                         <option value="forgotten">记不清</option>
                         <option value="not_understood">不理解</option>
                       </select>
-                    </label>
-                    <label>
-                      事实点分值
-                      <input type="number" min="0" step="0.5" value={fact.score} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, score: event.target.value } : item))} />
-                    </label>
-                    <label className="checkbox-field">
-                      <input type="checkbox" checked={fact.is_required} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, is_required: event.target.checked } : item))} />
-                      必问信息点
                     </label>
                   </div>
                 </article>

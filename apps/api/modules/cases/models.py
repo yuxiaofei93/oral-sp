@@ -229,13 +229,6 @@ class CaseFact(VersionOwnedModel):
         choices=FactCertainty.choices,
         default=FactCertainty.CERTAIN,
     )
-    is_required = models.BooleanField(default=False)
-    score = models.DecimalField(
-        max_digits=6,
-        decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0)],
-    )
     teacher_notes = models.TextField(blank=True)
     display_order = models.PositiveIntegerField(default=0)
 

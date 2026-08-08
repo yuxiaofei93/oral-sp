@@ -122,8 +122,6 @@ def make_exam_data(*, suffix="1"):
                     "code": "history.duration",
                     "category": "present_illness",
                     "standard_fact": "牙龈疼痛病程约三年",
-                    "is_required": True,
-                    "score": "2.00",
                 }
             ],
             "diagnosis_rules": [
@@ -143,6 +141,17 @@ def make_exam_data(*, suffix="1"):
                 }
             ],
             "scoring_items": [
+                {
+                    "code": "score.history.duration",
+                    "dimension": "history",
+                    "label": "询问牙龈疼痛病程",
+                    "max_score": "2.00",
+                    "evaluation_method": "rule",
+                    "matching_config": {
+                        "source": "history_facts",
+                        "fact_codes": ["history.duration"],
+                    },
+                },
                 {
                     "code": "score.summary",
                     "dimension": "summary",
@@ -653,7 +662,7 @@ def test_rule_scoring_is_traceable_and_marks_non_rule_items_pending():
     assert assessment.omissions == []
     assert assessment.errors == []
 
-    fact_result = session.score_results.get(code="fact:history.duration")
+    fact_result = session.score_results.get(code="score.history.duration")
     assert fact_result.decision == ScoreDecision.ACHIEVED
     assert len(fact_result.evidence_message_ids) == 2
     assert "牙龈疼痛有多久了" in fact_result.evidence_excerpt

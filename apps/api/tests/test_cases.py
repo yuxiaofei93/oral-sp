@@ -63,8 +63,6 @@ def test_teacher_can_create_and_update_structured_case_draft():
                     "code": "history.duration",
                     "category": "present_illness",
                     "standard_fact": "病程约三年",
-                    "is_required": True,
-                    "score": "2.00",
                 }
             ],
         },

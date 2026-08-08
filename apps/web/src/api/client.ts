@@ -50,8 +50,6 @@ export type CaseFact = {
   patient_expression: string
   disclosure_mode: string
   certainty: string
-  is_required: boolean
-  score: string
   teacher_notes: string
   display_order: number
 }
@@ -450,7 +448,6 @@ const validationFieldLabels: Record<string, string> = {
   patient_expression: '事实内容',
   disclosure_mode: '披露方式',
   certainty: '患者确定程度',
-  score: '事实点分值',
   name: '名称',
   result_text: '向学生释放的结果',
   teacher_interpretation: '教师标准解读',
