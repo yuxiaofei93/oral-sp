@@ -12,6 +12,18 @@
   box-sizing: border-box;
 }
 
+.visually-hidden {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -321,6 +333,34 @@ h1 {
 .confirmation-dialog .confirmation-dialog__hint {
   color: #70847f;
   font-size: 14px;
+}
+
+.class-create-dialog form,
+.class-create-dialog label {
+  display: grid;
+  gap: 8px;
+}
+
+.class-create-dialog label {
+  color: #334d48;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.class-create-dialog input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #cbd9d6;
+  border-radius: 11px;
+  padding: 0 13px;
+  color: #19332f;
+  background: #fbfdfc;
+  outline: none;
+}
+
+.class-create-dialog input:focus {
+  border-color: #16816d;
+  box-shadow: 0 0 0 3px rgb(22 129 109 / 12%);
 }
 
 .confirmation-dialog__actions {
@@ -831,6 +871,185 @@ h1 {
 
 .text-button--danger {
   color: #a64034;
+}
+
+.student-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #dbe7e3;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.student-filters label,
+.student-detail__class-editor label {
+  display: grid;
+  gap: 7px;
+  color: #334d48;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.student-filters input,
+.student-filters select,
+.student-detail__class-editor select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #cbd9d6;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #19332f;
+  background: #fff;
+  outline: none;
+}
+
+.student-filters input:focus,
+.student-filters select:focus,
+.student-detail__class-editor select:focus {
+  border-color: #16816d;
+  box-shadow: 0 0 0 3px rgb(22 129 109 / 12%);
+}
+
+.student-filters__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.student-filters__actions .button {
+  padding-inline: 16px;
+}
+
+.student-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #dbe7e3;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.student-table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+}
+
+.student-table th,
+.student-table td {
+  padding: 15px 16px;
+  border-bottom: 1px solid #e2ebe8;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.student-table th {
+  color: #647a75;
+  background: #f3f8f6;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.student-table td {
+  color: #526b66;
+  font-size: 14px;
+}
+
+.student-table td:first-child {
+  color: #19332f;
+}
+
+.student-table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.student-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.student-status {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #126047;
+  background: #daf4e8;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.student-status--inactive {
+  color: #526b66;
+  background: #e3eae8;
+}
+
+.student-detail {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+  border: 1px solid #cbded8;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgb(32 79 70 / 7%);
+}
+
+.student-detail > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.student-detail > header span {
+  color: #647a75;
+  font-size: 13px;
+}
+
+.student-detail h3 {
+  margin: 4px 0 0;
+  font-size: 24px;
+}
+
+.student-detail__facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.student-detail__facts div {
+  min-width: 0;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f3f8f6;
+}
+
+.student-detail__facts dt {
+  margin-bottom: 6px;
+  color: #647a75;
+  font-size: 12px;
+}
+
+.student-detail__facts dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #19332f;
+  line-height: 1.5;
+}
+
+.student-detail > .button {
+  justify-self: start;
+}
+
+.student-detail__class-editor {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+
+.student-detail__class-editor label {
+  width: min(100%, 360px);
 }
 
 .exam-list__header,
@@ -1406,7 +1625,9 @@ h1 {
   .assignment-form,
   .progress-grid,
   .statistics-summary,
-  .statistics-issues {
+  .statistics-issues,
+  .student-filters,
+  .student-detail__facts {
     grid-template-columns: 1fr;
   }
 
@@ -1451,8 +1672,13 @@ h1 {
   }
 
   .roster-list article > .roster-list__actions,
-  .roster-list__transfer-field {
+  .roster-list__transfer-field,
+  .student-detail__class-editor {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .student-detail__class-editor label {
+    width: 100%;
   }
 }

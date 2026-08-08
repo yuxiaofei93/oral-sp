@@ -222,7 +222,7 @@ class TeacherAssignmentOptionView(APIView):
                     "class_name": class_group.name,
                     "student_count": class_group.student_count,
                 }
-                for class_group in class_groups.order_by("code")
+                for class_group in class_groups.order_by("name", "created_at")
             ],
         }
         return Response(AssignmentOptionSerializer(data).data)

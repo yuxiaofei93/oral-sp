@@ -4,14 +4,17 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from modules.accounts.models import RoleCode
-from modules.accounts.permissions import IsTeacherOrAdministrator
+from modules.accounts.models import RoleCode, User
+from modules.accounts.permissions import IsAdministrator, IsTeacherOrAdministrator
 
 from .models import ClassGroup, ClassMembership
 from .serializers import (
     ClassGroupCreateSerializer,
     ClassGroupSerializer,
     ClassGroupStatusSerializer,
+    ManagedStudentClassUpdateSerializer,
+    ManagedStudentFilterSerializer,
+    ManagedStudentSerializer,
     StudentTransferSerializer,
 )
 from .services import (
@@ -20,6 +23,7 @@ from .services import (
     create_class_group,
     remove_student,
     set_class_group_active,
+    set_student_class,
     transfer_student,
 )
 
@@ -34,7 +38,7 @@ def teacher_class_queryset(user, *, active_only=False):
         .select_related("created_by")
         .annotate(student_count=Count("memberships", distinct=True))
         .prefetch_related(Prefetch("memberships", queryset=memberships))
-        .order_by("-is_active", "code")
+        .order_by("-is_active", "name", "created_at")
     )
     if active_only:
         queryset = queryset.filter(is_active=True)
@@ -47,6 +51,18 @@ def teaching_error_response(error: TeachingError) -> Response:
     return Response(
         {"detail": str(error), "code": error.code},
         status=getattr(error, "status_code", status.HTTP_400_BAD_REQUEST),
+    )
+
+
+def managed_student_queryset():
+    memberships = ClassMembership.objects.select_related("class_group").order_by(
+        "class_group__name",
+    )
+    return (
+        User.objects.filter(roles__code=RoleCode.STUDENT)
+        .prefetch_related(Prefetch("class_memberships", queryset=memberships))
+        .distinct()
+        .order_by("display_name", "email")
     )
 
 
@@ -128,3 +144,45 @@ class TeacherClassRosterMemberView(APIView):
         except TeachingError as error:
             return teaching_error_response(error)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ManagedStudentListView(APIView):
+    permission_classes = [IsAdministrator]
+
+    def get(self, request):
+        filters = ManagedStudentFilterSerializer(data=request.query_params)
+        filters.is_valid(raise_exception=True)
+        queryset = managed_student_queryset()
+        name = filters.validated_data.get("name", "").strip()
+        email = filters.validated_data.get("email", "").strip()
+        class_group_id = filters.validated_data.get("class_group_id")
+        if name:
+            queryset = queryset.filter(display_name__icontains=name)
+        if email:
+            queryset = queryset.filter(email__icontains=email)
+        if class_group_id:
+            queryset = queryset.filter(class_memberships__class_group_id=class_group_id)
+        return Response(ManagedStudentSerializer(queryset.distinct(), many=True).data)
+
+
+class ManagedStudentDetailView(APIView):
+    permission_classes = [IsAdministrator]
+
+    def get(self, request, student_id):
+        student = get_object_or_404(managed_student_queryset(), pk=student_id)
+        return Response(ManagedStudentSerializer(student).data)
+
+    def patch(self, request, student_id):
+        student = get_object_or_404(managed_student_queryset(), pk=student_id)
+        serializer = ManagedStudentClassUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            set_student_class(
+                student=student,
+                target_class=serializer.validated_data["class_group"],
+                user=request.user,
+            )
+        except TeachingError as error:
+            return teaching_error_response(error)
+        student = managed_student_queryset().get(pk=student.pk)
+        return Response(ManagedStudentSerializer(student).data)

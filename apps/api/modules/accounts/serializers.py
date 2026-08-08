@@ -27,7 +27,7 @@ class UserSerializer(serializers.ModelSerializer):
     def get_class_names(self, user: User) -> list[str]:
         return list(
             user.class_memberships.filter(class_group__is_active=True)
-            .order_by("class_group__code")
+            .order_by("class_group__name")
             .values_list("class_group__name", flat=True)
         )
 

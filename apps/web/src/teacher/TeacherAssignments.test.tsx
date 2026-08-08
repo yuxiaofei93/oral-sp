@@ -64,6 +64,8 @@ describe('TeacherAssignments', () => {
     expect(screen.queryByText('选择已发布病例和有学生的班级，为整场问诊设置限时。')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '发布新任务' }))
     await waitFor(() => screen.getByRole('option', { name: /OM-001/ }))
+    expect(screen.getByRole('option', { name: 'A 班' })).toBeInTheDocument()
+    expect(screen.queryByText('CLASS-A')).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('任务名称'), { target: { value: '牙周问诊考试' } })
     fireEvent.change(screen.getByLabelText('病例版本'), { target: { value: 'version-1' } })
     fireEvent.change(screen.getByLabelText('班级'), { target: { value: 'class-1' } })

@@ -388,6 +388,26 @@ export type TeachingClass = {
   created_at: string
 }
 
+export type ManagedStudent = {
+  id: string
+  display_name: string
+  email: string
+  classes: Array<{
+    id: string
+    code: string
+    name: string
+    is_active: boolean
+  }>
+  is_active: boolean
+  date_joined: string
+}
+
+export type ManagedStudentFilters = {
+  name?: string
+  email?: string
+  class_group_id?: string
+}
+
 export type TeacherAssignment = {
   id: string
   title: string
@@ -709,10 +729,7 @@ export async function listTeachingClasses(): Promise<TeachingClass[]> {
   return parseResponse<TeachingClass[]>(response)
 }
 
-export function createTeachingClass(payload: {
-  code: string
-  name: string
-}): Promise<TeachingClass> {
+export function createTeachingClass(payload: { name: string }): Promise<TeachingClass> {
   return mutate('POST', '/api/teacher/teaching/classes/', payload)
 }
 
@@ -733,6 +750,36 @@ export function transferClassStudent(
 ): Promise<void> {
   return mutate('PATCH', `/api/teacher/teaching/classes/${classId}/students/${studentId}/`, {
     target_class_id: targetClassId,
+  })
+}
+
+export async function listManagedStudents(
+  filters: ManagedStudentFilters = {},
+): Promise<ManagedStudent[]> {
+  const query = new URLSearchParams()
+  if (filters.name) query.set('name', filters.name)
+  if (filters.email) query.set('email', filters.email)
+  if (filters.class_group_id) query.set('class_group_id', filters.class_group_id)
+  const suffix = query.size > 0 ? `?${query.toString()}` : ''
+  const response = await fetch(`/api/teacher/teaching/students/${suffix}`, {
+    credentials: 'same-origin',
+  })
+  return parseResponse<ManagedStudent[]>(response)
+}
+
+export async function getManagedStudent(studentId: string): Promise<ManagedStudent> {
+  const response = await fetch(`/api/teacher/teaching/students/${studentId}/`, {
+    credentials: 'same-origin',
+  })
+  return parseResponse<ManagedStudent>(response)
+}
+
+export function updateManagedStudentClass(
+  studentId: string,
+  classGroupId: string,
+): Promise<ManagedStudent> {
+  return mutate('PATCH', `/api/teacher/teaching/students/${studentId}/`, {
+    class_group_id: classGroupId,
   })
 }
 

@@ -292,7 +292,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
           {error && <p className="form-error">{error}</p>}
         </section>
         {user.roles.some((role) => role === 'teacher' || role === 'administrator') ? (
-          <TeacherWorkspace />
+          <TeacherWorkspace isAdministrator={user.roles.includes('administrator')} />
         ) : (
           <StudentAssignments />
         )}
@@ -326,7 +326,7 @@ export function AuthPanel({ portal }: AuthPanelProps) {
               </option>
               {registrationClasses?.map((classGroup) => (
                 <option value={classGroup.id} key={classGroup.id}>
-                  {classGroup.code} · {classGroup.name}（{classGroup.teacher_name}）
+                  {classGroup.name}
                 </option>
               ))}
             </select>

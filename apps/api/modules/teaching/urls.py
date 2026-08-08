@@ -1,6 +1,8 @@
 from django.urls import path
 
 from .views import (
+    ManagedStudentDetailView,
+    ManagedStudentListView,
     TeacherClassDetailView,
     TeacherClassListCreateView,
     TeacherClassRosterMemberView,
@@ -17,5 +19,11 @@ urlpatterns = [
         "classes/<uuid:class_id>/students/<uuid:student_id>/",
         TeacherClassRosterMemberView.as_view(),
         name="teacher-class-roster-member",
+    ),
+    path("students/", ManagedStudentListView.as_view(), name="managed-student-list"),
+    path(
+        "students/<uuid:student_id>/",
+        ManagedStudentDetailView.as_view(),
+        name="managed-student-detail",
     ),
 ]

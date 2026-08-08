@@ -59,7 +59,7 @@ class RegistrationClassListView(APIView):
     def get(self, request):
         classes = ClassGroup.objects.filter(is_active=True).select_related(
             "created_by"
-        ).order_by("code")
+        ).order_by("name", "created_at")
         return Response(RegistrationClassSerializer(classes, many=True).data)
 
 

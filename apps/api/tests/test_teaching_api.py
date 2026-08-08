@@ -29,7 +29,7 @@ def test_teacher_creates_a_class_and_views_registered_students():
 
     response = client.post(
         reverse("teacher-class-list"),
-        {"code": "CLASS-A", "name": "A 班"},
+        {"name": "A 班"},
         format="json",
     )
 
@@ -39,7 +39,7 @@ def test_teacher_creates_a_class_and_views_registered_students():
     ClassMembership.objects.create(class_group=class_group, student=student)
 
     roster = client.get(reverse("teacher-class-list")).json()[0]
-    assert roster["code"] == "CLASS-A"
+    assert roster["code"] == f"CLASS-{class_group.id.hex.upper()}"
     assert roster["created_by_name"] == RoleCode.TEACHER
     assert roster["student_count"] == 1
     assert roster["students"][0]["display_name"] == RoleCode.STUDENT
@@ -47,20 +47,27 @@ def test_teacher_creates_a_class_and_views_registered_students():
 
 
 @pytest.mark.django_db
-def test_class_code_is_unique_without_a_course_namespace():
+def test_class_code_is_generated_automatically_and_is_unique():
     teacher = make_user("teacher-2", RoleCode.TEACHER)
-    ClassGroup.objects.create(code="CLASS-A", name="已有班级", created_by=teacher)
     client = APIClient()
     client.force_authenticate(teacher)
 
-    response = client.post(
+    first_response = client.post(
         reverse("teacher-class-list"),
-        {"code": "CLASS-A", "name": "重复班级"},
+        {"name": "一班"},
+        format="json",
+    )
+    second_response = client.post(
+        reverse("teacher-class-list"),
+        {"name": "二班"},
         format="json",
     )
 
-    assert response.status_code == 400
-    assert response.json()["code"] == ["班级编号已经存在。"]
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    assert first_response.json()["code"].startswith("CLASS-")
+    assert second_response.json()["code"].startswith("CLASS-")
+    assert first_response.json()["code"] != second_response.json()["code"]
 
 
 @pytest.mark.django_db
@@ -261,3 +268,121 @@ def test_student_cannot_access_class_management_api():
     client.force_authenticate(student)
 
     assert client.get(reverse("teacher-class-list")).status_code == 403
+
+
+@pytest.mark.django_db
+def test_administrator_lists_student_details_and_filters_by_name_email_and_class():
+    administrator = make_user("administrator-students", RoleCode.ADMINISTRATOR)
+    teacher = make_user("teacher-students", RoleCode.TEACHER)
+    first_student = make_user("lin-xiaoya", RoleCode.STUDENT)
+    first_student.display_name = "林晓雅"
+    first_student.save(update_fields=["display_name"])
+    second_student = make_user("wang-ming", RoleCode.STUDENT)
+    second_student.display_name = "王明"
+    second_student.save(update_fields=["display_name"])
+    first_class = ClassGroup.objects.create(
+        code="STUDENT-A",
+        name="口腔一班",
+        created_by=teacher,
+    )
+    second_class = ClassGroup.objects.create(
+        code="STUDENT-B",
+        name="口腔二班",
+        created_by=teacher,
+    )
+    ClassMembership.objects.create(class_group=first_class, student=first_student)
+    ClassMembership.objects.create(class_group=second_class, student=second_student)
+    client = APIClient()
+    client.force_authenticate(administrator)
+
+    response = client.get(reverse("managed-student-list"))
+
+    assert response.status_code == 200
+    assert [item["display_name"] for item in response.json()] == ["林晓雅", "王明"]
+    first_record = response.json()[0]
+    assert first_record["email"] == first_student.email
+    assert first_record["classes"] == [
+        {
+            "id": str(first_class.id),
+            "code": "STUDENT-A",
+            "name": "口腔一班",
+            "is_active": True,
+        }
+    ]
+    assert first_record["is_active"] is True
+    assert first_record["date_joined"]
+
+    assert [
+        item["id"]
+        for item in client.get(reverse("managed-student-list"), {"name": "晓雅"}).json()
+    ] == [str(first_student.id)]
+    assert [
+        item["id"]
+        for item in client.get(
+            reverse("managed-student-list"),
+            {"email": "WANG-MING"},
+        ).json()
+    ] == [str(second_student.id)]
+    assert [
+        item["id"]
+        for item in client.get(
+            reverse("managed-student-list"),
+            {"class_group_id": str(first_class.id)},
+        ).json()
+    ] == [str(first_student.id)]
+
+    detail = client.get(
+        reverse("managed-student-detail", kwargs={"student_id": first_student.id})
+    )
+    assert detail.status_code == 200
+    assert detail.json() == first_record
+
+
+@pytest.mark.django_db
+def test_administrator_changes_a_students_class():
+    administrator = make_user("administrator-transfer", RoleCode.ADMINISTRATOR)
+    teacher = make_user("teacher-admin-transfer", RoleCode.TEACHER)
+    student = make_user("student-admin-transfer", RoleCode.STUDENT)
+    source_class = ClassGroup.objects.create(
+        code="ADMIN-TRANSFER-A",
+        name="原班级",
+        created_by=teacher,
+    )
+    target_class = ClassGroup.objects.create(
+        code="ADMIN-TRANSFER-B",
+        name="目标班级",
+        created_by=teacher,
+    )
+    ClassMembership.objects.create(class_group=source_class, student=student)
+    client = APIClient()
+    client.force_authenticate(administrator)
+
+    response = client.patch(
+        reverse("managed-student-detail", kwargs={"student_id": student.id}),
+        {"class_group_id": str(target_class.id)},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["classes"][0]["id"] == str(target_class.id)
+    assert not ClassMembership.objects.filter(
+        class_group=source_class,
+        student=student,
+    ).exists()
+    assert ClassMembership.objects.filter(
+        class_group=target_class,
+        student=student,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_teacher_cannot_access_administrator_student_management_api():
+    teacher = make_user("teacher-no-student-management", RoleCode.TEACHER)
+    student = make_user("student-private-management", RoleCode.STUDENT)
+    client = APIClient()
+    client.force_authenticate(teacher)
+
+    assert client.get(reverse("managed-student-list")).status_code == 403
+    assert client.get(
+        reverse("managed-student-detail", kwargs={"student_id": student.id})
+    ).status_code == 403

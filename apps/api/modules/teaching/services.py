@@ -27,8 +27,11 @@ def can_manage_class(*, class_group: ClassGroup, user) -> bool:
     )
 
 
-def create_class_group(*, code: str, name: str, user) -> ClassGroup:
-    return ClassGroup.objects.create(code=code, name=name, created_by=user)
+def create_class_group(*, name: str, user) -> ClassGroup:
+    class_group = ClassGroup(name=name, created_by=user)
+    class_group.code = f"CLASS-{class_group.id.hex.upper()}"
+    class_group.save()
+    return class_group
 
 
 def archive_class_group(*, class_group: ClassGroup, user) -> None:
@@ -45,6 +48,18 @@ def remove_student(*, membership: ClassMembership, user) -> None:
     if not can_manage_class(class_group=membership.class_group, user=user):
         raise TeachingPermissionError("你没有该班级的学生名单管理权限。")
     membership.delete()
+
+
+@transaction.atomic
+def set_student_class(*, student, target_class: ClassGroup, user) -> None:
+    if not can_manage_class(class_group=target_class, user=user):
+        raise TeachingPermissionError("你没有目标班级的管理权限。")
+    if not target_class.is_active:
+        raise InvalidStudentTransferError("只能将学生转入有效班级。")
+
+    memberships = ClassMembership.objects.select_for_update().filter(student=student)
+    memberships.exclude(class_group=target_class).delete()
+    ClassMembership.objects.get_or_create(class_group=target_class, student=student)
 
 
 @transaction.atomic

@@ -335,7 +335,7 @@ export function TeacherResponses({
         <div>
           <button className="text-button" type="button" onClick={onClose}>← 返回考试任务</button>
           <h2 id="assignment-responses-title">{assignment.title}答卷</h2>
-          <p>{assignment.class_code} · {assignment.class_name} · {assignment.student_count} 人</p>
+          <p>{assignment.class_name} · {assignment.student_count} 人</p>
         </div>
         <a className="button button--secondary" href={teacherAssignmentCsvUrl(assignment.id)}>导出 CSV</a>
       </header>

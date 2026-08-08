@@ -1,23 +1,19 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 
 import {
   ApiError,
   TeachingClass,
   createTeachingClass,
   listTeachingClasses,
-  removeClassStudent,
   setTeachingClassActive,
-  transferClassStudent,
 } from '../api/client'
 
 export function ClassManagement() {
   const [classes, setClasses] = useState<TeachingClass[]>([])
-  const [selectedClassId, setSelectedClassId] = useState('')
+  const [creating, setCreating] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [transferStudentId, setTransferStudentId] = useState('')
-  const [transferTargetClassId, setTransferTargetClassId] = useState('')
 
   async function loadData() {
     setLoading(true)
@@ -35,15 +31,6 @@ export function ClassManagement() {
     void loadData()
   }, [])
 
-  const selectedClass = useMemo(
-    () => classes.find((item) => item.id === selectedClassId),
-    [classes, selectedClassId],
-  )
-  const transferTargets = useMemo(
-    () => classes.filter((item) => item.is_active && item.id !== selectedClassId),
-    [classes, selectedClassId],
-  )
-
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = event.currentTarget
@@ -52,12 +39,9 @@ export function ClassManagement() {
     setError('')
     setMessage('')
     try {
-      const created = await createTeachingClass({
-        code: String(data.get('code') ?? '').toUpperCase(),
-        name: String(data.get('name') ?? ''),
-      })
+      await createTeachingClass({ name: String(data.get('name') ?? '').trim() })
       form.reset()
-      setSelectedClassId(created.id)
+      setCreating(false)
       setMessage('班级已创建，学生注册时可以选择该班级。')
       await loadData()
     } catch (requestError: unknown) {
@@ -67,73 +51,23 @@ export function ClassManagement() {
     }
   }
 
-  function startTransfer(studentId: string) {
-    const firstTarget = transferTargets[0]
-    setTransferStudentId(studentId)
-    setTransferTargetClassId(firstTarget?.id ?? '')
-    setError('')
-    setMessage('')
-  }
-
-  async function handleTransfer(studentId: string, studentName: string) {
-    if (!selectedClass || !transferTargetClassId) return
-    const targetClass = classes.find((item) => item.id === transferTargetClassId)
-    if (!targetClass?.is_active) return
-    if (!globalThis.confirm(
-      `确定将“${studentName}”转入“${targetClass.name}”吗？已有任务名单不会改变。`,
-    )) return
-    setLoading(true)
-    setError('')
-    setMessage('')
-    try {
-      await transferClassStudent(selectedClass.id, studentId, targetClass.id)
-      setTransferStudentId('')
-      setTransferTargetClassId('')
-      setMessage(`学生已转入“${targetClass.name}”，已有任务名单保持不变。`)
-      await loadData()
-    } catch (requestError: unknown) {
-      setError(requestError instanceof ApiError ? requestError.message : '学生转班失败。')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   async function handleClassStatus(classGroup: TeachingClass) {
     const nextActive = !classGroup.is_active
     const confirmed = globalThis.confirm(nextActive
-      ? `确定激活班级“${classGroup.name}”吗？激活后可用于学生注册、转班和发布新任务。`
-      : `确定冻结班级“${classGroup.name}”吗？已有学生、任务和答卷会保留。`)
+      ? `确定恢复班级“${classGroup.name}”吗？恢复后可用于学生注册、调班和发布新任务。`
+      : `确定删除班级“${classGroup.name}”吗？已有学员、任务和答卷会保留。`)
     if (!confirmed) return
     setLoading(true)
     setError('')
     setMessage('')
     try {
       await setTeachingClassActive(classGroup.id, nextActive)
-      setTransferStudentId('')
-      setTransferTargetClassId('')
       setMessage(nextActive
-        ? `班级“${classGroup.name}”已激活。`
-        : `班级“${classGroup.name}”已冻结，历史记录保持不变。`)
+        ? `班级“${classGroup.name}”已恢复。`
+        : `班级“${classGroup.name}”已删除，历史记录保持不变。`)
       await loadData()
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '班级状态更新失败。')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleRemoveStudent(studentId: string) {
-    if (!selectedClass) return
-    if (!globalThis.confirm('确定将该学生移出班级吗？已有任务名单不会改变。')) return
-    setLoading(true)
-    setError('')
-    setMessage('')
-    try {
-      await removeClassStudent(selectedClass.id, studentId)
-      setMessage('学生已移出班级，已有任务名单保持不变。')
-      await loadData()
-    } catch (requestError: unknown) {
-      setError(requestError instanceof ApiError ? requestError.message : '移出学生失败。')
     } finally {
       setLoading(false)
     }
@@ -145,16 +79,21 @@ export function ClassManagement() {
         <div>
           <h2 id="class-management-title">班级管理</h2>
         </div>
+        <button
+          className="button"
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            setCreating(true)
+            setError('')
+            setMessage('')
+          }}
+        >
+          创建班级
+        </button>
       </header>
 
-      <form className="compact-form management-form--single" onSubmit={handleCreate}>
-        <h3>新建班级</h3>
-        <label>班级编号<input name="code" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" required /></label>
-        <label>班级名称<input name="name" required /></label>
-        <button className="button" type="submit" disabled={loading}>创建班级</button>
-      </form>
-
-      {error && <p className="form-error">{error}</p>}
+      {!creating && error && <p className="form-error">{error}</p>}
       {message && <p className="form-success">{message}</p>}
       {loading && classes.length === 0 && <p className="empty-state">正在加载班级…</p>}
       {!loading && classes.length === 0 && <p className="empty-state">目前没有班级。</p>}
@@ -168,108 +107,60 @@ export function ClassManagement() {
             <header className="class-list__header">
               <div>
                 <div className="class-list__identity">
-                  <span>{classGroup.code}</span>
+                  <h3>{classGroup.name}</h3>
                   <span className={`class-status ${classGroup.is_active ? '' : 'class-status--inactive'}`}>
-                    {classGroup.is_active ? '正常' : '已冻结'}
+                    {classGroup.is_active ? '正常' : '已删除'}
                   </span>
                 </div>
-                <h3>{classGroup.name}</h3>
-                <p>{classGroup.student_count} 名学生</p>
+                <p>{classGroup.student_count} 名学员</p>
               </div>
-              <div className="class-list__actions">
-                <button
-                  className="button button--secondary"
-                  type="button"
-                  onClick={() => setSelectedClassId(classGroup.id)}
-                >
-                  管理学生
-                </button>
-                <button
-                  className={`text-button ${classGroup.is_active ? 'text-button--danger' : ''}`}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => handleClassStatus(classGroup)}
-                >
-                  {classGroup.is_active ? '冻结班级' : '激活班级'}
-                </button>
-              </div>
+              <button
+                className={`text-button ${classGroup.is_active ? 'text-button--danger' : ''}`}
+                type="button"
+                disabled={loading}
+                onClick={() => handleClassStatus(classGroup)}
+              >
+                {classGroup.is_active ? '删除班级' : '恢复班级'}
+              </button>
             </header>
           </article>
         ))}
       </div>
 
-      {selectedClass && (
-        <section className="roster-card">
-          <div>
-            <h3>{selectedClass.name}学生名单</h3>
-            <p>{selectedClass.code} · 共 {selectedClass.student_count} 人</p>
-          </div>
-          {selectedClass.students.length === 0 ? <p className="empty-state">班级中还没有学生。</p> : (
-            <div className="roster-list">
-              {selectedClass.students.map((student) => (
-                <article key={student.id}>
-                  <div><strong>{student.display_name}</strong><span>{student.email}</span></div>
-                  <div className="roster-list__actions">
-                    {transferStudentId === student.id ? (
-                      <>
-                        <label className="roster-list__transfer-field">
-                          <span>转入班级</span>
-                          <select
-                            aria-label={`选择${student.display_name}的目标班级`}
-                            value={transferTargetClassId}
-                            onChange={(event) => setTransferTargetClassId(event.target.value)}
-                            disabled={loading}
-                          >
-                            {transferTargets.map((item) => (
-                              <option key={item.id} value={item.id}>{item.code} · {item.name}</option>
-                            ))}
-                          </select>
-                        </label>
-                        <button
-                          className="text-button"
-                          type="button"
-                          disabled={loading || !transferTargetClassId}
-                          onClick={() => handleTransfer(student.id, student.display_name)}
-                        >
-                          确认转班
-                        </button>
-                        <button
-                          className="text-button"
-                          type="button"
-                          disabled={loading}
-                          onClick={() => {
-                            setTransferStudentId('')
-                            setTransferTargetClassId('')
-                          }}
-                        >
-                          取消
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className="text-button"
-                        type="button"
-                        disabled={loading || transferTargets.length === 0}
-                        title={transferTargets.length === 0 ? '请先创建或激活另一个班级' : undefined}
-                        onClick={() => startTransfer(student.id)}
-                      >
-                        转班
-                      </button>
-                    )}
-                    <button
-                      className="text-button text-button--danger"
-                      type="button"
-                      disabled={loading}
-                      onClick={() => handleRemoveStudent(student.id)}
-                    >
-                      移出班级
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+      {creating && (
+        <div className="confirmation-overlay">
+          <section
+            className="confirmation-dialog class-create-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="class-create-title"
+          >
+            <h2 id="class-create-title">创建班级</h2>
+            <form onSubmit={handleCreate}>
+              <label>
+                班级名称
+                <input name="name" autoFocus required maxLength={120} />
+              </label>
+              {error && <p className="form-error">{error}</p>}
+              <div className="confirmation-dialog__actions">
+                <button
+                  className="button button--secondary"
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    setCreating(false)
+                    setError('')
+                  }}
+                >
+                  取消
+                </button>
+                <button className="button" type="submit" disabled={loading}>
+                  {loading ? '创建中…' : '确认创建'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
       )}
     </section>
   )

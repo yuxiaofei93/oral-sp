@@ -143,7 +143,7 @@ export function TeacherAssignments() {
           <label>班级
             <select name="class_group_id" required>
               <option value="">请选择有学生的班级</option>
-              {availableClasses.map((item) => <option key={item.id} value={item.id}>{item.class_code} · {item.class_name}（{item.student_count} 人）</option>)}
+              {availableClasses.map((item) => <option key={item.id} value={item.id}>{item.class_name}</option>)}
             </select>
           </label>
           <label>整场限时（分钟）<input name="duration_minutes" type="number" min="1" max="240" defaultValue="20" required /></label>
@@ -164,7 +164,7 @@ export function TeacherAssignments() {
         {assignments.map((assignment) => (
           <article key={assignment.id}>
             <div className="exam-list__header">
-              <div><span>{assignment.class_code} · {assignment.class_name}</span><h3>{assignment.title}</h3><p>{assignment.case_title} · v{assignment.case_version_number} · {assignment.duration_minutes} 分钟</p></div>
+              <div><span>{assignment.class_name}</span><h3>{assignment.title}</h3><p>{assignment.case_title} · v{assignment.case_version_number} · {assignment.duration_minutes} 分钟</p></div>
               <span className={`task-state task-state--${assignment.status}`}>{assignment.status === 'open' ? '进行中' : assignment.feedback_released_at ? '已发布反馈' : '已收卷'}</span>
             </div>
             <div className="progress-grid">
