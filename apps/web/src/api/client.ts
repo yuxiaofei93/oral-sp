@@ -105,12 +105,7 @@ export type CaseDraft = {
   status: 'draft'
   version_number: null
   title_internal: string
-  specialty: string
-  disease_tags: string[]
   difficulty: string
-  estimated_minutes: number
-  teaching_objectives: string
-  target_grade: string
   is_exam_mode: boolean
   time_limit_minutes: number
   enabled_stages: string[]
@@ -535,10 +530,8 @@ export async function listTeacherCases(): Promise<CaseSummary[]> {
   return parseResponse<CaseSummary[]>(response)
 }
 
-export function createTeacherCase(payload: {
-  title_internal: string
-}): Promise<CaseDraft> {
-  return mutate<CaseDraft>('POST', '/api/teacher/cases/', payload)
+export function createTeacherCase(): Promise<CaseDraft> {
+  return mutate<CaseDraft>('POST', '/api/teacher/cases/', {})
 }
 
 export async function getCaseDraft(caseId: string): Promise<CaseDraft> {

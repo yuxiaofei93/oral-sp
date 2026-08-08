@@ -135,12 +135,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     if (step === 0) {
       return {
         title_internal: draft.title_internal,
-        specialty: draft.specialty,
-        disease_tags: draft.disease_tags,
         difficulty: draft.difficulty,
-        estimated_minutes: draft.estimated_minutes,
-        teaching_objectives: draft.teaching_objectives,
-        target_grade: draft.target_grade,
         is_exam_mode: draft.is_exam_mode,
         time_limit_minutes: draft.time_limit_minutes,
         enabled_stages: draft.enabled_stages,
@@ -233,33 +228,12 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                 <input value={draft.title_internal} onChange={(event) => setField('title_internal', event.target.value)} />
               </label>
               <label>
-                专业方向
-                <input value={draft.specialty} onChange={(event) => setField('specialty', event.target.value)} />
-              </label>
-              <label>
-                病种标签（逗号分隔，仅教师可见）
-                <DelimitedListInput
-                  value={draft.disease_tags}
-                  onChange={(value) => setField('disease_tags', value)}
-                />
-              </label>
-              <label>
                 难度
                 <select value={draft.difficulty} onChange={(event) => setField('difficulty', event.target.value)}>
                   <option value="basic">基础</option>
                   <option value="intermediate">中级</option>
                   <option value="advanced">高级</option>
                 </select>
-              </label>
-              <label>
-                预计完成时间（分钟）
-                <input
-                  type="number"
-                  min={1}
-                  max={240}
-                  value={draft.estimated_minutes}
-                  onChange={(event) => setField('estimated_minutes', Number(event.target.value))}
-                />
               </label>
               <label>
                 考试限时（分钟）
@@ -269,18 +243,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                   max={240}
                   value={draft.time_limit_minutes}
                   onChange={(event) => setField('time_limit_minutes', Number(event.target.value))}
-                />
-              </label>
-              <label>
-                适用年级
-                <input value={draft.target_grade} onChange={(event) => setField('target_grade', event.target.value)} />
-              </label>
-              <label className="form-grid__wide">
-                教学目标
-                <textarea
-                  rows={4}
-                  value={draft.teaching_objectives}
-                  onChange={(event) => setField('teaching_objectives', event.target.value)}
                 />
               </label>
             </div>

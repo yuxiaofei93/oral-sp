@@ -1058,21 +1058,12 @@ h1 {
   color: #647a75;
 }
 
-.new-case-form,
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
 
-.new-case-form {
-  align-items: end;
-  padding: 22px;
-  border-radius: 18px;
-  background: #eef5f2;
-}
-
-.new-case-form label,
 .form-grid label {
   display: grid;
   gap: 7px;
@@ -1081,7 +1072,6 @@ h1 {
   font-weight: 650;
 }
 
-.new-case-form input,
 .form-grid input,
 .form-grid textarea,
 .form-grid select {
@@ -1099,7 +1089,6 @@ h1 {
   resize: vertical;
 }
 
-.new-case-form input:focus,
 .form-grid input:focus,
 .form-grid textarea:focus,
 .form-grid select:focus {
@@ -1321,7 +1310,6 @@ h1 {
     flex-direction: column;
   }
 
-  .new-case-form,
   .form-grid,
   .publish-summary,
   .assignment-form,

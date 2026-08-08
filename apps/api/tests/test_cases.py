@@ -52,7 +52,6 @@ def test_teacher_can_create_and_update_structured_case_draft():
         reverse("teacher-case-draft", kwargs={"case_id": case_id}),
         {
             "expected_updated_at": created.json()["updated_at"],
-            "teaching_objectives": "训练系统病史采集",
             "patient_profile": {
                 "display_name": "陈女士",
                 "age": 55,
@@ -154,11 +153,11 @@ def test_draft_update_rejects_stale_timestamp():
     case_id = created.json()["case_id"]
     url = reverse("teacher-case-draft", kwargs={"case_id": case_id})
     stale_timestamp = created.json()["updated_at"]
-    assert client.patch(url, {"specialty": "口腔黏膜科"}, format="json").status_code == 200
+    assert client.patch(url, {"difficulty": "basic"}, format="json").status_code == 200
 
     conflict = client.patch(
         url,
-        {"expected_updated_at": stale_timestamp, "specialty": "牙周科"},
+        {"expected_updated_at": stale_timestamp, "difficulty": "advanced"},
         format="json",
     )
     assert conflict.status_code == 409
@@ -172,7 +171,7 @@ def test_case_codes_are_generated_in_sequence():
 
     first = client.post(
         reverse("teacher-case-list"),
-        {"title_internal": "顺序病例一"},
+        {},
         format="json",
     )
     second = client.post(
@@ -183,5 +182,6 @@ def test_case_codes_are_generated_in_sequence():
 
     assert first.status_code == 201
     assert second.status_code == 201
+    assert first.json()["title_internal"] == "未命名病例"
     assert first.json()["case_code"] == "CASE-000001"
     assert second.json()["case_code"] == "CASE-000002"

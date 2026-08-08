@@ -67,19 +67,11 @@ class CaseVersion(models.Model):
     status = models.CharField(max_length=16, choices=VersionStatus.choices)
     version_number = models.PositiveIntegerField(null=True, blank=True)
     title_internal = models.CharField(max_length=160)
-    specialty = models.CharField(max_length=80, blank=True)
-    disease_tags = models.JSONField(default=list, blank=True)
     difficulty = models.CharField(
         max_length=16,
         choices=Difficulty.choices,
         default=Difficulty.INTERMEDIATE,
     )
-    estimated_minutes = models.PositiveSmallIntegerField(
-        default=20,
-        validators=[MinValueValidator(1), MaxValueValidator(240)],
-    )
-    teaching_objectives = models.TextField(blank=True)
-    target_grade = models.CharField(max_length=80, blank=True)
     is_exam_mode = models.BooleanField(default=True)
     time_limit_minutes = models.PositiveSmallIntegerField(
         default=20,

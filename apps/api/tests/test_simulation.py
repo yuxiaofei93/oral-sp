@@ -113,7 +113,6 @@ def make_exam_data(*, suffix="1"):
     update_draft(
         draft=draft,
         data={
-            "disease_tags": ["慢性牙周炎"],
             "patient_profile": {
                 "display_name": "陈女士",
                 "opening_statement": "医生您好，我的牙龈总是疼。",

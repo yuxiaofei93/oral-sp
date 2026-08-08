@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
   ApiError,
@@ -13,7 +13,6 @@ import { CaseEditor } from './CaseEditor'
 export function TeacherCases() {
   const [cases, setCases] = useState<CaseSummary[]>([])
   const [draft, setDraft] = useState<CaseDraft | null>(null)
-  const [creating, setCreating] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -33,17 +32,12 @@ export function TeacherCases() {
     void loadCases()
   }, [])
 
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleCreate() {
     setLoading(true)
     setError('')
-    const data = new FormData(event.currentTarget)
     try {
-      const nextDraft = await createTeacherCase({
-        title_internal: String(data.get('title_internal') ?? ''),
-      })
+      const nextDraft = await createTeacherCase()
       setDraft(nextDraft)
-      setCreating(false)
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '病例创建失败。')
     } finally {
@@ -83,17 +77,10 @@ export function TeacherCases() {
           <h2 id="teacher-cases-title">结构化病例</h2>
           <p>用标准表单维护病例事实、检查、诊断和评分规则，不需要编写提示词。</p>
         </div>
-        <button className="button" type="button" onClick={() => setCreating((value) => !value)}>
-          {creating ? '取消新建' : '新建病例'}
+        <button className="button" type="button" disabled={loading} onClick={() => void handleCreate()}>
+          新建病例
         </button>
       </header>
-
-      {creating && (
-        <form className="new-case-form" onSubmit={handleCreate}>
-          <label>病例名称（仅教师可见）<input name="title_internal" required /></label>
-          <button className="button" type="submit" disabled={loading}>创建并编辑</button>
-        </form>
-      )}
 
       {error && <p className="form-error">{error}</p>}
       {loading && <p className="empty-state">正在加载病例…</p>}

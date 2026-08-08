@@ -80,7 +80,6 @@ class CaseDraftSerializer(serializers.ModelSerializer):
     tests = TestDefinitionSerializer(many=True, required=False)
     diagnosis_rules = DiagnosisRuleSerializer(many=True, required=False)
     scoring_items = ScoringItemSerializer(many=True, required=False)
-    disease_tags = StringListField(required=False)
     enabled_stages = StringListField(required=False)
     expected_updated_at = serializers.DateTimeField(write_only=True, required=False)
 
@@ -93,12 +92,7 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             "status",
             "version_number",
             "title_internal",
-            "specialty",
-            "disease_tags",
             "difficulty",
-            "estimated_minutes",
-            "teaching_objectives",
-            "target_grade",
             "is_exam_mode",
             "time_limit_minutes",
             "enabled_stages",
@@ -115,7 +109,11 @@ class CaseDraftSerializer(serializers.ModelSerializer):
 
 
 class CaseCreateSerializer(serializers.Serializer):
-    title_internal = serializers.CharField(max_length=160)
+    title_internal = serializers.CharField(
+        max_length=160,
+        required=False,
+        default="未命名病例",
+    )
 
 
 class CaseListSerializer(serializers.ModelSerializer):
