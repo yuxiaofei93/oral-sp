@@ -211,7 +211,15 @@ curl --head http://wenzhen.wishine.top/
 curl --head http://manage.wishine.top/
 ```
 
-## 11. 申请 HTTPS 证书
+## 11. 安装 HTTPS 证书
+
+Nginx 从下列固定路径读取学生端和教师端的独立证书：
+
+```bash
+sudo install -d -o root -g root -m 700 /etc/nginx/ssl/oral-sp
+```
+
+### 方式 A：Let's Encrypt
 
 把命令中的联系邮箱替换成你的证书通知邮箱：
 
@@ -227,16 +235,41 @@ sudo certbot certonly \
   --no-eff-email
 ```
 
-证书成功后切换到仓库内的正式 HTTPS 配置：
+证书成功后，将两个域名的标准路径指向同一张多域名证书：
+
+```bash
+cd /home/nick/oral-sp
+sudo ln -sfn /etc/letsencrypt/live/oral-sp/fullchain.pem /etc/nginx/ssl/oral-sp/wenzhen.pem
+sudo ln -sfn /etc/letsencrypt/live/oral-sp/privkey.pem /etc/nginx/ssl/oral-sp/wenzhen.key
+sudo ln -sfn /etc/letsencrypt/live/oral-sp/fullchain.pem /etc/nginx/ssl/oral-sp/manage.pem
+sudo ln -sfn /etc/letsencrypt/live/oral-sp/privkey.pem /etc/nginx/ssl/oral-sp/manage.key
+sudo install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
+sudo install -m 755 deploy/certbot-reload-nginx.sh /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
+sudo certbot renew --dry-run
+```
+
+### 方式 B：阿里云个人测试证书
+
+分别为两个域名下载 Nginx 格式的证书，上传到 `/home/nick/certs-upload`，再安装到固定路径：
+
+```bash
+sudo install -m 644 /home/nick/certs-upload/wenzhen.wishine.top.pem /etc/nginx/ssl/oral-sp/wenzhen.pem
+sudo install -m 600 /home/nick/certs-upload/wenzhen.wishine.top.key /etc/nginx/ssl/oral-sp/wenzhen.key
+sudo install -m 644 /home/nick/certs-upload/manage.wishine.top.pem /etc/nginx/ssl/oral-sp/manage.pem
+sudo install -m 600 /home/nick/certs-upload/manage.wishine.top.key /etc/nginx/ssl/oral-sp/manage.key
+```
+
+个人测试证书需要在到期前重新申请并重复上述安装操作。
+
+### 启用 HTTPS
+
+证书安装后切换到仓库内的正式 HTTPS 配置：
 
 ```bash
 cd /home/nick/oral-sp
 sudo install -m 644 deploy/nginx/oral-sp.conf /etc/nginx/sites-available/oral-sp
-sudo install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
-sudo install -m 755 deploy/certbot-reload-nginx.sh /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
 sudo nginx -t
 sudo systemctl reload nginx
-sudo certbot renew --dry-run
 ```
 
 对外检查：
