@@ -45,10 +45,10 @@ export function PatientPromptTemplateEditor() {
   }
 
   return (
-    <section className="teacher-workspace" aria-labelledby="patient-prompt-template-title">
+    <section className="teacher-workspace" aria-labelledby="system-settings-title">
       <header className="workspace-header">
         <div>
-          <h2 id="patient-prompt-template-title">提示词模板</h2>
+          <h2 id="system-settings-title">系统设置</h2>
         </div>
       </header>
 

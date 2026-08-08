@@ -42,6 +42,8 @@ describe('PatientPromptTemplateEditor', () => {
     render(<PatientPromptTemplateEditor />)
 
     const promptInput = await screen.findByLabelText('默认患者问诊提示词')
+    expect(screen.getByRole('heading', { level: 2, name: '系统设置' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 3, name: '默认患者问诊模板' })).toBeInTheDocument()
     expect(promptInput).toHaveValue(template.content)
     expect(screen.queryByText('所有选择默认模板的病例草稿都会使用这里的内容。')).not.toBeInTheDocument()
     expect(screen.getByText(/已发布病例保存的是发布当时的提示词/)).toBeInTheDocument()
