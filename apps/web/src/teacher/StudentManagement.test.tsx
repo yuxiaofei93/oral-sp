@@ -57,6 +57,7 @@ describe('StudentManagement', () => {
     render(<StudentManagement />)
 
     expect(await screen.findByText('林晓雅')).toBeInTheDocument()
+    expect(screen.queryByText('查看学员基本信息，并按姓名、邮箱或班级快速筛选。')).not.toBeInTheDocument()
     expect(screen.getByText('lin@example.com')).toBeInTheDocument()
     expect(screen.getAllByText('口腔一班')).toHaveLength(2)
     expect(screen.queryByText('CLASS-A')).not.toBeInTheDocument()

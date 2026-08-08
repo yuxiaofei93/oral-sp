@@ -139,7 +139,6 @@ export function StudentManagement() {
       <header className="workspace-header">
         <div>
           <h2 id="student-management-title">学员管理</h2>
-          <p>查看学员基本信息，并按姓名、邮箱或班级快速筛选。</p>
         </div>
       </header>
 

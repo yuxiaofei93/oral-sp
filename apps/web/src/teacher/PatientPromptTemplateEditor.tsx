@@ -49,7 +49,6 @@ export function PatientPromptTemplateEditor() {
       <header className="workspace-header">
         <div>
           <h2 id="patient-prompt-template-title">提示词模板</h2>
-          <p>所有选择默认模板的病例草稿都会使用这里的内容。</p>
         </div>
       </header>
 
