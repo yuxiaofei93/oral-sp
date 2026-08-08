@@ -43,7 +43,7 @@ describe('CaseEditor', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows every section and saves the complete draft with optimistic locking', async () => {
+  it('shows every section and automatically saves the complete draft with optimistic locking', async () => {
     const savedBodies: Array<Record<string, unknown>> = []
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input)
@@ -67,6 +67,8 @@ describe('CaseEditor', () => {
     })
 
     render(<CaseEditor initialDraft={draft} onClose={vi.fn()} />)
+    expect(savedBodies).toHaveLength(0)
+    expect(screen.getByText('已自动保存')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '基础信息' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '教学设置' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '患者身份与表达方式' })).not.toBeInTheDocument()
@@ -78,6 +80,8 @@ describe('CaseEditor', () => {
     expect(screen.getByRole('link', { name: /基础信息/ })).toHaveAttribute('href', '#basic-info')
     expect(screen.getByRole('link', { name: /患者事实/ })).toHaveAttribute('href', '#patient-facts')
     expect(screen.queryByRole('button', { name: '保存并继续' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '保存全部修改' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '发布病例' })).toBeInTheDocument()
     expect(screen.queryByLabelText('难度')).not.toBeInTheDocument()
     expect(screen.getByLabelText('化名')).toBeInTheDocument()
     expect(screen.queryByLabelText('性格与配合程度')).not.toBeInTheDocument()
@@ -92,8 +96,8 @@ describe('CaseEditor', () => {
     fireEvent.change(screen.getByLabelText('事实内容'), { target: { value: '病程约三年' } })
     expect(screen.queryByLabelText('语义路由提示词（可选，逗号分隔）')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('典型同义问法（可选，逗号分隔）')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '保存全部修改' }))
-    await waitFor(() => expect(savedBodies).toHaveLength(1))
+    await waitFor(() => expect(savedBodies).toHaveLength(1), { timeout: 2000 })
+    await waitFor(() => expect(screen.getByText('已自动保存')).toBeInTheDocument())
     expect(savedBodies[0]).toMatchObject({
       title_internal: '牙龈疼痛教学病例',
       patient_profile: draft.patient_profile,
@@ -136,12 +140,43 @@ describe('CaseEditor', () => {
     render(<CaseEditor initialDraft={draft} onClose={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: '添加事实信息点' }))
     fireEvent.click(screen.getByRole('button', { name: '添加检查' }))
-    fireEvent.click(screen.getByRole('button', { name: '保存全部修改' }))
 
     expect(await screen.findByText(
       '患者事实 1 / 事实内容：该字段不能为空。；检查资料 1 / 检查名称：该字段不能为空。',
+      {},
+      { timeout: 2000 },
     )).toBeInTheDocument()
     expect(screen.queryByText('请求失败，请稍后重试。')).not.toBeInTheDocument()
+  })
+
+  it('saves pending changes before returning to the case list', async () => {
+    const requestOrder: string[] = []
+    const onClose = vi.fn(() => requestOrder.push('close'))
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input)
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"case-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/draft/')) {
+        requestOrder.push('save')
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return Promise.resolve(new Response(JSON.stringify({
+          ...draft,
+          ...body,
+          updated_at: '2026-08-04T00:01:00Z',
+        }), { status: 200 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<CaseEditor initialDraft={draft} onClose={onClose} />)
+    fireEvent.change(screen.getByLabelText('病例名称（仅教师可见）'), {
+      target: { value: '返回前保存的病例' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '← 返回病例列表' }))
+
+    await waitFor(() => expect(requestOrder).toEqual(['save', 'close']))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('saves all pending changes before publishing', async () => {
@@ -181,7 +216,7 @@ describe('CaseEditor', () => {
     fireEvent.change(screen.getByLabelText('病例名称（仅教师可见）'), {
       target: { value: '更新后的病例名称' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '发布不可变版本' }))
+    fireEvent.click(screen.getByRole('button', { name: '发布病例' }))
 
     await waitFor(() => expect(requestOrder).toEqual(['save', 'publish']))
     expect(screen.getByText(/病例 v1 已发布/)).toBeInTheDocument()

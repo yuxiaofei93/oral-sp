@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 
 import {
   ApiError,
@@ -19,6 +19,10 @@ const editorSections = [
   { id: 'scoring-rules', label: '评分规则' },
   { id: 'publish-check', label: '预览发布' },
 ]
+
+const AUTO_SAVE_DELAY_MS = 500
+
+type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error'
 
 const emptyFact = (facts: CaseFact[]): CaseFact => {
   const nextCodeNumber = facts.reduce((maximum, fact) => {
@@ -131,66 +135,142 @@ type Props = {
 
 export function CaseEditor({ initialDraft, onClose }: Props) {
   const [draft, setDraft] = useState(initialDraft)
-  const [saving, setSaving] = useState(false)
+  const [revision, setRevision] = useState(0)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
+  const [publishing, setPublishing] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const draftRef = useRef(initialDraft)
+  const revisionRef = useRef(0)
+  const savedRevisionRef = useRef(0)
+  const serverUpdatedAtRef = useRef(initialDraft.updated_at)
+  const saveInFlightRef = useRef<Promise<boolean> | null>(null)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function updateDraft(updater: (current: CaseDraft) => CaseDraft) {
+    const updated = updater(draftRef.current)
+    const nextRevision = revisionRef.current + 1
+    draftRef.current = updated
+    revisionRef.current = nextRevision
+    setDraft(updated)
+    setRevision(nextRevision)
+    setSaveStatus('dirty')
+    setMessage('')
+    setError('')
+  }
 
   function setField<K extends keyof CaseDraft>(field: K, value: CaseDraft[K]) {
-    setDraft((current) => ({ ...current, [field]: value }))
+    updateDraft((current) => ({ ...current, [field]: value }))
   }
 
   function setProfile(field: keyof CaseDraft['patient_profile'], value: string | number | null) {
-    setDraft((current) => ({
+    updateDraft((current) => ({
       ...current,
       patient_profile: { ...current.patient_profile, [field]: value },
     }))
   }
 
-  function draftPayload(): Partial<CaseDraft> {
+  function draftPayload(source: CaseDraft): Partial<CaseDraft> {
     return {
-      title_internal: draft.title_internal,
-      difficulty: draft.difficulty,
-      is_exam_mode: draft.is_exam_mode,
-      time_limit_minutes: draft.time_limit_minutes,
-      enabled_stages: draft.enabled_stages,
-      patient_profile: draft.patient_profile,
-      facts: draft.facts.map((fact) => ({
+      title_internal: source.title_internal,
+      difficulty: source.difficulty,
+      is_exam_mode: source.is_exam_mode,
+      time_limit_minutes: source.time_limit_minutes,
+      enabled_stages: source.enabled_stages,
+      patient_profile: source.patient_profile,
+      facts: source.facts.map((fact) => ({
         ...fact,
         patient_expression: fact.standard_fact,
       })),
-      tests: draft.tests,
-      diagnosis_rules: draft.diagnosis_rules,
-      scoring_items: draft.scoring_items,
+      tests: source.tests,
+      diagnosis_rules: source.diagnosis_rules,
+      scoring_items: source.scoring_items,
     }
   }
 
-  async function saveDraft(showSuccess = true): Promise<boolean> {
-    setSaving(true)
-    setError('')
-    setMessage('')
-    try {
-      const updated = await saveCaseDraft(draft.case_id, {
-        ...draftPayload(),
-        expected_updated_at: draft.updated_at,
-      })
-      setDraft(updated)
-      if (showSuccess) setMessage('整份草稿已保存')
-      return true
-    } catch (requestError: unknown) {
-      setError(requestError instanceof ApiError ? requestError.message : '保存失败，请稍后重试。')
-      return false
-    } finally {
-      setSaving(false)
+  async function persistLatestDraft(): Promise<boolean> {
+    if (saveInFlightRef.current) {
+      const inFlight = saveInFlightRef.current
+      const result = await inFlight
+      if (savedRevisionRef.current < revisionRef.current) return persistLatestDraft()
+      return result
     }
+    if (savedRevisionRef.current >= revisionRef.current) return true
+
+    const operation = (async () => {
+      setError('')
+      while (savedRevisionRef.current < revisionRef.current) {
+        setSaveStatus('saving')
+        const snapshot = draftRef.current
+        const snapshotRevision = revisionRef.current
+        try {
+          const updated = await saveCaseDraft(snapshot.case_id, {
+            ...draftPayload(snapshot),
+            expected_updated_at: serverUpdatedAtRef.current,
+          })
+          serverUpdatedAtRef.current = updated.updated_at
+          savedRevisionRef.current = snapshotRevision
+          if (revisionRef.current === snapshotRevision) {
+            draftRef.current = updated
+            setDraft(updated)
+          } else {
+            const current = { ...draftRef.current, updated_at: updated.updated_at }
+            draftRef.current = current
+            setDraft(current)
+          }
+        } catch (requestError: unknown) {
+          setSaveStatus('error')
+          setError(requestError instanceof ApiError ? requestError.message : '自动保存失败，请稍后重试。')
+          return false
+        }
+      }
+      setSaveStatus('saved')
+      return true
+    })()
+
+    saveInFlightRef.current = operation
+    try {
+      return await operation
+    } finally {
+      if (saveInFlightRef.current === operation) saveInFlightRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    if (revision === 0 || savedRevisionRef.current >= revision) return undefined
+    const timer = setTimeout(() => {
+      autoSaveTimerRef.current = null
+      void persistLatestDraft()
+    }, AUTO_SAVE_DELAY_MS)
+    autoSaveTimerRef.current = timer
+    return () => {
+      clearTimeout(timer)
+      if (autoSaveTimerRef.current === timer) autoSaveTimerRef.current = null
+    }
+  }, [revision])
+
+  function clearAutoSaveTimer() {
+    if (!autoSaveTimerRef.current) return
+    clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = null
+  }
+
+  async function handleClose() {
+    clearAutoSaveTimer()
+    if (await persistLatestDraft()) onClose()
   }
 
   async function handlePublish() {
-    if (!(await saveDraft(false))) return
-    setSaving(true)
+    clearAutoSaveTimer()
+    setPublishing(true)
     setError('')
     setMessage('')
+    if (!(await persistLatestDraft())) {
+      setPublishing(false)
+      return
+    }
     try {
-      const result = await publishCase(draft.case_id)
+      const result = await publishCase(draftRef.current.case_id)
       setMessage(
         result.created
           ? `病例 v${result.version.version_number} 已发布，后续编辑不会改变该版本。`
@@ -199,21 +279,31 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '发布失败，请稍后重试。')
     } finally {
-      setSaving(false)
+      setPublishing(false)
     }
   }
+
+  const saveStateText = publishing
+    ? '正在发布…'
+    : saveStatus === 'saving'
+      ? '正在自动保存…'
+      : saveStatus === 'dirty'
+        ? '修改将在片刻后自动保存'
+        : saveStatus === 'error'
+          ? '自动保存失败'
+          : message || '已自动保存'
 
   return (
     <section className="case-editor" aria-labelledby="case-editor-title">
       <header className="case-editor__header">
         <div>
-          <button className="text-button" type="button" onClick={onClose}>
+          <button className="text-button" type="button" onClick={() => void handleClose()}>
             ← 返回病例列表
           </button>
           <p className="eyebrow">{draft.case_code} · 草稿</p>
           <h2 id="case-editor-title">{draft.title_internal}</h2>
         </div>
-        <span className="save-state">{saving ? '正在保存…' : message || '所有修改仅保存到草稿'}</span>
+        <span className="save-state" aria-live="polite">{saveStateText}</span>
       </header>
 
       <div className="case-editor__layout">
@@ -470,18 +560,14 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
               <li>发布后生成不可变版本；草稿仍可继续编辑并发布下一版</li>
               <li>学生在教师统一发布反馈前看不到诊断和标准答案</li>
             </ul>
-            <button className="button" type="button" onClick={handlePublish} disabled={saving}>发布不可变版本</button>
+            <button className="button" type="button" onClick={handlePublish} disabled={publishing}>
+              {publishing ? '正在发布…' : '发布病例'}
+            </button>
           </EditorCard>
         </div>
       </div>
 
       {error && <p className="form-error editor-error">{error}</p>}
-      <footer className="editor-actions">
-        <span>保存将同步页面中的全部病例内容</span>
-        <button className="button" type="button" disabled={saving} onClick={() => void saveDraft()}>
-          保存全部修改
-        </button>
-      </footer>
     </section>
   )
 }

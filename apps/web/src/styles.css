@@ -392,7 +392,6 @@ h1 {
 
 .workspace-header,
 .case-editor__header,
-.editor-actions,
 .repeat-item__header {
   display: flex;
   align-items: center;
@@ -1327,24 +1326,6 @@ h1 {
   color: #a64034;
 }
 
-.editor-actions {
-  position: sticky;
-  z-index: 5;
-  bottom: 16px;
-  justify-content: space-between;
-  border: 1px solid rgb(25 80 71 / 14%);
-  border-radius: 16px;
-  padding: 12px 14px;
-  background: rgb(249 252 251 / 94%);
-  box-shadow: 0 10px 28px rgb(32 79 70 / 12%);
-  backdrop-filter: blur(12px);
-}
-
-.editor-actions > span {
-  color: #647a75;
-  font-size: 13px;
-}
-
 .editor-error {
   text-align: right;
 }
@@ -1404,8 +1385,7 @@ h1 {
   .workbench-header,
   .assignment-list > article,
   .case-editor__header,
-  .case-list > article,
-  .editor-actions {
+  .case-list > article {
     align-items: stretch;
     flex-direction: column;
   }
