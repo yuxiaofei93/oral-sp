@@ -46,7 +46,18 @@ describe('TeacherCases', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input)
       if (url.endsWith('/teacher/cases/') && !init?.method) {
-        return Promise.resolve(new Response('[]', { status: 200 }))
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 'case-1',
+          code: 'CASE-000001',
+          is_active: true,
+          created_at: '2026-08-08T00:00:00Z',
+          draft: {
+            id: 'draft-1',
+            title_internal: '牙龈疼痛病例',
+            updated_at: '2026-08-08T00:00:00Z',
+          },
+          latest_published: null,
+        }]), { status: 200 }))
       }
       if (url.endsWith('/csrf/')) {
         return Promise.resolve(new Response('{"csrf_token":"case-csrf"}', { status: 200 }))
@@ -62,6 +73,8 @@ describe('TeacherCases', () => {
     expect(await screen.findByRole('heading', { name: '病例库' })).toBeInTheDocument()
     expect(screen.queryByText('TEACHER WORKSPACE')).not.toBeInTheDocument()
     expect(screen.queryByText('用标准表单维护病例事实、检查、诊断和评分规则，不需要编写提示词。')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '编辑病例' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '编辑草稿' })).not.toBeInTheDocument()
     fireEvent.click(await screen.findByRole('button', { name: '新建病例' }))
 
     await waitFor(() => {

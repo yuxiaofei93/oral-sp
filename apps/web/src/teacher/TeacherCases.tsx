@@ -93,7 +93,7 @@ export function TeacherCases() {
             </div>
             <div className="case-list__meta">
               <span>{item.latest_published ? `已发布 v${item.latest_published.version_number}` : '尚未发布'}</span>
-              <button className="button button--secondary" type="button" onClick={() => openCase(item.id)}>编辑草稿</button>
+              <button className="button button--secondary" type="button" onClick={() => openCase(item.id)}>编辑病例</button>
             </div>
           </article>
         ))}

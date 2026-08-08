@@ -172,7 +172,7 @@ def publish_draft(*, draft: CaseVersion, user) -> PublishResult:
         if not locked.patient_profile.opening_statement.strip():
             raise PublishValidationError("发布前必须填写患者开场白。")
         if not locked.facts.exists():
-            raise PublishValidationError("发布前至少需要一个患者事实信息点。")
+            raise PublishValidationError("发布前至少需要一条病情信息。")
 
         content = draft_content(locked)
         digest = _content_hash(content)

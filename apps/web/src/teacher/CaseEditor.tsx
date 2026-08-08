@@ -13,7 +13,7 @@ import {
 
 const editorSections = [
   { id: 'basic-info', label: '基础信息' },
-  { id: 'patient-facts', label: '患者事实' },
+  { id: 'patient-facts', label: '病情信息' },
   { id: 'case-tests', label: '检查资料' },
   { id: 'diagnosis-rules', label: '诊断规则' },
   { id: 'scoring-rules', label: '评分规则' },
@@ -364,7 +364,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
           </EditorCard>
 
           <EditorCard id="patient-facts" title={`患者信息 [${draft.facts.length}点]`}>
-            <p className="section-help">每个事实都是独立信息点。AI 只能围绕这些事实回答，未定义内容不得补齐。</p>
             <div className="repeat-list">
               {draft.facts.map((fact, index) => (
                 <article className="repeat-item" key={fact.id ?? `fact-${index}`}>
@@ -487,7 +486,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                       </label>
                     )}
                     {item.evaluation_method === 'rule' && item.matching_config.source === 'history_facts' && (
-                      <label className="form-grid__wide">患者事实编码（逗号分隔）<DelimitedListInput value={Array.isArray(item.matching_config.fact_codes) ? item.matching_config.fact_codes : []} onChange={(value) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, fact_codes: value } } : score))} /></label>
+                      <label className="form-grid__wide">病情信息编码（逗号分隔）<DelimitedListInput value={Array.isArray(item.matching_config.fact_codes) ? item.matching_config.fact_codes : []} onChange={(value) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, fact_codes: value } } : score))} /></label>
                     )}
                     {item.evaluation_method === 'rule' && item.matching_config.source === 'diagnoses' && (
                       <label className="form-grid__wide">标准诊断名称（逗号分隔；留空时按维度匹配必需诊断）<DelimitedListInput value={Array.isArray(item.matching_config.diagnosis_names) ? item.matching_config.diagnosis_names : []} onChange={(value) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, matching_config: { ...score.matching_config, diagnosis_names: value } } : score))} /></label>
@@ -514,14 +513,14 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
 
           <EditorCard id="publish-check" title="发布前检查">
             <div className="publish-summary">
-              <div><strong>{draft.facts.length}</strong><span>患者事实</span></div>
+              <div><strong>{draft.facts.length}</strong><span>病情信息</span></div>
               <div><strong>{draft.tests.length}</strong><span>检查资料</span></div>
               <div><strong>{draft.diagnosis_rules.length}</strong><span>诊断规则</span></div>
               <div><strong>{draft.scoring_items.length}</strong><span>评分项</span></div>
             </div>
             <ul className="release-checklist">
               <li className={draft.patient_profile.opening_statement ? 'is-ready' : ''}>患者开场白已填写</li>
-              <li className={draft.facts.length > 0 ? 'is-ready' : ''}>至少包含一个患者事实</li>
+              <li className={draft.facts.length > 0 ? 'is-ready' : ''}>至少包含一条病情信息</li>
               <li>发布后生成不可变版本；草稿仍可继续编辑并发布下一版</li>
               <li>学生在教师统一发布反馈前看不到诊断和标准答案</li>
             </ul>

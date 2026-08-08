@@ -129,7 +129,7 @@ def _history_evaluation(item, session, config, covered_calls) -> Evaluation:
         requested_codes = [item.code]
         facts = list(session.case_version.facts.filter(code=item.code))
     if not requested_codes or len(facts) != len(set(requested_codes)):
-        return _pending(item, "病史评分项尚未配置有效的患者事实编码。")
+        return _pending(item, "病史评分项尚未配置有效的病情信息编码。")
 
     matched_facts = [fact for fact in facts if covered_calls.get(fact.code)]
     message_ids = []

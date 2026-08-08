@@ -427,7 +427,7 @@ export class ApiError extends Error {
 
 const validationFieldLabels: Record<string, string> = {
   patient_profile: '患者身份',
-  facts: '患者事实',
+  facts: '病情信息',
   tests: '检查资料',
   diagnosis_rules: '诊断规则',
   scoring_items: '评分规则',

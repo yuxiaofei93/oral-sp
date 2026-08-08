@@ -82,12 +82,13 @@ describe('CaseEditor', () => {
     expect(screen.queryByRole('heading', { name: '教学设置' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '患者身份与表达方式' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '患者信息 [0点]' })).toBeInTheDocument()
+    expect(screen.queryByText('每个事实都是独立信息点。AI 只能围绕这些事实回答，未定义内容不得补齐。')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '检查资料（0）' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '诊断规则（0）' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '评分规则（0）' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '发布前检查' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /基础信息/ })).toHaveAttribute('href', '#basic-info')
-    expect(screen.getByRole('link', { name: /患者事实/ })).toHaveAttribute('href', '#patient-facts')
+    expect(screen.getByRole('link', { name: /病情信息/ })).toHaveAttribute('href', '#patient-facts')
     expect(screen.queryByRole('button', { name: '保存并继续' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '保存全部修改' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '发布病例' })).toBeInTheDocument()
@@ -161,7 +162,7 @@ describe('CaseEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加检查' }))
 
     expect(await screen.findByText(
-      '患者事实 1 / 内容：该字段不能为空。；检查资料 1 / 检查名称：该字段不能为空。',
+      '病情信息 1 / 内容：该字段不能为空。；检查资料 1 / 检查名称：该字段不能为空。',
       {},
       { timeout: 2000 },
     )).toBeInTheDocument()
