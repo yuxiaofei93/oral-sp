@@ -56,9 +56,18 @@ describe('CaseEditor', () => {
         expect(init?.method).toBe('PATCH')
         expect(init?.headers).toMatchObject({ 'X-CSRFToken': 'case-csrf' })
         expect(String(init?.body)).toContain('expected_updated_at')
+        const savedFacts = (body.facts as Array<Record<string, unknown>>).map((fact, index) => ({
+          ...fact,
+          id: index + 100,
+        }))
         return Promise.resolve(
           new Response(
-            JSON.stringify({ ...draft, ...body, updated_at: '2026-08-04T00:01:00Z' }),
+            JSON.stringify({
+              ...draft,
+              ...body,
+              facts: savedFacts,
+              updated_at: '2026-08-04T00:01:00Z',
+            }),
             { status: 200 },
           ),
         )
@@ -97,11 +106,15 @@ describe('CaseEditor', () => {
     expect(screen.queryByLabelText('病例未提供时的回答')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('事实点分值')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('必问信息点')).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('事实内容'), { target: { value: '病程约三年' } })
+    const factContentInput = screen.getByLabelText('事实内容')
+    fireEvent.change(factContentInput, { target: { value: '病程约三年' } })
+    factContentInput.focus()
     expect(screen.queryByLabelText('语义路由提示词（可选，逗号分隔）')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('典型同义问法（可选，逗号分隔）')).not.toBeInTheDocument()
     await waitFor(() => expect(savedBodies).toHaveLength(1), { timeout: 2000 })
     await waitFor(() => expect(screen.getByText('已自动保存')).toBeInTheDocument())
+    expect(screen.getByLabelText('事实内容')).toBe(factContentInput)
+    expect(factContentInput).toHaveFocus()
     expect(savedBodies[0]).toMatchObject({
       title_internal: '牙龈疼痛教学病例',
       patient_profile: draft.patient_profile,

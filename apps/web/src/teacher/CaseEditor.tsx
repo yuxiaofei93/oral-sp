@@ -206,14 +206,9 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
           })
           serverUpdatedAtRef.current = updated.updated_at
           savedRevisionRef.current = snapshotRevision
-          if (revisionRef.current === snapshotRevision) {
-            draftRef.current = updated
-            setDraft(updated)
-          } else {
-            const current = { ...draftRef.current, updated_at: updated.updated_at }
-            draftRef.current = current
-            setDraft(current)
-          }
+          const current = { ...draftRef.current, updated_at: updated.updated_at }
+          draftRef.current = current
+          setDraft(current)
         } catch (requestError: unknown) {
           setSaveStatus('error')
           setError(requestError instanceof ApiError ? requestError.message : '自动保存失败，请稍后重试。')
