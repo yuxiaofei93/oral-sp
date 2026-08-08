@@ -11,7 +11,15 @@ import {
   ScoringItem,
 } from '../api/client'
 
-const steps = ['教学设置', '患者身份', '患者事实', '检查资料', '诊断规则', '评分规则', '预览发布']
+const editorSections = [
+  { id: 'teaching-settings', label: '教学设置' },
+  { id: 'patient-profile', label: '患者身份' },
+  { id: 'patient-facts', label: '患者事实' },
+  { id: 'case-tests', label: '检查资料' },
+  { id: 'diagnosis-rules', label: '诊断规则' },
+  { id: 'scoring-rules', label: '评分规则' },
+  { id: 'publish-check', label: '预览发布' },
+]
 
 const emptyFact = (order: number): CaseFact => ({
   code: `fact.${order + 1}`,
@@ -99,9 +107,9 @@ function DelimitedListInput({
   )
 }
 
-function EditorCard({ title, children }: { title: string; children: ReactNode }) {
+function EditorCard({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section className="editor-card">
+    <section className="editor-card" id={id}>
       <h3>{title}</h3>
       {children}
     </section>
@@ -115,7 +123,6 @@ type Props = {
 
 export function CaseEditor({ initialDraft, onClose }: Props) {
   const [draft, setDraft] = useState(initialDraft)
-  const [step, setStep] = useState(0)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -131,36 +138,32 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     }))
   }
 
-  function stepPayload(): Partial<CaseDraft> {
-    if (step === 0) {
-      return {
-        title_internal: draft.title_internal,
-        difficulty: draft.difficulty,
-        is_exam_mode: draft.is_exam_mode,
-        time_limit_minutes: draft.time_limit_minutes,
-        enabled_stages: draft.enabled_stages,
-      }
+  function draftPayload(): Partial<CaseDraft> {
+    return {
+      title_internal: draft.title_internal,
+      difficulty: draft.difficulty,
+      is_exam_mode: draft.is_exam_mode,
+      time_limit_minutes: draft.time_limit_minutes,
+      enabled_stages: draft.enabled_stages,
+      patient_profile: draft.patient_profile,
+      facts: draft.facts,
+      tests: draft.tests,
+      diagnosis_rules: draft.diagnosis_rules,
+      scoring_items: draft.scoring_items,
     }
-    if (step === 1) return { patient_profile: draft.patient_profile }
-    if (step === 2) return { facts: draft.facts }
-    if (step === 3) return { tests: draft.tests }
-    if (step === 4) return { diagnosis_rules: draft.diagnosis_rules }
-    if (step === 5) return { scoring_items: draft.scoring_items }
-    return {}
   }
 
-  async function saveCurrentStep(): Promise<boolean> {
-    if (step === 6) return true
+  async function saveDraft(showSuccess = true): Promise<boolean> {
     setSaving(true)
     setError('')
     setMessage('')
     try {
       const updated = await saveCaseDraft(draft.case_id, {
-        ...stepPayload(),
+        ...draftPayload(),
         expected_updated_at: draft.updated_at,
       })
       setDraft(updated)
-      setMessage('草稿已保存')
+      if (showSuccess) setMessage('整份草稿已保存')
       return true
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '保存失败，请稍后重试。')
@@ -170,11 +173,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     }
   }
 
-  async function moveNext() {
-    if (await saveCurrentStep()) setStep((current) => Math.min(current + 1, steps.length - 1))
-  }
-
   async function handlePublish() {
+    if (!(await saveDraft(false))) return
     setSaving(true)
     setError('')
     setMessage('')
@@ -205,35 +205,23 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
         <span className="save-state">{saving ? '正在保存…' : message || '所有修改仅保存到草稿'}</span>
       </header>
 
-      <nav className="editor-steps" aria-label="病例编辑步骤">
-        {steps.map((label, index) => (
-          <button
-            key={label}
-            type="button"
-            className={index === step ? 'is-active' : index < step ? 'is-complete' : ''}
-            onClick={() => setStep(index)}
-          >
-            <span>{index + 1}</span>
-            {label}
-          </button>
-        ))}
-      </nav>
+      <div className="case-editor__layout">
+        <nav className="editor-steps" aria-label="病例编辑导航">
+          <p>病例结构</p>
+          {editorSections.map((section, index) => (
+            <a key={section.id} href={`#${section.id}`}>
+              <span>{index + 1}</span>
+              {section.label}
+            </a>
+          ))}
+        </nav>
 
-      <div className="editor-content">
-        {step === 0 && (
-          <EditorCard title="教学设置">
+        <div className="editor-content">
+          <EditorCard id="teaching-settings" title="教学设置">
             <div className="form-grid">
               <label>
                 病例名称（仅教师可见）
                 <input value={draft.title_internal} onChange={(event) => setField('title_internal', event.target.value)} />
-              </label>
-              <label>
-                难度
-                <select value={draft.difficulty} onChange={(event) => setField('difficulty', event.target.value)}>
-                  <option value="basic">基础</option>
-                  <option value="intermediate">中级</option>
-                  <option value="advanced">高级</option>
-                </select>
               </label>
               <label>
                 考试限时（分钟）
@@ -247,13 +235,11 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
               </label>
             </div>
           </EditorCard>
-        )}
 
-        {step === 1 && (
-          <EditorCard title="患者身份与表达方式">
+          <EditorCard id="patient-profile" title="患者身份与表达方式">
             <div className="form-grid">
               <label>
-                教学化名
+                化名
                 <input value={draft.patient_profile.display_name} onChange={(event) => setProfile('display_name', event.target.value)} />
               </label>
               <label>
@@ -288,7 +274,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                 <input value={draft.patient_profile.emotion} onChange={(event) => setProfile('emotion', event.target.value)} />
               </label>
               <label className="form-grid__wide">
-                患者开场白（发布必填）
+                患者开场白(必填)
                 <textarea
                   rows={4}
                   value={draft.patient_profile.opening_statement}
@@ -297,10 +283,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
               </label>
             </div>
           </EditorCard>
-        )}
 
-        {step === 2 && (
-          <EditorCard title={`患者事实库（${draft.facts.length}）`}>
+          <EditorCard id="patient-facts" title={`患者事实库（${draft.facts.length}）`}>
             <p className="section-help">每个事实都是独立信息点。AI 只能围绕这些事实回答，未定义内容不得补齐。</p>
             <div className="repeat-list">
               {draft.facts.map((fact, index) => (
@@ -383,10 +367,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
               添加事实信息点
             </button>
           </EditorCard>
-        )}
 
-        {step === 3 && (
-          <EditorCard title={`检查资料（${draft.tests.length}）`}>
+          <EditorCard id="case-tests" title={`检查资料（${draft.tests.length}）`}>
             <p className="section-help">文字检查结果为主，图片和附件后续可选添加。</p>
             <div className="repeat-list">
               {draft.tests.map((test, index) => (
@@ -406,10 +388,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
             </div>
             <button className="button button--secondary" type="button" onClick={() => setField('tests', [...draft.tests, emptyTest(draft.tests.length)])}>添加检查</button>
           </EditorCard>
-        )}
 
-        {step === 4 && (
-          <EditorCard title={`诊断规则（${draft.diagnosis_rules.length}）`}>
+          <EditorCard id="diagnosis-rules" title={`诊断规则（${draft.diagnosis_rules.length}）`}>
             <div className="repeat-list">
               {draft.diagnosis_rules.map((rule, index) => (
                 <article className="repeat-item" key={rule.id ?? `diagnosis-${index}`}>
@@ -425,10 +405,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
             </div>
             <button className="button button--secondary" type="button" onClick={() => setField('diagnosis_rules', [...draft.diagnosis_rules, emptyDiagnosis(draft.diagnosis_rules.length)])}>添加诊断规则</button>
           </EditorCard>
-        )}
 
-        {step === 5 && (
-          <EditorCard title={`评分规则（${draft.scoring_items.length}）`}>
+          <EditorCard id="scoring-rules" title={`评分规则（${draft.scoring_items.length}）`}>
             <div className="repeat-list">
               {draft.scoring_items.map((item, index) => (
                 <article className="repeat-item" key={item.id ?? `score-${index}`}>
@@ -486,10 +464,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
             </div>
             <button className="button button--secondary" type="button" onClick={() => setField('scoring_items', [...draft.scoring_items, emptyScoringItem(draft.scoring_items.length)])}>添加评分项</button>
           </EditorCard>
-        )}
 
-        {step === 6 && (
-          <EditorCard title="发布前检查">
+          <EditorCard id="publish-check" title="发布前检查">
             <div className="publish-summary">
               <div><strong>{draft.facts.length}</strong><span>患者事实</span></div>
               <div><strong>{draft.tests.length}</strong><span>检查资料</span></div>
@@ -504,18 +480,15 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
             </ul>
             <button className="button" type="button" onClick={handlePublish} disabled={saving}>发布不可变版本</button>
           </EditorCard>
-        )}
+        </div>
       </div>
 
       {error && <p className="form-error editor-error">{error}</p>}
       <footer className="editor-actions">
-        <button className="button button--secondary" type="button" disabled={step === 0 || saving} onClick={() => setStep((current) => current - 1)}>上一步</button>
-        {step < steps.length - 1 && (
-          <>
-            <button className="button button--secondary" type="button" disabled={saving} onClick={saveCurrentStep}>保存草稿</button>
-            <button className="button" type="button" disabled={saving} onClick={moveNext}>保存并继续</button>
-          </>
-        )}
+        <span>保存将同步页面中的全部病例内容</span>
+        <button className="button" type="button" disabled={saving} onClick={() => void saveDraft()}>
+          保存全部修改
+        </button>
       </footer>
     </section>
   )

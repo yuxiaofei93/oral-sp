@@ -1171,29 +1171,55 @@ h1 {
   margin-top: 16px;
 }
 
+.case-editor__layout {
+  display: grid;
+  grid-template-columns: minmax(160px, 190px) minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+
 .editor-steps {
+  position: sticky;
+  top: 24px;
   display: grid;
-  grid-template-columns: repeat(7, minmax(92px, 1fr));
-  gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-}
-
-.editor-steps button {
-  display: grid;
-  justify-items: center;
   gap: 7px;
-  min-width: 92px;
-  border: 0;
-  border-radius: 12px;
-  padding: 12px 8px;
-  color: #70847f;
-  background: #eaf1ef;
-  cursor: pointer;
+  border: 1px solid #dbe7e3;
+  border-radius: 18px;
+  padding: 12px;
+  background: #fff;
 }
 
-.editor-steps button span {
+.editor-steps p {
+  margin: 2px 8px 7px;
+  color: #334d48;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.editor-steps a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  padding: 10px;
+  color: #70847f;
+  background: #f3f7f6;
+  text-decoration: none;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.editor-steps a:hover,
+.editor-steps a:focus-visible {
+  border-color: #c9ddd7;
+  color: #176f60;
+  background: #eaf4f1;
+  outline: none;
+}
+
+.editor-steps a span {
   display: grid;
+  flex: 0 0 auto;
   place-items: center;
   width: 24px;
   height: 24px;
@@ -1203,28 +1229,25 @@ h1 {
   font-weight: 750;
 }
 
-.editor-steps button.is-active {
-  color: #fff;
-  background: #176f60;
-}
-
-.editor-steps button.is-active span {
-  color: #176f60;
-  background: #fff;
-}
-
-.editor-steps button.is-complete {
-  color: #176f60;
-  background: #dff0eb;
+.editor-content {
+  display: grid;
+  min-width: 0;
+  gap: 24px;
 }
 
 .editor-card {
   display: grid;
   gap: 22px;
+  scroll-margin-top: 24px;
   padding: clamp(20px, 4vw, 32px);
   border: 1px solid #dbe7e3;
   border-radius: 20px;
   background: #fff;
+}
+
+.editor-card:target {
+  border-color: #83b7aa;
+  box-shadow: 0 0 0 3px rgb(22 129 109 / 9%);
 }
 
 .editor-card h3,
@@ -1251,8 +1274,21 @@ h1 {
 }
 
 .editor-actions {
-  justify-content: flex-end;
-  padding-top: 4px;
+  position: sticky;
+  z-index: 5;
+  bottom: 16px;
+  justify-content: space-between;
+  border: 1px solid rgb(25 80 71 / 14%);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgb(249 252 251 / 94%);
+  box-shadow: 0 10px 28px rgb(32 79 70 / 12%);
+  backdrop-filter: blur(12px);
+}
+
+.editor-actions > span {
+  color: #647a75;
+  font-size: 13px;
 }
 
 .editor-error {
@@ -1291,6 +1327,16 @@ h1 {
 
 .release-checklist .is-ready {
   color: #176f60;
+}
+
+@media (max-width: 900px) {
+  .case-editor__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-steps {
+    position: static;
+  }
 }
 
 @media (max-width: 720px) {

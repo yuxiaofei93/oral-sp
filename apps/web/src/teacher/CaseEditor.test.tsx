@@ -43,7 +43,7 @@ describe('CaseEditor', () => {
     vi.restoreAllMocks()
   })
 
-  it('saves a step with optimistic locking and supports adding facts', async () => {
+  it('shows every section and saves the complete draft with optimistic locking', async () => {
     const savedBodies: Array<Record<string, unknown>> = []
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input)
@@ -51,13 +51,14 @@ describe('CaseEditor', () => {
         return Promise.resolve(new Response('{"csrf_token":"case-csrf"}', { status: 200 }))
       }
       if (url.endsWith('/draft/')) {
-        savedBodies.push(JSON.parse(String(init?.body)))
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        savedBodies.push(body)
         expect(init?.method).toBe('PATCH')
         expect(init?.headers).toMatchObject({ 'X-CSRFToken': 'case-csrf' })
         expect(String(init?.body)).toContain('expected_updated_at')
         return Promise.resolve(
           new Response(
-            JSON.stringify({ ...draft, updated_at: '2026-08-04T00:01:00Z' }),
+            JSON.stringify({ ...draft, ...body, updated_at: '2026-08-04T00:01:00Z' }),
             { status: 200 },
           ),
         )
@@ -66,12 +67,19 @@ describe('CaseEditor', () => {
     })
 
     render(<CaseEditor initialDraft={draft} onClose={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button', { name: '保存并继续' }))
+    expect(screen.getByRole('heading', { name: '教学设置' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '患者身份与表达方式' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '患者事实库（0）' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '检查资料（0）' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '诊断规则（0）' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '评分规则（0）' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '发布前检查' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /患者事实/ })).toHaveAttribute('href', '#patient-facts')
+    expect(screen.queryByRole('button', { name: '保存并继续' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('难度')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('化名')).toBeInTheDocument()
+    expect(screen.getByLabelText('患者开场白(必填)')).toBeInTheDocument()
 
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: '患者身份与表达方式' })).toBeInTheDocument(),
-    )
-    fireEvent.click(screen.getByRole('button', { name: /患者事实/ }))
     fireEvent.click(screen.getByRole('button', { name: '添加事实信息点' }))
     expect(screen.getByText('信息点 1')).toBeInTheDocument()
     const tagInput = screen.getByLabelText('语义路由提示词（可选，逗号分隔）')
@@ -81,10 +89,58 @@ describe('CaseEditor', () => {
     fireEvent.change(tagInput, { target: { value: '多久，病程；多长时间' } })
     fireEvent.blur(tagInput)
     expect(tagInput).toHaveValue('多久，病程，多长时间')
-    fireEvent.click(screen.getByRole('button', { name: '保存并继续' }))
-    await waitFor(() => expect(savedBodies).toHaveLength(2))
-    expect(savedBodies[1]).toMatchObject({
+    fireEvent.click(screen.getByRole('button', { name: '保存全部修改' }))
+    await waitFor(() => expect(savedBodies).toHaveLength(1))
+    expect(savedBodies[0]).toMatchObject({
+      title_internal: '牙龈疼痛教学病例',
+      patient_profile: draft.patient_profile,
       facts: [{ semantic_tags: ['多久', '病程', '多长时间'] }],
+      tests: [],
+      diagnosis_rules: [],
+      scoring_items: [],
     })
+  })
+
+  it('saves all pending changes before publishing', async () => {
+    const requestOrder: string[] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input)
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"case-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/draft/')) {
+        requestOrder.push('save')
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        expect(body.title_internal).toBe('更新后的病例名称')
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ ...draft, ...body, updated_at: '2026-08-04T00:01:00Z' }),
+            { status: 200 },
+          ),
+        )
+      }
+      if (url.endsWith('/publish/')) {
+        requestOrder.push('publish')
+        return Promise.resolve(new Response(JSON.stringify({
+          created: true,
+          version: {
+            id: 'version-1',
+            version_number: 1,
+            published_at: '2026-08-04T00:02:00Z',
+            content_hash: 'hash',
+          },
+        }), { status: 201 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<CaseEditor initialDraft={draft} onClose={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('病例名称（仅教师可见）'), {
+      target: { value: '更新后的病例名称' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '发布不可变版本' }))
+
+    await waitFor(() => expect(requestOrder).toEqual(['save', 'publish']))
+    expect(screen.getByText(/病例 v1 已发布/)).toBeInTheDocument()
   })
 })
