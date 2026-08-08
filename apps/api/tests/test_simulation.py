@@ -106,9 +106,7 @@ def make_exam_data(*, suffix="1"):
     teacher = make_user(f"1390000000{suffix}", RoleCode.TEACHER)
     student = make_user(f"1380000000{suffix}", RoleCode.STUDENT)
     case = create_case_with_draft(
-        code=f"SIM-{suffix}",
         title_internal="牙龈疼痛标准病例",
-        title_student="口腔不适病例",
         user=teacher,
     )
     draft = case.versions.get(status=VersionStatus.DRAFT)
@@ -226,7 +224,7 @@ def test_teacher_assignment_snapshots_roster_and_student_response_hides_answers(
     response = client.get(reverse("student-assignment-list"))
 
     assert response.status_code == 200
-    assert response.json()[0]["case_title"] == "口腔不适病例"
+    assert "case_title" not in response.json()[0]
     assert response.json()[0]["attempt_status"] == "not_started"
     serialized = str(response.json())
     assert "慢性牙周炎" not in serialized
@@ -562,7 +560,7 @@ def test_assignment_options_only_include_teachers_published_cases_and_classes():
     assert response.json()["case_versions"] == [
         {
             "id": str(assignment.case_version_id),
-            "case_code": "SIM-0",
+            "case_code": assignment.case_version.case.code,
             "title": "牙龈疼痛标准病例",
             "version_number": 1,
             "suggested_duration_minutes": 20,

@@ -40,9 +40,7 @@ export function TeacherCases() {
     const data = new FormData(event.currentTarget)
     try {
       const nextDraft = await createTeacherCase({
-        code: String(data.get('code') ?? '').toUpperCase(),
         title_internal: String(data.get('title_internal') ?? ''),
-        title_student: String(data.get('title_student') ?? ''),
       })
       setDraft(nextDraft)
       setCreating(false)
@@ -92,9 +90,7 @@ export function TeacherCases() {
 
       {creating && (
         <form className="new-case-form" onSubmit={handleCreate}>
-          <label>病例编号<input name="code" placeholder="OM-001" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" required /></label>
-          <label>内部名称<input name="title_internal" required /></label>
-          <label>学生可见名称<input name="title_student" required /></label>
+          <label>病例名称（仅教师可见）<input name="title_internal" required /></label>
           <button className="button" type="submit" disabled={loading}>创建并编辑</button>
         </form>
       )}
@@ -109,7 +105,6 @@ export function TeacherCases() {
             <div>
               <span>{item.code}</span>
               <h3>{item.draft?.title_internal ?? '无草稿'}</h3>
-              <p>{item.draft?.title_student}</p>
             </div>
             <div className="case-list__meta">
               <span>{item.latest_published ? `已发布 v${item.latest_published.version_number}` : '尚未发布'}</span>
@@ -121,4 +116,3 @@ export function TeacherCases() {
     </section>
   )
 }
-

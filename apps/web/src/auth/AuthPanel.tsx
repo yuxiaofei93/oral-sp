@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useEffect, useId, useRef, useState } from 'react'
 
 import {
   ApiError,
@@ -34,6 +34,48 @@ const roleNames = {
 
 type AuthPanelProps = {
   portal: Portal
+}
+
+type PasswordFieldProps = {
+  label: string
+  name: string
+  autoComplete: 'current-password' | 'new-password'
+}
+
+function PasswordField({ label, name, autoComplete }: PasswordFieldProps) {
+  const inputId = useId()
+  const [isVisible, setIsVisible] = useState(false)
+  const toggleLabel = isVisible ? '隐藏密码' : '显示密码'
+
+  return (
+    <div className="password-form-field">
+      <label htmlFor={inputId}>{label}</label>
+      <span className="password-field">
+        <input
+          id={inputId}
+          name={name}
+          type={isVisible ? 'text' : 'password'}
+          autoComplete={autoComplete}
+          minLength={8}
+          required
+        />
+        <button
+          className="password-visibility"
+          type="button"
+          aria-label={toggleLabel}
+          aria-pressed={isVisible}
+          title={toggleLabel}
+          onClick={() => setIsVisible((visible) => !visible)}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+            <circle cx="12" cy="12" r="2.5" />
+            {isVisible && <path d="m4 4 16 16" />}
+          </svg>
+        </button>
+      </span>
+    </div>
+  )
 }
 
 function canAccessPortal(user: CurrentUser, portal: Portal) {
@@ -323,27 +365,18 @@ export function AuthPanel({ portal }: AuthPanelProps) {
             </span>
           </label>
         )}
-        <label>
-          {mode === 'forgot_password' ? '新密码' : '密码'}
-          <input
-            name="password"
-            type="password"
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            minLength={8}
-            required
-          />
-        </label>
+        <PasswordField
+          key={mode}
+          label={mode === 'forgot_password' ? '新密码' : '密码'}
+          name="password"
+          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+        />
         {mode !== 'login' && (
-          <label>
-            确认密码
-            <input
-              name="password_confirmation"
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              required
-            />
-          </label>
+          <PasswordField
+            label="确认密码"
+            name="password_confirmation"
+            autoComplete="new-password"
+          />
         )}
         {error && <p className="form-error">{error}</p>}
         {notice && <p className="form-success">{notice}</p>}

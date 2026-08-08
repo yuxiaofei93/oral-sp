@@ -220,6 +220,37 @@ describe('AuthPanel', () => {
     expect(fetchMock).toHaveBeenCalledTimes(5)
   })
 
+  it('keeps the login email but clears the password when opening password reset', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input)
+      if (url.endsWith('/me/')) {
+        return Promise.resolve(new Response('{"detail":"not authenticated"}', { status: 403 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<AuthPanel portal="teacher" />)
+    await waitFor(() => screen.getByRole('button', { name: '登录' }))
+
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'teacher@example.com' } })
+    const loginPassword = screen.getByLabelText('密码')
+    fireEvent.change(loginPassword, { target: { value: 'ExistingPassword!2026' } })
+    expect(loginPassword).toHaveAttribute('type', 'password')
+
+    fireEvent.click(screen.getByRole('button', { name: '显示密码' }))
+    expect(loginPassword).toHaveAttribute('type', 'text')
+    expect(screen.getByRole('button', { name: '隐藏密码' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: '隐藏密码' }))
+    expect(loginPassword).toHaveAttribute('type', 'password')
+    fireEvent.click(screen.getByRole('button', { name: '忘记密码' }))
+
+    expect(screen.getByLabelText('邮箱')).toHaveValue('teacher@example.com')
+    expect(screen.getByLabelText('新密码')).toHaveValue('')
+    expect(screen.getByLabelText('确认密码')).toHaveValue('')
+    expect(screen.getAllByRole('button', { name: '显示密码' })).toHaveLength(2)
+  })
+
   it('does not render a student workspace inside the teacher portal', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
       const url = String(input)

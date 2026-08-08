@@ -11,7 +11,6 @@ const draft: CaseDraft = {
   status: 'draft',
   version_number: null,
   title_internal: '牙龈疼痛教学病例',
-  title_student: '牙龈反复疼痛病例',
   specialty: '',
   disease_tags: [],
   difficulty: 'intermediate',

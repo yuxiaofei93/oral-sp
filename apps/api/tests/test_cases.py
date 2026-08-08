@@ -39,13 +39,13 @@ def test_teacher_can_create_and_update_structured_case_draft():
     created = client.post(
         reverse("teacher-case-list"),
         {
-            "code": "OM-001",
             "title_internal": "内部病例名称",
-            "title_student": "牙龈疼痛病例",
         },
         format="json",
     )
     assert created.status_code == 201
+    assert created.json()["case_code"] == "CASE-000001"
+    assert "title_student" not in created.json()
     case_id = created.json()["case_id"]
 
     updated = client.patch(
@@ -86,7 +86,7 @@ def test_publish_creates_immutable_snapshot_and_is_idempotent():
     client.force_authenticate(teacher)
     created = client.post(
         reverse("teacher-case-list"),
-        {"code": "OM-002", "title_internal": "病例二", "title_student": "口腔不适病例"},
+        {"title_internal": "病例二"},
         format="json",
     )
     case_id = created.json()["case_id"]
@@ -148,7 +148,7 @@ def test_draft_update_rejects_stale_timestamp():
     client.force_authenticate(teacher)
     created = client.post(
         reverse("teacher-case-list"),
-        {"code": "OM-003", "title_internal": "病例三", "title_student": "学生病例三"},
+        {"title_internal": "病例三"},
         format="json",
     )
     case_id = created.json()["case_id"]
@@ -162,3 +162,26 @@ def test_draft_update_rejects_stale_timestamp():
         format="json",
     )
     assert conflict.status_code == 409
+
+
+@pytest.mark.django_db
+def test_case_codes_are_generated_in_sequence():
+    teacher = make_user("13800138104", RoleCode.TEACHER)
+    client = APIClient()
+    client.force_authenticate(teacher)
+
+    first = client.post(
+        reverse("teacher-case-list"),
+        {"title_internal": "顺序病例一"},
+        format="json",
+    )
+    second = client.post(
+        reverse("teacher-case-list"),
+        {"title_internal": "顺序病例二"},
+        format="json",
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["case_code"] == "CASE-000001"
+    assert second.json()["case_code"] == "CASE-000002"

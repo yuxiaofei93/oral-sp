@@ -20,6 +20,7 @@ def default_enabled_stages() -> list[str]:
 class Case(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.CharField(
+        editable=False,
         max_length=40,
         unique=True,
         validators=[
@@ -44,6 +45,11 @@ class Case(models.Model):
         return self.code
 
 
+class CaseCodeSequence(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    last_value = models.PositiveBigIntegerField(default=0)
+
+
 class VersionStatus(models.TextChoices):
     DRAFT = "draft", "草稿"
     PUBLISHED = "published", "已发布"
@@ -61,7 +67,6 @@ class CaseVersion(models.Model):
     status = models.CharField(max_length=16, choices=VersionStatus.choices)
     version_number = models.PositiveIntegerField(null=True, blank=True)
     title_internal = models.CharField(max_length=160)
-    title_student = models.CharField(max_length=160)
     specialty = models.CharField(max_length=80, blank=True)
     disease_tags = models.JSONField(default=list, blank=True)
     difficulty = models.CharField(

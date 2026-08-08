@@ -105,7 +105,6 @@ export type CaseDraft = {
   status: 'draft'
   version_number: null
   title_internal: string
-  title_student: string
   specialty: string
   disease_tags: string[]
   difficulty: string
@@ -132,7 +131,6 @@ export type CaseSummary = {
   draft: {
     id: string
     title_internal: string
-    title_student: string
     updated_at: string
   } | null
   latest_published: {
@@ -147,7 +145,6 @@ export type AttemptStatus = 'not_started' | 'active' | 'completed' | 'expired'
 export type StudentAssignment = {
   id: string
   title: string
-  case_title: string
   difficulty: 'basic' | 'intermediate' | 'advanced'
   duration_minutes: number
   opens_at: string
@@ -188,7 +185,6 @@ export type SimulationSession = {
   id: string
   assignment_id: string
   assignment_title: string
-  case_title: string
   patient_name: string
   opening_statement: string
   status: 'active' | 'completed' | 'expired'
@@ -540,9 +536,7 @@ export async function listTeacherCases(): Promise<CaseSummary[]> {
 }
 
 export function createTeacherCase(payload: {
-  code: string
   title_internal: string
-  title_student: string
 }): Promise<CaseDraft> {
   return mutate<CaseDraft>('POST', '/api/teacher/cases/', payload)
 }

@@ -135,7 +135,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     if (step === 0) {
       return {
         title_internal: draft.title_internal,
-        title_student: draft.title_student,
         specialty: draft.specialty,
         disease_tags: draft.disease_tags,
         difficulty: draft.difficulty,
@@ -230,12 +229,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
           <EditorCard title="教学设置">
             <div className="form-grid">
               <label>
-                内部病例名称
+                病例名称（仅教师可见）
                 <input value={draft.title_internal} onChange={(event) => setField('title_internal', event.target.value)} />
-              </label>
-              <label>
-                学生可见名称
-                <input value={draft.title_student} onChange={(event) => setField('title_student', event.target.value)} />
               </label>
               <label>
                 专业方向

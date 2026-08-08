@@ -217,6 +217,57 @@ h1 {
   box-shadow: 0 0 0 3px rgb(22 129 109 / 12%);
 }
 
+.password-form-field {
+  display: grid;
+  gap: 7px;
+}
+
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.auth-card .password-field input {
+  padding-right: 48px;
+}
+
+.password-visibility {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  transform: translateY(-50%);
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: #526b66;
+  background: transparent;
+  cursor: pointer;
+}
+
+.password-visibility:hover {
+  color: #176f60;
+  background: #edf5f2;
+}
+
+.password-visibility:focus-visible {
+  outline: 2px solid #16816d;
+  outline-offset: 1px;
+}
+
+.password-visibility svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .verification-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

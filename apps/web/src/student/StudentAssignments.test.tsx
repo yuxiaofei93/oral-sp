@@ -7,7 +7,6 @@ const session = {
   id: 'session-1',
   assignment_id: 'assignment-1',
   assignment_title: '牙周问诊练习',
-  case_title: '口腔不适病例',
   patient_name: '陈女士',
   opening_statement: '医生您好，我的牙龈总是疼。',
   status: 'active',
@@ -36,7 +35,6 @@ describe('StudentAssignments', () => {
               {
                 id: 'assignment-1',
                 title: '牙周问诊练习',
-                case_title: '口腔不适病例',
                 difficulty: 'intermediate',
                 duration_minutes: 20,
                 opens_at: '2026-08-04T00:00:00Z',
@@ -107,7 +105,6 @@ describe('StudentAssignments', () => {
         return Promise.resolve(new Response(JSON.stringify([{
           id: 'assignment-1',
           title: '牙周问诊练习',
-          case_title: '口腔不适病例',
           difficulty: 'intermediate',
           duration_minutes: 20,
           opens_at: '2026-08-04T00:00:00Z',
@@ -176,7 +173,6 @@ describe('StudentAssignments', () => {
               {
                 id: 'assignment-1',
                 title: '牙周问诊练习',
-                case_title: '口腔不适病例',
                 difficulty: 'intermediate',
                 duration_minutes: 20,
                 opens_at: '2026-08-04T00:00:00Z',

@@ -173,7 +173,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
         <div>
           <button className="text-button" type="button" onClick={onExit}>← 返回任务列表</button>
           <h2 id="workbench-title">{session.assignment_title}</h2>
-          <p>{session.case_title} · 患者：{session.patient_name || '标准化患者'}</p>
+          <p>患者：{session.patient_name || '标准化患者'}</p>
         </div>
         <div className={`exam-timer ${remaining < 300 ? 'is-urgent' : ''}`}>
           <span>剩余时间</span>
@@ -343,7 +343,6 @@ export function StudentAssignments() {
               <div>
                 <span>{difficultyNames[assignment.difficulty]} · {assignment.duration_minutes} 分钟</span>
                 <h3>{assignment.title}</h3>
-                <p>{assignment.case_title}</p>
               </div>
               <div className="assignment-list__action">
                 <span>{attemptNames[assignment.attempt_status]}</span>

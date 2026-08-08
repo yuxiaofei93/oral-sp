@@ -93,7 +93,6 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             "status",
             "version_number",
             "title_internal",
-            "title_student",
             "specialty",
             "disease_tags",
             "difficulty",
@@ -116,14 +115,7 @@ class CaseDraftSerializer(serializers.ModelSerializer):
 
 
 class CaseCreateSerializer(serializers.Serializer):
-    code = serializers.RegexField(r"^[A-Z0-9][A-Z0-9_-]*$", max_length=40)
     title_internal = serializers.CharField(max_length=160)
-    title_student = serializers.CharField(max_length=160)
-
-    def validate_code(self, value: str) -> str:
-        if Case.objects.filter(code=value).exists():
-            raise serializers.ValidationError("病例编号已经存在。")
-        return value
 
 
 class CaseListSerializer(serializers.ModelSerializer):
@@ -144,7 +136,6 @@ class CaseListSerializer(serializers.ModelSerializer):
         return {
             "id": draft.id,
             "title_internal": draft.title_internal,
-            "title_student": draft.title_student,
             "updated_at": draft.updated_at,
         }
 

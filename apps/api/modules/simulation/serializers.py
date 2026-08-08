@@ -95,7 +95,6 @@ class AssignmentOptionSerializer(serializers.Serializer):
 
 
 class StudentAssignmentSerializer(serializers.ModelSerializer):
-    case_title = serializers.CharField(source="case_version.title_student", read_only=True)
     difficulty = serializers.CharField(source="case_version.difficulty", read_only=True)
     attempt_status = serializers.SerializerMethodField()
     session_id = serializers.SerializerMethodField()
@@ -105,7 +104,6 @@ class StudentAssignmentSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
-            "case_title",
             "difficulty",
             "duration_minutes",
             "opens_at",
@@ -153,7 +151,6 @@ class StageSubmissionSerializer(serializers.ModelSerializer):
 
 class SessionSerializer(serializers.ModelSerializer):
     assignment_title = serializers.CharField(source="assignment.title", read_only=True)
-    case_title = serializers.CharField(source="case_version.title_student", read_only=True)
     patient_name = serializers.CharField(
         source="case_version.patient_profile.display_name",
         read_only=True,
@@ -172,7 +169,6 @@ class SessionSerializer(serializers.ModelSerializer):
             "id",
             "assignment_id",
             "assignment_title",
-            "case_title",
             "patient_name",
             "opening_statement",
             "status",

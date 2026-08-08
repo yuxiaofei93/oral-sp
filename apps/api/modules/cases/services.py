@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from .models import (
     Case,
+    CaseCodeSequence,
     CaseFact,
     CaseVersion,
     DiagnosisRule,
@@ -34,14 +35,19 @@ class PublishResult:
     created: bool
 
 
-def create_case_with_draft(*, code: str, title_internal: str, title_student: str, user) -> Case:
+def create_case_with_draft(*, title_internal: str, user) -> Case:
     with transaction.atomic():
-        case = Case.objects.create(code=code, created_by=user)
+        sequence = CaseCodeSequence.objects.select_for_update().get(pk=1)
+        sequence.last_value += 1
+        sequence.save(update_fields=["last_value"])
+        case = Case.objects.create(
+            code=f"CASE-{sequence.last_value:06d}",
+            created_by=user,
+        )
         draft = CaseVersion.objects.create(
             case=case,
             status=VersionStatus.DRAFT,
             title_internal=title_internal,
-            title_student=title_student,
             created_by=user,
         )
         PatientProfile.objects.create(version=draft)
@@ -99,7 +105,6 @@ def _json_value(value):
 def draft_content(draft: CaseVersion) -> dict:
     scalar_fields = [
         "title_internal",
-        "title_student",
         "specialty",
         "disease_tags",
         "difficulty",
@@ -190,7 +195,6 @@ def publish_draft(*, draft: CaseVersion, user) -> PublishResult:
             status=VersionStatus.PUBLISHED,
             version_number=(max_version or 0) + 1,
             title_internal=locked.title_internal,
-            title_student=locked.title_student,
             specialty=locked.specialty,
             disease_tags=locked.disease_tags,
             difficulty=locked.difficulty,
