@@ -428,7 +428,7 @@ def test_written_fact_is_replaced_by_spoken_response_and_audited():
 
 
 @pytest.mark.django_db
-def test_unrelated_question_uses_unknown_response_after_empty_route():
+def test_unrelated_question_uses_system_default_response_after_empty_route():
     _, student, assignment = make_exam_data(suffix="0")
     session = start_session(assignment=assignment, student=student).session
 

@@ -50,7 +50,6 @@ export type CaseFact = {
   patient_expression: string
   disclosure_mode: string
   certainty: string
-  unknown_response: string
   is_required: boolean
   score: string
   teacher_notes: string
@@ -451,7 +450,6 @@ const validationFieldLabels: Record<string, string> = {
   patient_expression: '事实内容',
   disclosure_mode: '披露方式',
   certainty: '患者确定程度',
-  unknown_response: '病例未提供时的回答',
   score: '事实点分值',
   name: '名称',
   result_text: '向学生释放的结果',

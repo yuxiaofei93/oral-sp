@@ -229,7 +229,6 @@ class CaseFact(VersionOwnedModel):
         choices=FactCertainty.choices,
         default=FactCertainty.CERTAIN,
     )
-    unknown_response = models.CharField(max_length=240, default="这个我不太清楚。")
     is_required = models.BooleanField(default=False)
     score = models.DecimalField(
         max_digits=6,

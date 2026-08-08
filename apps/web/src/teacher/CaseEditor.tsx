@@ -41,7 +41,6 @@ const emptyFact = (facts: CaseFact[]): CaseFact => {
     patient_expression: '',
     disclosure_mode: 'on_question',
     certainty: 'certain',
-    unknown_response: '这个我不太清楚。',
     is_required: false,
     score: '0.00',
     teacher_notes: '',
@@ -428,10 +427,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                         <option value="forgotten">记不清</option>
                         <option value="not_understood">不理解</option>
                       </select>
-                    </label>
-                    <label className="form-grid__wide">
-                      病例未提供时的回答
-                      <input value={fact.unknown_response} onChange={(event) => setField('facts', draft.facts.map((item, itemIndex) => itemIndex === index ? { ...item, unknown_response: event.target.value } : item))} />
                     </label>
                     <label>
                       事实点分值
