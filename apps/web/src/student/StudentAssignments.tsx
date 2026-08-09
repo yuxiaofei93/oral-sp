@@ -476,7 +476,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   value={caseDraft.chiefComplaint}
                   onChange={(event) => updateCaseDraft('chiefComplaint', event.target.value)}
                   placeholder={caseEditable ? '请用一段文字记录患者此次就诊的主要症状及持续时间…' : '未填写'}
-                  rows={3}
+                  rows={2}
                   maxLength={4000}
                   readOnly={!caseEditable}
                 />
@@ -491,7 +491,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   value={caseDraft.presentIllness}
                   onChange={(event) => updateCaseDraft('presentIllness', event.target.value)}
                   placeholder={caseEditable ? '请记录本次疾病的发生、发展及诊疗经过…' : '未填写'}
-                  rows={3}
+                  rows={2}
                   maxLength={4000}
                   readOnly={!caseEditable}
                 />
@@ -506,7 +506,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   value={caseDraft.pastHistory}
                   onChange={(event) => updateCaseDraft('pastHistory', event.target.value)}
                   placeholder={caseEditable ? '请记录既往疾病、手术、过敏及用药等情况…' : '未填写'}
-                  rows={3}
+                  rows={2}
                   maxLength={4000}
                   readOnly={!caseEditable}
                 />
@@ -521,7 +521,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   value={caseDraft.familyHistory}
                   onChange={(event) => updateCaseDraft('familyHistory', event.target.value)}
                   placeholder={caseEditable ? '请记录家族中相关疾病及遗传病史…' : '未填写'}
-                  rows={3}
+                  rows={2}
                   maxLength={4000}
                   readOnly={!caseEditable}
                 />
@@ -543,7 +543,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   value={caseDraft.diagnosis}
                   onChange={(event) => updateCaseDraft('diagnosis', event.target.value)}
                   placeholder={caseEditable ? '请记录诊断、鉴别诊断及判断依据…' : '未填写'}
-                  rows={3}
+                  rows={2}
                   maxLength={4000}
                   readOnly={!caseEditable}
                 />
@@ -558,7 +558,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   value={caseDraft.treatment}
                   onChange={(event) => updateCaseDraft('treatment', event.target.value)}
                   placeholder={caseEditable ? '请记录拟申请的检查、处置及治疗计划…' : '未填写'}
-                  rows={3}
+                  rows={2}
                   maxLength={4000}
                   readOnly={!caseEditable}
                 />
@@ -573,7 +573,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   value={caseDraft.medicalAdvice}
                   onChange={(event) => updateCaseDraft('medicalAdvice', event.target.value)}
                   placeholder={caseEditable ? '请记录用药、复诊、饮食及生活方式等医嘱…' : '未填写'}
-                  rows={3}
+                  rows={2}
                   maxLength={4000}
                   readOnly={!caseEditable}
                 />
