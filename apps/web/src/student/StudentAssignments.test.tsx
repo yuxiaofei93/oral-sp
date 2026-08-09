@@ -93,6 +93,10 @@ describe('StudentAssignments', () => {
     await waitFor(() => screen.getByRole('button', { name: '开始作答' }))
     fireEvent.click(screen.getByRole('button', { name: '开始作答' }))
     await waitFor(() => screen.getByRole('heading', { name: '牙周问诊练习' }))
+    expect(screen.getByRole('navigation', { name: '问诊阶段' })).toBeInTheDocument()
+    expect(screen.getByText('问诊采集').closest('li')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByText('标准化患者在线')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('输入你想向患者了解的问题…')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('向患者提问'), { target: { value: '有多久了？' } })
     fireEvent.click(screen.getByRole('button', { name: '发送问题' }))

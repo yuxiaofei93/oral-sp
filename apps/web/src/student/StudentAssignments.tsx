@@ -23,29 +23,44 @@ const attemptNames = {
 }
 const stageConfig: Record<
   Exclude<SessionStage, 'interview' | 'completed'> | 'interview',
-  { title: string; help: string; submissionType: string }
+  { title: string; shortTitle: string; help: string; placeholder: string; submissionType: string }
 > = {
   interview: {
     title: '病史摘要',
+    shortTitle: '问诊采集',
     help: '确认问诊充分后提交摘要。提交后不能继续向患者提问。',
+    placeholder: '请归纳患者的主诉、现病史、既往史及相关危险因素…',
     submissionType: 'history_summary',
   },
   initial_reasoning: {
     title: '初步诊断与鉴别诊断',
+    shortTitle: '初步判断',
     help: '写下当前判断及依据。提交后不可返回修改病史摘要。',
+    placeholder: '请写下初步诊断、鉴别诊断及判断依据…',
     submissionType: 'initial_reasoning',
   },
   test_selection: {
     title: '检查计划',
+    shortTitle: '检查计划',
     help: '说明拟申请的检查及理由。',
+    placeholder: '请列出拟申请的检查项目，并说明每项检查的目的…',
     submissionType: 'test_selection',
   },
   final_reasoning: {
     title: '最终诊断与处理原则',
+    shortTitle: '最终诊断',
     help: '完成最终判断后交卷。',
+    placeholder: '请写下最终诊断、诊断依据及处理原则…',
     submissionType: 'final_reasoning',
   },
 }
+
+const stageOrder: Array<Exclude<SessionStage, 'completed'>> = [
+  'interview',
+  'initial_reasoning',
+  'test_selection',
+  'final_reasoning',
+]
 
 function formatTime(seconds: number) {
   const safeSeconds = Math.max(0, seconds)
@@ -166,68 +181,171 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
   }
 
   const currentStage = session.stage === 'completed' ? null : stageConfig[session.stage]
+  const currentStageIndex = session.stage === 'completed' ? stageOrder.length : stageOrder.indexOf(session.stage)
+  const patientName = session.patient_name || '标准化患者'
 
   return (
     <section className="student-workbench" aria-labelledby="workbench-title">
       <header className="workbench-header">
-        <div>
-          <button className="text-button" type="button" onClick={onExit}>← 返回任务列表</button>
-          <h2 id="workbench-title">{session.assignment_title}</h2>
-          <p>患者：{session.patient_name || '标准化患者'}</p>
+        <div className="workbench-header__identity">
+          <button className="workbench-back" type="button" onClick={onExit} aria-label="返回任务列表">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+          <div>
+            <div className="workbench-kicker">
+              <span>{session.status === 'active' ? '进行中的问诊' : '问诊记录'}</span>
+              <i aria-hidden="true" />
+              <span>患者 {patientName}</span>
+            </div>
+            <h2 id="workbench-title">{session.assignment_title}</h2>
+          </div>
         </div>
-        <div className={`exam-timer ${remaining < 300 ? 'is-urgent' : ''}`}>
-          <span>剩余时间</span>
-          <strong>{formatTime(remaining)}</strong>
+        <div className={`exam-timer ${session.status === 'active' && remaining < 300 ? 'is-urgent' : ''}`}>
+          <span className="exam-timer__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M12 7.5V12l3 2" />
+            </svg>
+          </span>
+          <span>
+            <small>{session.status === 'active' ? '剩余时间' : '作答已结束'}</small>
+            <strong>{formatTime(remaining)}</strong>
+          </span>
         </div>
       </header>
 
-      <div className="exam-notice">整场任务限时；问题一经发出、阶段一经提交，均会留痕且不可修改或删除。</div>
-      {error && <p className="form-error">{error}</p>}
+      <nav className="stage-progress" aria-label="问诊阶段">
+        <ol>
+          {stageOrder.map((stage, index) => {
+            const state = index < currentStageIndex ? 'complete' : index === currentStageIndex ? 'current' : 'upcoming'
+            return (
+              <li className={`stage-progress__item is-${state}`} key={stage} aria-current={state === 'current' ? 'step' : undefined}>
+                <span className="stage-progress__marker" aria-hidden="true">
+                  {state === 'complete' ? (
+                    <svg viewBox="0 0 24 24"><path d="m7 12.5 3.2 3.2L17.5 8.5" /></svg>
+                  ) : index + 1}
+                </span>
+                <span>
+                  <small>阶段 {index + 1}</small>
+                  <strong>{stageConfig[stage].shortTitle}</strong>
+                </span>
+              </li>
+            )
+          })}
+        </ol>
+      </nav>
 
-      <div className="conversation" aria-label="问诊记录">
-        <article className="message message--patient">
-          <span>{session.patient_name || '患者'} · 开场白</span>
-          <p>{session.opening_statement}</p>
-        </article>
-        {session.messages.map((message) => (
-          <article className={`message message--${message.role}`} key={message.id}>
-            <span>{message.role === 'student' ? '我' : '患者'} · #{message.sequence}</span>
-            <p>{message.content}</p>
-            {message.response_status === 'failed' && <small>回答生成失败，可安全重试</small>}
-          </article>
-        ))}
+      <div className="exam-notice">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M12 8v4.5M12 16h.01" />
+          <circle cx="12" cy="12" r="9" />
+        </svg>
+        <span>整场任务限时，问题发送和阶段提交后将自动留痕，无法修改或删除。</span>
       </div>
+      {error && <p className="form-error workbench-error" role="alert">{error}</p>}
 
-      {session.status === 'active' && session.stage === 'interview' && (
-        <form className="question-form" onSubmit={handleQuestion}>
-          <label htmlFor="patient-question">向患者提问</label>
-          <div>
-            <input
-              id="patient-question"
-              value={question}
-              onChange={(event) => {
-                setQuestion(event.target.value)
-                if (pendingQuestion?.content !== event.target.value.trim()) setPendingQuestion(null)
-              }}
-              maxLength={2000}
-              autoComplete="off"
-              required
-            />
-            <button className="button" type="submit" disabled={busy}>发送问题</button>
+      <div className={`workbench-layout ${session.status !== 'active' ? 'is-review' : ''}`}>
+        <section className="consultation-panel" aria-labelledby="consultation-title">
+          <header className="consultation-panel__header">
+            <span className="patient-avatar" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="8" r="3.25" />
+                <path d="M5.5 19c.7-3.6 2.8-5.4 6.5-5.4s5.8 1.8 6.5 5.4" />
+              </svg>
+            </span>
+            <div>
+              <h3 id="consultation-title">与{patientName}问诊</h3>
+              <p><i aria-hidden="true" />标准化患者在线</p>
+            </div>
+            <span className="conversation-count">{session.messages.length + 1} 条记录</span>
+          </header>
+
+          <div className="conversation" aria-label="问诊记录">
+            <article className="message message--patient">
+              <span>{patientName} · 开场白</span>
+              <p>{session.opening_statement}</p>
+            </article>
+            {session.messages.map((message) => (
+              <article className={`message message--${message.role}`} key={message.id}>
+                <span>{message.role === 'student' ? '我' : patientName} · #{message.sequence}</span>
+                <p>{message.content}</p>
+                {message.response_status === 'failed' && <small>回答生成失败，可安全重试</small>}
+              </article>
+            ))}
+            {busy && pendingQuestion && (
+              <div className="patient-thinking" role="status">
+                <span /><span /><span />
+                <small>患者正在回答…</small>
+              </div>
+            )}
           </div>
-        </form>
-      )}
 
-      {session.status === 'active' && currentStage && (
-        <form className="stage-form" onSubmit={handleStageSubmit}>
-          <h3>{currentStage.title}</h3>
-          <p>{currentStage.help}</p>
-          <textarea name="content" aria-label={currentStage.title} rows={5} required />
-          <button className="button" type="submit" disabled={busy}>
-            {session.stage === 'final_reasoning' ? '提交并交卷' : '提交并进入下一阶段'}
-          </button>
-        </form>
-      )}
+          {session.status === 'active' && session.stage === 'interview' ? (
+            <form className="question-form" onSubmit={handleQuestion}>
+              <label className="visually-hidden" htmlFor="patient-question">向患者提问</label>
+              <div>
+                <input
+                  id="patient-question"
+                  value={question}
+                  onChange={(event) => {
+                    setQuestion(event.target.value)
+                    if (pendingQuestion?.content !== event.target.value.trim()) setPendingQuestion(null)
+                  }}
+                  placeholder="输入你想向患者了解的问题…"
+                  maxLength={2000}
+                  autoComplete="off"
+                  required
+                />
+                <button className="button question-form__submit" type="submit" disabled={busy} aria-label="发送问题">
+                  <span>{busy ? '发送中' : '发送'}</span>
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 14-7-4.5 14-3-5.5L5 12Z" /><path d="m11.5 13.5 3-3" /></svg>
+                </button>
+              </div>
+              <small>请一次询问一个清晰的问题，患者会根据病例信息作答。</small>
+            </form>
+          ) : session.status === 'active' ? (
+            <div className="conversation-locked">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="6" y="10" width="12" height="9" rx="2" /><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10" /></svg>
+              问诊阶段已结束，对话记录仅供回顾
+            </div>
+          ) : null}
+        </section>
+
+        {session.status === 'active' && currentStage && (
+          <aside className="clinical-panel" aria-labelledby="stage-title">
+            <div className="clinical-panel__heading">
+              <span>当前任务</span>
+              <b>{Math.min(currentStageIndex + 1, stageOrder.length)} / {stageOrder.length}</b>
+            </div>
+            <form className="stage-form" onSubmit={handleStageSubmit}>
+              <div>
+                <h3 id="stage-title">{currentStage.title}</h3>
+                <p>{currentStage.help}</p>
+              </div>
+              <label>
+                <span>作答内容</span>
+                <textarea
+                  name="content"
+                  aria-label={currentStage.title}
+                  placeholder={currentStage.placeholder}
+                  rows={session.stage === 'interview' ? 10 : 13}
+                  required
+                />
+              </label>
+              <div className="stage-form__tip">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
+                <span>提交前请确认内容完整。进入下一阶段后，本阶段答案不可修改。</span>
+              </div>
+              <button className="button" type="submit" disabled={busy}>
+                {busy ? '正在提交…' : session.stage === 'final_reasoning' ? '提交并完成问诊' : '提交并进入下一阶段'}
+                {!busy && <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>}
+              </button>
+            </form>
+          </aside>
+        )}
+      </div>
 
       {session.status !== 'active' && (
         <section className="feedback-card">
