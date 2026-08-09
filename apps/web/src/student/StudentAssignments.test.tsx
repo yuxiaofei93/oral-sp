@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { StudentAssignments } from './StudentAssignments'
@@ -93,6 +93,13 @@ describe('StudentAssignments', () => {
     expect(screen.queryByText('标准化患者在线')).not.toBeInTheDocument()
     expect(screen.queryByText(/条记录/)).not.toBeInTheDocument()
     expect(screen.getByPlaceholderText('输入你想向患者了解的问题…')).toBeInTheDocument()
+    expect(screen.getByText('病例编辑')).toBeInTheDocument()
+    const basicInformation = screen.getByRole('region', { name: '基本信息' })
+    expect(basicInformation).toHaveTextContent('患者化名陈女士')
+    expect(basicInformation).toHaveTextContent('科室口腔粘膜科')
+    expect(basicInformation).toHaveTextContent('就诊日期2026-08-04')
+    expect(within(basicInformation).getByText(/^\d{8}$/)).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '诊断' })).toHaveAttribute('readonly')
 
     const conversation = screen.getByLabelText('问诊记录')
     Object.defineProperty(conversation, 'scrollHeight', { configurable: true, value: 500 })
@@ -124,6 +131,14 @@ describe('StudentAssignments', () => {
   })
 
   it('advances to the next stage without reporting a false submission failure', async () => {
+    const historyPayload = {
+      text: '主诉：牙龈疼痛约三年。\n现病史：三年前开始反复牙龈疼痛。\n既往史：否认重大疾病史。\n家族史：无相关家族史。',
+      chief_complaint: '牙龈疼痛约三年。',
+      present_illness: '三年前开始反复牙龈疼痛。',
+      past_history: '否认重大疾病史。',
+      family_history: '无相关家族史。',
+      specialty_exam: '',
+    }
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input)
       if (url.endsWith('/student/assignments/')) {
@@ -149,12 +164,12 @@ describe('StudentAssignments', () => {
       if (url.endsWith('/session-1/submissions/')) {
         expect(JSON.parse(String(init?.body))).toEqual({
           submission_type: 'history_summary',
-          payload: { text: '牙龈疼痛约三年。' },
+          payload: historyPayload,
         })
         return Promise.resolve(new Response(JSON.stringify({
           id: 'submission-1',
           submission_type: 'history_summary',
-          payload: { text: '牙龈疼痛约三年。' },
+          payload: historyPayload,
           submitted_at: '2026-08-06T01:00:00Z',
         }), { status: 201 }))
       }
@@ -165,7 +180,7 @@ describe('StudentAssignments', () => {
           submissions: [{
             id: 'submission-1',
             submission_type: 'history_summary',
-            payload: { text: '牙龈疼痛约三年。' },
+            payload: historyPayload,
             submitted_at: '2026-08-06T01:00:00Z',
           }],
         }), { status: 200 }))
@@ -178,13 +193,25 @@ describe('StudentAssignments', () => {
     fireEvent.click(screen.getByRole('button', { name: '继续作答' }))
     await waitFor(() => screen.getByRole('heading', { name: '病史摘要' }))
 
-    const stageAnswer = screen.getByRole('textbox', { name: '病史摘要' })
-    fireEvent.change(stageAnswer, { target: { value: '牙龈疼痛约三年。' } })
+    fireEvent.change(screen.getByRole('textbox', { name: '主诉' }), {
+      target: { value: historyPayload.chief_complaint },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: '现病史' }), {
+      target: { value: historyPayload.present_illness },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: '既往史' }), {
+      target: { value: historyPayload.past_history },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: '家族史' }), {
+      target: { value: historyPayload.family_history },
+    })
     fireEvent.click(screen.getByRole('button', { name: '提交并进入下一阶段' }))
 
     await waitFor(() => expect(screen.getByRole('heading', {
       name: '初步诊断与鉴别诊断',
     })).toBeInTheDocument())
+    expect(screen.getByRole('textbox', { name: '主诉' })).toHaveAttribute('readonly')
+    expect(screen.getByRole('textbox', { name: '诊断' })).not.toHaveAttribute('readonly')
     expect(screen.queryByText('阶段提交失败。')).not.toBeInTheDocument()
   })
 
@@ -269,6 +296,9 @@ describe('StudentAssignments', () => {
 
     const dialog = await screen.findByRole('dialog', { name: '口腔体格检查所见' })
     expect(dialog).toHaveTextContent('右下后牙区牙龈红肿，局部可见瘘管。')
+    expect(within(screen.getByRole('region', { name: /专科检查/ })).getByText(
+      '右下后牙区牙龈红肿，局部可见瘘管。',
+    )).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /检查记录.custom/ })).toHaveAttribute(
       'href',
       physicalExamResult.attachments[0].content_url,

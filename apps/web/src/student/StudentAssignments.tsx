@@ -24,36 +24,52 @@ const attemptNames = {
 }
 const stageConfig: Record<
   Exclude<SessionStage, 'interview' | 'completed'> | 'interview',
-  { title: string; shortTitle: string; help: string; placeholder: string; submissionType: string }
+  { title: string; shortTitle: string; help: string; submissionType: string }
 > = {
   interview: {
     title: '病史摘要',
     shortTitle: '问诊采集',
     help: '确认问诊充分后提交摘要。提交后不能继续向患者提问。',
-    placeholder: '请归纳患者的主诉、现病史、既往史及相关危险因素…',
     submissionType: 'history_summary',
   },
   initial_reasoning: {
     title: '初步诊断与鉴别诊断',
     shortTitle: '初步判断',
     help: '写下当前判断及依据。提交后不可返回修改病史摘要。',
-    placeholder: '请写下初步诊断、鉴别诊断及判断依据…',
     submissionType: 'initial_reasoning',
   },
   test_selection: {
     title: '检查计划',
     shortTitle: '检查计划',
     help: '说明拟申请的检查及理由。',
-    placeholder: '请列出拟申请的检查项目，并说明每项检查的目的…',
     submissionType: 'test_selection',
   },
   final_reasoning: {
     title: '最终诊断与处理原则',
     shortTitle: '最终诊断',
     help: '完成最终判断后交卷。',
-    placeholder: '请写下最终诊断、诊断依据及处理原则…',
     submissionType: 'final_reasoning',
   },
+}
+
+type CaseDraft = {
+  chiefComplaint: string
+  presentIllness: string
+  pastHistory: string
+  familyHistory: string
+  diagnosis: string
+  treatment: string
+  medicalAdvice: string
+}
+
+const emptyCaseDraft: CaseDraft = {
+  chiefComplaint: '',
+  presentIllness: '',
+  pastHistory: '',
+  familyHistory: '',
+  diagnosis: '',
+  treatment: '',
+  medicalAdvice: '',
 }
 
 const stageOrder: Array<Exclude<SessionStage, 'completed'>> = [
@@ -74,11 +90,102 @@ function requestId() {
   return `question_${globalThis.crypto.randomUUID().replaceAll('-', '')}`
 }
 
+function payloadText(payload: Record<string, unknown>, key: string) {
+  const value = payload[key]
+  return typeof value === 'string' ? value : ''
+}
+
+function initialCaseDraft(submissions: SimulationSession['submissions']): CaseDraft {
+  return submissions.reduce<CaseDraft>((draft, submission) => {
+    const { payload } = submission
+    if (submission.submission_type === 'history_summary') {
+      return {
+        ...draft,
+        chiefComplaint: payloadText(payload, 'chief_complaint'),
+        presentIllness: payloadText(payload, 'present_illness') || payloadText(payload, 'text'),
+        pastHistory: payloadText(payload, 'past_history'),
+        familyHistory: payloadText(payload, 'family_history'),
+      }
+    }
+    if (submission.submission_type === 'initial_reasoning') {
+      return { ...draft, diagnosis: payloadText(payload, 'diagnosis') || payloadText(payload, 'text') }
+    }
+    if (submission.submission_type === 'test_selection') {
+      return { ...draft, treatment: payloadText(payload, 'treatment') || payloadText(payload, 'text') }
+    }
+    if (submission.submission_type === 'final_reasoning') {
+      return {
+        ...draft,
+        diagnosis: payloadText(payload, 'diagnosis') || draft.diagnosis,
+        treatment: payloadText(payload, 'treatment') || draft.treatment,
+        medicalAdvice: payloadText(payload, 'medical_advice'),
+      }
+    }
+    return draft
+  }, emptyCaseDraft)
+}
+
+function visitDate(startedAt: string) {
+  const date = new Date(startedAt)
+  if (Number.isNaN(date.getTime())) return startedAt.slice(0, 10)
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? ''
+  return `${value('year')}-${value('month')}-${value('day')}`
+}
+
+function recordNumber(sessionId: string) {
+  let hash = 0
+  for (const character of sessionId) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  return String(10_000_000 + (hash % 90_000_000))
+}
+
+function stagePayload(stage: Exclude<SessionStage, 'completed'>, draft: CaseDraft, examText: string) {
+  if (stage === 'interview') {
+    const text = [
+      `主诉：${draft.chiefComplaint}`,
+      `现病史：${draft.presentIllness}`,
+      `既往史：${draft.pastHistory}`,
+      `家族史：${draft.familyHistory}`,
+      examText ? `专科检查：${examText}` : '',
+    ].filter(Boolean).join('\n')
+    return {
+      text,
+      chief_complaint: draft.chiefComplaint,
+      present_illness: draft.presentIllness,
+      past_history: draft.pastHistory,
+      family_history: draft.familyHistory,
+      specialty_exam: examText,
+    }
+  }
+  if (stage === 'initial_reasoning') {
+    return { text: draft.diagnosis, diagnosis: draft.diagnosis }
+  }
+  if (stage === 'test_selection') {
+    return { text: draft.treatment, treatment: draft.treatment }
+  }
+  const text = [
+    `诊断：${draft.diagnosis}`,
+    `处理：${draft.treatment}`,
+    `医嘱：${draft.medicalAdvice}`,
+  ].join('\n')
+  return {
+    text,
+    diagnosis: draft.diagnosis,
+    treatment: draft.treatment,
+    medical_advice: draft.medicalAdvice,
+  }
+}
+
 function Workbench({ initialSession, onExit }: { initialSession: SimulationSession; onExit: () => void }) {
   const [session, setSession] = useState(initialSession)
   const [remaining, setRemaining] = useState(initialSession.remaining_seconds)
   const [question, setQuestion] = useState('')
   const [pendingQuestion, setPendingQuestion] = useState<{ content: string; id: string } | null>(null)
+  const [caseDraft, setCaseDraft] = useState<CaseDraft>(() => initialCaseDraft(initialSession.submissions))
   const [feedback, setFeedback] = useState<SessionFeedback | null>(null)
   const [physicalExamOpen, setPhysicalExamOpen] = useState(false)
   const [questionBusy, setQuestionBusy] = useState(false)
@@ -145,17 +252,14 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
   async function handleStageSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (session.stage === 'completed') return
-    const form = event.currentTarget
     const config = stageConfig[session.stage]
-    const data = new FormData(form)
     setStageBusy(true)
     setError('')
     try {
       await submitSessionStage(session.id, {
         submission_type: config.submissionType,
-        payload: { text: String(data.get('content') ?? '') },
+        payload: stagePayload(session.stage, caseDraft, session.physical_exam_result?.findings_text ?? ''),
       })
-      form.reset()
       try {
         await refreshSession()
       } catch {
@@ -168,7 +272,6 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
           (submission) => submission.submission_type === config.submissionType,
         )
         if (submissionExists) {
-          form.reset()
           return
         }
       } catch {
@@ -196,6 +299,14 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
   const currentStageIndex = session.stage === 'completed' ? stageOrder.length : stageOrder.indexOf(session.stage)
   const patientName = session.patient_name || '标准化患者'
   const availablePhysicalExam = session.physical_exam_result ?? feedback?.physical_exam_result ?? null
+  const isHistoryEditable = session.stage === 'interview'
+  const isDiagnosisEditable = session.stage === 'initial_reasoning' || session.stage === 'final_reasoning'
+  const isTreatmentEditable = session.stage === 'test_selection' || session.stage === 'final_reasoning'
+  const isAdviceEditable = session.stage === 'final_reasoning'
+
+  function updateCaseDraft(field: keyof CaseDraft, value: string) {
+    setCaseDraft((current) => ({ ...current, [field]: value }))
+  }
 
   return (
     <section className="student-workbench" aria-labelledby="workbench-title">
@@ -341,24 +452,138 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
         {session.status === 'active' && currentStage && (
           <aside className="clinical-panel" aria-labelledby="stage-title">
             <div className="clinical-panel__heading">
-              <span>当前任务</span>
+              <span>病例编辑</span>
               <b>{Math.min(currentStageIndex + 1, stageOrder.length)} / {stageOrder.length}</b>
             </div>
-            <form className="stage-form" onSubmit={handleStageSubmit}>
-              <div>
+            <form className="case-record-form" onSubmit={handleStageSubmit}>
+              <div className="case-record-form__stage">
+                <span>当前阶段</span>
                 <h3 id="stage-title">{currentStage.title}</h3>
                 <p>{currentStage.help}</p>
               </div>
-              <label>
-                <span>作答内容</span>
+
+              <section className="case-record-section case-record-section--identity" aria-labelledby="case-section-identity">
+                <h3 id="case-section-identity"><span aria-hidden="true">1</span>基本信息</h3>
+                <dl>
+                  <div><dt>患者化名</dt><dd>{patientName}</dd></div>
+                  <div><dt>科室</dt><dd>口腔粘膜科</dd></div>
+                  <div><dt>就诊日期</dt><dd>{visitDate(session.started_at)}</dd></div>
+                  <div><dt>流水号</dt><dd>{recordNumber(session.id)}</dd></div>
+                </dl>
+              </section>
+
+              <section className="case-record-section" aria-labelledby="case-section-chief-complaint">
+                <label htmlFor="case-chief-complaint">
+                  <h3 id="case-section-chief-complaint"><span aria-hidden="true">2</span>主诉</h3>
+                </label>
                 <textarea
-                  name="content"
-                  aria-label={currentStage.title}
-                  placeholder={currentStage.placeholder}
-                  rows={session.stage === 'interview' ? 10 : 13}
-                  required
+                  id="case-chief-complaint"
+                  value={caseDraft.chiefComplaint}
+                  onChange={(event) => updateCaseDraft('chiefComplaint', event.target.value)}
+                  placeholder={isHistoryEditable ? '请用一段文字记录患者此次就诊的主要症状及持续时间…' : '本阶段已提交'}
+                  rows={3}
+                  readOnly={!isHistoryEditable}
+                  required={isHistoryEditable}
                 />
-              </label>
+              </section>
+
+              <section className="case-record-section" aria-labelledby="case-section-present-illness">
+                <label htmlFor="case-present-illness">
+                  <h3 id="case-section-present-illness"><span aria-hidden="true">3</span>现病史</h3>
+                </label>
+                <textarea
+                  id="case-present-illness"
+                  value={caseDraft.presentIllness}
+                  onChange={(event) => updateCaseDraft('presentIllness', event.target.value)}
+                  placeholder={isHistoryEditable ? '请记录本次疾病的发生、发展及诊疗经过…' : '本阶段已提交'}
+                  rows={3}
+                  readOnly={!isHistoryEditable}
+                  required={isHistoryEditable}
+                />
+              </section>
+
+              <section className="case-record-section" aria-labelledby="case-section-past-history">
+                <label htmlFor="case-past-history">
+                  <h3 id="case-section-past-history"><span aria-hidden="true">4</span>既往史</h3>
+                </label>
+                <textarea
+                  id="case-past-history"
+                  value={caseDraft.pastHistory}
+                  onChange={(event) => updateCaseDraft('pastHistory', event.target.value)}
+                  placeholder={isHistoryEditable ? '请记录既往疾病、手术、过敏及用药等情况…' : '本阶段已提交'}
+                  rows={3}
+                  readOnly={!isHistoryEditable}
+                  required={isHistoryEditable}
+                />
+              </section>
+
+              <section className="case-record-section" aria-labelledby="case-section-family-history">
+                <label htmlFor="case-family-history">
+                  <h3 id="case-section-family-history"><span aria-hidden="true">5</span>家族史</h3>
+                </label>
+                <textarea
+                  id="case-family-history"
+                  value={caseDraft.familyHistory}
+                  onChange={(event) => updateCaseDraft('familyHistory', event.target.value)}
+                  placeholder={isHistoryEditable ? '请记录家族中相关疾病及遗传病史…' : '本阶段已提交'}
+                  rows={3}
+                  readOnly={!isHistoryEditable}
+                  required={isHistoryEditable}
+                />
+              </section>
+
+              <section className="case-record-section" aria-labelledby="case-section-exam">
+                <h3 id="case-section-exam"><span aria-hidden="true">6</span>专科检查<i>自动带入</i></h3>
+                <div className={`case-record-section__readonly ${availablePhysicalExam ? '' : 'is-empty'}`}>
+                  {availablePhysicalExam?.findings_text || '尚未进行专科检查，完成体格检查后将自动带入文字结果。'}
+                </div>
+              </section>
+
+              <section className="case-record-section" aria-labelledby="case-section-diagnosis">
+                <label htmlFor="case-diagnosis">
+                  <h3 id="case-section-diagnosis"><span aria-hidden="true">7</span>诊断</h3>
+                </label>
+                <textarea
+                  id="case-diagnosis"
+                  value={caseDraft.diagnosis}
+                  onChange={(event) => updateCaseDraft('diagnosis', event.target.value)}
+                  placeholder={isDiagnosisEditable ? '请记录诊断、鉴别诊断及判断依据…' : '进入诊断阶段后填写'}
+                  rows={3}
+                  readOnly={!isDiagnosisEditable}
+                  required={isDiagnosisEditable}
+                />
+              </section>
+
+              <section className="case-record-section" aria-labelledby="case-section-treatment">
+                <label htmlFor="case-treatment">
+                  <h3 id="case-section-treatment"><span aria-hidden="true">8</span>处理</h3>
+                </label>
+                <textarea
+                  id="case-treatment"
+                  value={caseDraft.treatment}
+                  onChange={(event) => updateCaseDraft('treatment', event.target.value)}
+                  placeholder={isTreatmentEditable ? '请记录拟申请的检查、处置及治疗计划…' : '进入检查计划阶段后填写'}
+                  rows={3}
+                  readOnly={!isTreatmentEditable}
+                  required={isTreatmentEditable}
+                />
+              </section>
+
+              <section className="case-record-section" aria-labelledby="case-section-advice">
+                <label htmlFor="case-advice">
+                  <h3 id="case-section-advice"><span aria-hidden="true">9</span>医嘱</h3>
+                </label>
+                <textarea
+                  id="case-advice"
+                  value={caseDraft.medicalAdvice}
+                  onChange={(event) => updateCaseDraft('medicalAdvice', event.target.value)}
+                  placeholder={isAdviceEditable ? '请记录用药、复诊、饮食及生活方式等医嘱…' : '进入最终诊断阶段后填写'}
+                  rows={3}
+                  readOnly={!isAdviceEditable}
+                  required={isAdviceEditable}
+                />
+              </section>
+
               <div className="stage-form__tip">
                 <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
                 <span>提交前请确认内容完整。进入下一阶段后，本阶段答案不可修改。</span>
