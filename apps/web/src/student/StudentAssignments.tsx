@@ -13,6 +13,7 @@ import {
   startStudentSession,
   submitSessionStage,
 } from '../api/client'
+import { PhysicalExamDialog } from '../PhysicalExamDialog'
 
 const difficultyNames = { basic: '基础', intermediate: '中级', advanced: '高级' }
 const attemptNames = {
@@ -79,6 +80,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
   const [question, setQuestion] = useState('')
   const [pendingQuestion, setPendingQuestion] = useState<{ content: string; id: string } | null>(null)
   const [feedback, setFeedback] = useState<SessionFeedback | null>(null)
+  const [physicalExamOpen, setPhysicalExamOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -112,11 +114,12 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
     setBusy(true)
     setError('')
     try {
-      await askPatient(session.id, {
+      const exchange = await askPatient(session.id, {
         content: outgoing.content,
         client_message_id: outgoing.id,
       })
       await refreshSession()
+      if (exchange.interaction_type !== 'patient_answer') setPhysicalExamOpen(true)
       setQuestion('')
       setPendingQuestion(null)
     } catch (requestError: unknown) {
@@ -183,6 +186,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
   const currentStage = session.stage === 'completed' ? null : stageConfig[session.stage]
   const currentStageIndex = session.stage === 'completed' ? stageOrder.length : stageOrder.indexOf(session.stage)
   const patientName = session.patient_name || '标准化患者'
+  const availablePhysicalExam = session.physical_exam_result ?? feedback?.physical_exam_result ?? null
 
   return (
     <section className="student-workbench" aria-labelledby="workbench-title">
@@ -269,8 +273,13 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
             </article>
             {session.messages.map((message) => (
               <article className={`message message--${message.role}`} key={message.id}>
-                <span>{message.role === 'student' ? '我' : patientName} · #{message.sequence}</span>
+                <span>{message.role === 'student' ? '我' : message.role === 'system' ? '系统 · 体格检查' : patientName} · #{message.sequence}</span>
                 <p>{message.content}</p>
+                {message.kind === 'physical_exam_result' && availablePhysicalExam && (
+                  <button className="physical-exam-message-link" type="button" onClick={() => setPhysicalExamOpen(true)}>
+                    查看完整体格检查资料
+                  </button>
+                )}
                 {message.response_status === 'failed' && <small>回答生成失败，可安全重试</small>}
               </article>
             ))}
@@ -363,6 +372,11 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                 {feedback.score.provisional && <small>总分 {feedback.score.maximum_score}，仍有待评价项</small>}
               </div>
               <p>{feedback.feedback_summary}</p>
+              {feedback.physical_exam_result && (
+                <button className="button button--secondary" type="button" onClick={() => setPhysicalExamOpen(true)}>
+                  查看标准体格检查资料
+                </button>
+              )}
               <h4>分项得分</h4>
               <div className="feedback-items">
                 {feedback.scoring_items.map((item) => (
@@ -391,6 +405,11 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
           )}
         </section>
       )}
+      <PhysicalExamDialog
+        result={availablePhysicalExam}
+        open={physicalExamOpen}
+        onClose={() => setPhysicalExamOpen(false)}
+      />
     </section>
   )
 }

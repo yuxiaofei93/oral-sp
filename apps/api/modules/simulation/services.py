@@ -7,12 +7,13 @@ from django.db.models import Q
 from django.utils import timezone
 
 from modules.accounts.models import RoleCode
-from modules.cases.models import DisclosureMode, VersionStatus
+from modules.cases.models import DisclosureMode, PhysicalExam, VersionStatus
 from modules.cases.services import effective_patient_prompt
 
 from .gateways import (
     PATIENT_ANSWER_PROMPT_VERSION,
     PATIENT_ROUTE_PROMPT_VERSION,
+    PHYSICAL_EXAM_INTENT,
     GatewayError,
     GatewayResult,
     PatientFact,
@@ -30,9 +31,11 @@ from .models import (
     AssignmentStudent,
     CaseAssignment,
     Message,
+    MessageKind,
     MessageRole,
     ModelCall,
     ModelCallStatus,
+    PhysicalExamRelease,
     ResponseStatus,
     SessionStage,
     SessionStageEvent,
@@ -99,6 +102,7 @@ class ExchangeResult:
     student_message: Message
     patient_message: Message | None
     reused: bool
+    interaction_type: str
 
 
 def create_assignment(
@@ -113,6 +117,12 @@ def create_assignment(
 ) -> CaseAssignment:
     if case_version.status != VersionStatus.PUBLISHED:
         raise AssignmentUnavailableError("只能发布已经生成版本号的病例。")
+    try:
+        physical_exam_findings = case_version.physical_exam.findings_text
+    except PhysicalExam.DoesNotExist:
+        physical_exam_findings = ""
+    if not physical_exam_findings.strip():
+        raise AssignmentUnavailableError("该病例版本缺少口腔体格检查资料，不能发布任务。")
     if not case_version.case.is_active:
         raise AssignmentUnavailableError("该病例已经停用，不能发布新任务。")
     latest_version_id = (
@@ -344,7 +354,9 @@ def _patient_facts(session: SimulationSession) -> list[PatientFact]:
 
 def _recent_conversation(*, session: SimulationSession, current_message: Message) -> list[dict]:
     recent = list(
-        session.messages.exclude(pk=current_message.pk).order_by("-sequence")[:12]
+        session.messages.exclude(pk=current_message.pk)
+        .exclude(role=MessageRole.SYSTEM)
+        .order_by("-sequence")[:12]
     )
     return [
         {"role": message.role, "content": message.content}
@@ -485,12 +497,84 @@ def _save_routing_call(
         prompt_version=PATIENT_ROUTE_PROMPT_VERSION,
         request_hash=hashed_request,
         matched_fact_codes=result.fact_codes,
+        routed_intent=result.intent,
+        route_confidence=result.confidence,
         status=status,
         latency_ms=result.latency_ms,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         error_code=error_code,
     )
+
+
+def _existing_interaction_type(student_message: Message) -> str:
+    release = PhysicalExamRelease.objects.filter(session=student_message.session).first()
+    if release and release.trigger_message_id == student_message.id:
+        return "physical_exam_released"
+    reply = Message.objects.filter(reply_to=student_message).first()
+    if reply and reply.kind == MessageKind.PHYSICAL_EXAM_CONSENT:
+        return "physical_exam_reopened"
+    return "patient_answer"
+
+
+def _save_physical_exam_response(
+    *,
+    student_message: Message,
+) -> tuple[Message, str]:
+    with transaction.atomic():
+        locked_session = SimulationSession.objects.select_for_update().get(
+            pk=student_message.session_id
+        )
+        locked_student = Message.objects.select_for_update().get(pk=student_message.pk)
+        existing = Message.objects.filter(reply_to=locked_student).first()
+        if existing:
+            return existing, _existing_interaction_type(locked_student)
+        if (
+            locked_session.status != SessionStatus.ACTIVE
+            or locked_session.stage != SessionStage.INTERVIEW
+        ):
+            locked_student.response_status = ResponseStatus.FAILED
+            locked_student.error_code = "session_ended"
+            locked_student.save(update_fields=["response_status", "error_code"])
+            raise SessionExpiredError("会话已结束，本次体格检查请求未写入考试记录。")
+
+        release = PhysicalExamRelease.objects.filter(session=locked_session).first()
+        physical_exam = PhysicalExam.objects.get(version=locked_session.case_version)
+        locked_session.last_message_sequence += 1
+        consent_message = Message.objects.create(
+            session=locked_session,
+            sequence=locked_session.last_message_sequence,
+            role=MessageRole.PATIENT,
+            kind=MessageKind.PHYSICAL_EXAM_CONSENT,
+            content=(
+                "刚才已经检查过了，您可以再查看检查结果。"
+                if release
+                else physical_exam.consent_text
+            ),
+            reply_to=locked_student,
+        )
+        interaction_type = "physical_exam_reopened"
+        if release is None:
+            locked_session.last_message_sequence += 1
+            result_message = Message.objects.create(
+                session=locked_session,
+                sequence=locked_session.last_message_sequence,
+                role=MessageRole.SYSTEM,
+                kind=MessageKind.PHYSICAL_EXAM_RESULT,
+                content=physical_exam.findings_text,
+            )
+            PhysicalExamRelease.objects.create(
+                session=locked_session,
+                trigger_message=locked_student,
+                consent_message=consent_message,
+                result_message=result_message,
+            )
+            interaction_type = "physical_exam_released"
+        locked_session.save(update_fields=["last_message_sequence", "updated_at"])
+        locked_student.response_status = ResponseStatus.COMPLETED
+        locked_student.error_code = ""
+        locked_student.save(update_fields=["response_status", "error_code"])
+        return consent_message, interaction_type
 
 
 def ask_patient(
@@ -509,14 +593,35 @@ def ask_patient(
     )
     existing_reply = Message.objects.filter(reply_to=student_message).first()
     if existing_reply:
-        return ExchangeResult(student_message, existing_reply, reused=True)
+        return ExchangeResult(
+            student_message,
+            existing_reply,
+            reused=True,
+            interaction_type=_existing_interaction_type(student_message),
+        )
     if reused and student_message.response_status == ResponseStatus.PROCESSING:
-        return ExchangeResult(student_message, None, reused=True)
+        return ExchangeResult(
+            student_message,
+            None,
+            reused=True,
+            interaction_type="patient_answer",
+        )
 
     facts = _patient_facts(session)
     history = _recent_conversation(session=session, current_message=student_message)
     patient_gateway = gateway
-    route_hash = request_hash(question=content, facts=facts, history=history)
+    try:
+        physical_exam_available = bool(
+            session.case_version.physical_exam.findings_text.strip()
+        )
+    except PhysicalExam.DoesNotExist:
+        physical_exam_available = False
+    route_hash = request_hash(
+        question=content,
+        facts=facts,
+        history=history,
+        physical_exam_available=physical_exam_available,
+    )
     fact_by_code = {fact.code: fact for fact in facts}
     try:
         patient_gateway = patient_gateway or get_patient_gateway()
@@ -524,6 +629,7 @@ def ask_patient(
             question=content,
             facts=facts,
             history=history,
+            physical_exam_available=physical_exam_available,
         )
         if not set(route.fact_codes).issubset(fact_by_code):
             raise GatewayError(
@@ -559,6 +665,17 @@ def ask_patient(
         )
         raise ModelUnavailableError("患者语义理解模型暂时不可用，请稍后重试。") from error
 
+    if route.intent == PHYSICAL_EXAM_INTENT and route.confidence >= 0.75:
+        patient_message, interaction_type = _save_physical_exam_response(
+            student_message=student_message,
+        )
+        return ExchangeResult(
+            student_message,
+            patient_message,
+            reused,
+            interaction_type,
+        )
+
     selected_facts = [fact_by_code[code] for code in route.fact_codes]
     if not selected_facts:
         result = GatewayResult(
@@ -574,7 +691,12 @@ def ask_patient(
             hashed_request=request_hash(question=content, facts=[], history=history),
             call_status=ModelCallStatus.SUCCEEDED,
         )
-        return ExchangeResult(student_message, patient_message, reused)
+        return ExchangeResult(
+            student_message,
+            patient_message,
+            reused,
+            "patient_answer",
+        )
 
     patient_prompt = effective_patient_prompt(session.case_version)
     try:
@@ -652,7 +774,7 @@ def ask_patient(
         call_status=call_status,
         call_error=call_error,
     )
-    return ExchangeResult(student_message, patient_message, reused)
+    return ExchangeResult(student_message, patient_message, reused, "patient_answer")
 
 
 SUBMISSION_FLOW = {

@@ -11,6 +11,7 @@ dependencies = [
   "Django>=5.2.15,<5.3",
   "djangorestframework>=3.16,<3.17",
   "gunicorn>=26,<27",
+  "Pillow>=11.3,<13",
   "psycopg[binary]>=3.2,<3.4",
   "uvicorn>=0.34,<1",
 ]

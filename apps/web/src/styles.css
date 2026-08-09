@@ -935,6 +935,28 @@ h1 {
   color: #d8eee8;
 }
 
+.message--system {
+  width: min(92%, 700px);
+  justify-self: center;
+  border-color: #b9d8cf;
+  border-radius: 14px;
+  background: #eef8f5;
+}
+
+.physical-exam-message-link {
+  margin-top: 10px;
+  border: 0;
+  padding: 0;
+  color: #126c5c;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .message p {
   margin: 5px 0 0;
   font-size: 14px;
@@ -977,6 +999,266 @@ h1 {
 .patient-thinking small {
   margin-left: 5px;
   font-size: 11px;
+}
+
+.physical-exam-media {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #dfe9e6;
+}
+
+.physical-exam-media__confirmation {
+  justify-self: start;
+}
+
+.physical-exam-media__uploaders {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.physical-exam-media__uploaders label {
+  cursor: pointer;
+}
+
+.physical-exam-media__uploaders label.is-disabled {
+  cursor: wait;
+  opacity: .58;
+}
+
+.physical-exam-media__uploaders input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
+
+.physical-exam-media__uploaders small {
+  flex-basis: 100%;
+  color: #647a75;
+}
+
+.physical-exam-media__images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.physical-exam-media__images article,
+.physical-exam-media__attachments article {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d9e6e2;
+  border-radius: 12px;
+  background: #f8fbfa;
+}
+
+.physical-exam-media__images img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.physical-exam-media__images span {
+  overflow: hidden;
+  color: #526b66;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.physical-exam-media__images button,
+.physical-exam-media__attachments button {
+  justify-self: end;
+  border: 0;
+  color: #a23d32;
+  background: transparent;
+  cursor: pointer;
+}
+
+.physical-exam-media__attachments {
+  display: grid;
+  gap: 8px;
+}
+
+.physical-exam-media__attachments article {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.physical-exam-media__attachments a {
+  overflow: hidden;
+  color: #176f60;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.physical-exam-dialog__backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(9 35 31 / 56%);
+}
+
+.physical-exam-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(820px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: hidden;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgb(9 35 31 / 28%);
+}
+
+.physical-exam-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #dfe9e6;
+}
+
+.physical-exam-dialog > header span {
+  color: #16816d;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.physical-exam-dialog > header h2 {
+  margin: 3px 0 0;
+  font-size: 21px;
+}
+
+.physical-exam-dialog > header button {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  color: #526b66;
+  background: #eef4f2;
+  font-size: 25px;
+  cursor: pointer;
+}
+
+.physical-exam-dialog__content {
+  display: grid;
+  gap: 24px;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.physical-exam-dialog__content section {
+  display: grid;
+  gap: 12px;
+}
+
+.physical-exam-dialog__content h3,
+.physical-exam-dialog__content p {
+  margin: 0;
+}
+
+.physical-exam-findings {
+  padding: 16px;
+  border-radius: 12px;
+  color: #284640;
+  background: #f2f8f6;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.physical-exam-dialog__preview {
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #e9efed;
+}
+
+.physical-exam-dialog__preview img {
+  max-width: 100%;
+  max-height: 460px;
+  object-fit: contain;
+}
+
+.physical-exam-dialog__thumbnails {
+  display: flex;
+  gap: 9px;
+  overflow-x: auto;
+}
+
+.physical-exam-dialog__thumbnails button {
+  flex: 0 0 76px;
+  height: 60px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 9px;
+  padding: 0;
+  background: #edf3f1;
+  cursor: pointer;
+}
+
+.physical-exam-dialog__thumbnails button.is-selected {
+  border-color: #16816d;
+}
+
+.physical-exam-dialog__thumbnails img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.physical-exam-attachments {
+  display: grid;
+  gap: 8px;
+}
+
+.physical-exam-attachments a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid #d9e6e2;
+  border-radius: 10px;
+  color: #176f60;
+  background: #fbfdfc;
+  text-decoration: none;
+}
+
+.physical-exam-attachments small {
+  flex: 0 0 auto;
+  color: #6b817c;
+}
+
+@media (max-width: 640px) {
+  .physical-exam-dialog__backdrop {
+    padding: 0;
+  }
+
+  .physical-exam-dialog {
+    width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .physical-exam-attachments a {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
 }
 
 @keyframes patient-thinking {

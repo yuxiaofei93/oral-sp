@@ -226,6 +226,95 @@ class PatientProfile(VersionOwnedModel):
     voice_id = models.CharField(max_length=120, blank=True)
 
 
+DEFAULT_PHYSICAL_EXAM_CONSENT = "可以，麻烦您检查吧。"
+
+
+class PhysicalExam(VersionOwnedModel):
+    version = models.OneToOneField(
+        CaseVersion,
+        on_delete=models.CASCADE,
+        related_name="physical_exam",
+    )
+    findings_text = models.TextField(blank=True)
+    consent_text = models.CharField(
+        max_length=500,
+        default=DEFAULT_PHYSICAL_EXAM_CONSENT,
+    )
+
+
+class StoredAsset(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    object_key = models.CharField(max_length=240, unique=True)
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=160, blank=True)
+    size_bytes = models.PositiveBigIntegerField()
+    sha256 = models.CharField(max_length=64)
+    deidentified_confirmed = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="case_assets_uploaded",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            original = type(self).objects.get(pk=self.pk)
+            immutable_fields = (
+                "object_key",
+                "original_name",
+                "content_type",
+                "size_bytes",
+                "sha256",
+                "deidentified_confirmed",
+                "created_by_id",
+                "created_at",
+            )
+            if any(
+                getattr(self, field) != getattr(original, field)
+                for field in immutable_fields
+            ):
+                raise ValidationError("已保存的病例文件不可修改。")
+        return super().save(*args, **kwargs)
+
+
+class PhysicalExamAssetKind(models.TextChoices):
+    IMAGE = "image", "图片"
+    ATTACHMENT = "attachment", "附件"
+
+
+class PhysicalExamAsset(VersionOwnedModel):
+    version = models.ForeignKey(
+        CaseVersion,
+        on_delete=models.CASCADE,
+        related_name="physical_exam_assets",
+    )
+    physical_exam = models.ForeignKey(
+        PhysicalExam,
+        on_delete=models.CASCADE,
+        related_name="assets",
+    )
+    stored_asset = models.ForeignKey(
+        StoredAsset,
+        on_delete=models.PROTECT,
+        related_name="physical_exam_links",
+    )
+    kind = models.CharField(max_length=16, choices=PhysicalExamAssetKind.choices)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["kind", "display_order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["physical_exam", "stored_asset"],
+                name="unique_physical_exam_asset",
+            )
+        ]
+
+
 class DisclosureMode(models.TextChoices):
     ACTIVE = "active", "主动披露"
     ON_QUESTION = "on_question", "被问到后披露"

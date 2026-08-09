@@ -5,6 +5,7 @@ from .models import (
     AIScoreResult,
     CaseAssignment,
     ModelCall,
+    PhysicalExamRelease,
     ScoreResult,
     SessionAssessment,
     SimulationSession,
@@ -45,6 +46,21 @@ class ModelCallAdmin(admin.ModelAdmin):
     list_display = ("session", "provider", "model", "status", "latency_ms", "created_at")
     list_filter = ("status", "provider")
     readonly_fields = [field.name for field in ModelCall._meta.fields]
+
+
+@admin.register(PhysicalExamRelease)
+class PhysicalExamReleaseAdmin(admin.ModelAdmin):
+    list_display = ("session", "trigger_message", "released_at")
+    readonly_fields = [field.name for field in PhysicalExamRelease._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(SessionAssessment)

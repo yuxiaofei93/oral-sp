@@ -8,6 +8,8 @@ from .models import (
     PatientProfile,
     PatientPromptMode,
     PatientPromptTemplate,
+    PhysicalExam,
+    PhysicalExamAsset,
     ScoringItem,
     TestDefinition,
 )
@@ -18,11 +20,82 @@ class StringListField(serializers.ListField):
     child = serializers.CharField(max_length=160)
 
 
+class PhysicalExamAssetUploadSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=["image", "attachment"])
+    file = serializers.FileField()
+    deidentified_confirmed = serializers.BooleanField()
+    expected_updated_at = serializers.DateTimeField()
+
+
+class PhysicalExamAssetDeleteSerializer(serializers.Serializer):
+    expected_updated_at = serializers.DateTimeField()
+
+
 class PatientProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = PatientProfile
         exclude = ["version"]
         read_only_fields = ["id"]
+
+
+class PhysicalExamAssetSerializer(serializers.ModelSerializer):
+    filename = serializers.CharField(source="stored_asset.original_name", read_only=True)
+    content_type = serializers.CharField(source="stored_asset.content_type", read_only=True)
+    size_bytes = serializers.IntegerField(source="stored_asset.size_bytes", read_only=True)
+    deidentified_confirmed = serializers.BooleanField(
+        source="stored_asset.deidentified_confirmed",
+        read_only=True,
+    )
+    content_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PhysicalExamAsset
+        fields = [
+            "id",
+            "kind",
+            "display_order",
+            "filename",
+            "content_type",
+            "size_bytes",
+            "deidentified_confirmed",
+            "content_url",
+        ]
+
+    def get_content_url(self, link: PhysicalExamAsset) -> str:
+        return (
+            f"/api/teacher/cases/{link.version.case_id}/draft/"
+            f"physical-exam/assets/{link.id}/content/"
+        )
+
+
+class PhysicalExamSerializer(serializers.ModelSerializer):
+    images = serializers.SerializerMethodField()
+    attachments = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PhysicalExam
+        fields = ["findings_text", "consent_text", "images", "attachments"]
+        extra_kwargs = {
+            "findings_text": {"required": False, "allow_blank": True},
+            "consent_text": {"required": False},
+        }
+
+    def _assets(self, exam: PhysicalExam, kind: str):
+        return PhysicalExamAssetSerializer(
+            exam.assets.filter(kind=kind).select_related("stored_asset", "version__case"),
+            many=True,
+        ).data
+
+    def get_images(self, exam: PhysicalExam):
+        return self._assets(exam, "image")
+
+    def get_attachments(self, exam: PhysicalExam):
+        return self._assets(exam, "attachment")
+
+    def validate_consent_text(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError("患者同意语不能为空。")
+        return value.strip()
 
 
 class CaseFactSerializer(serializers.ModelSerializer):
@@ -88,6 +161,7 @@ class CaseDraftSerializer(serializers.ModelSerializer):
     case_id = serializers.UUIDField(source="case.id", read_only=True)
     case_code = serializers.CharField(source="case.code", read_only=True)
     patient_profile = PatientProfileSerializer(required=False)
+    physical_exam = PhysicalExamSerializer(required=False)
     facts = CaseFactSerializer(many=True, required=False)
     tests = TestDefinitionSerializer(many=True, required=False)
     diagnosis_rules = DiagnosisRuleSerializer(many=True, required=False)
@@ -124,6 +198,7 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             "updated_at",
             "expected_updated_at",
             "patient_profile",
+            "physical_exam",
             "facts",
             "tests",
             "diagnosis_rules",

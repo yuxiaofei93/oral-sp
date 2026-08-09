@@ -1,3 +1,4 @@
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
@@ -6,12 +7,20 @@ from rest_framework.views import APIView
 from modules.accounts.models import RoleCode
 from modules.accounts.permissions import IsTeacherOrAdministrator
 
-from .models import Case, CaseVersion, VersionStatus
+from .assets import (
+    AssetValidationError,
+    asset_path,
+    delete_physical_exam_asset,
+    upload_physical_exam_asset,
+)
+from .models import Case, CaseVersion, PhysicalExamAsset, VersionStatus
 from .serializers import (
     CaseCreateSerializer,
     CaseDraftSerializer,
     CaseListSerializer,
     PatientPromptTemplateSerializer,
+    PhysicalExamAssetDeleteSerializer,
+    PhysicalExamAssetUploadSerializer,
     PublishedVersionSerializer,
 )
 from .services import (
@@ -66,7 +75,11 @@ class TeacherCaseDraftView(APIView):
         case = get_object_or_404(case_queryset(request.user), pk=case_id)
         return get_object_or_404(
             CaseVersion.objects.select_related("case", "patient_profile").prefetch_related(
-                "facts", "tests", "diagnosis_rules", "scoring_items"
+                "facts",
+                "tests",
+                "diagnosis_rules",
+                "scoring_items",
+                "physical_exam__assets__stored_asset",
             ),
             case=case,
             status=VersionStatus.DRAFT,
@@ -85,6 +98,75 @@ class TeacherCaseDraftView(APIView):
             return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
         refreshed = self.get_object(request, case_id)
         return Response(CaseDraftSerializer(refreshed).data)
+
+
+class TeacherPhysicalExamAssetUploadView(TeacherCaseDraftView):
+    def post(self, request, case_id):
+        draft = self.get_object(request, case_id)
+        serializer = PhysicalExamAssetUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            upload_physical_exam_asset(
+                draft=draft,
+                uploaded_file=serializer.validated_data["file"],
+                kind=serializer.validated_data["kind"],
+                deidentified_confirmed=serializer.validated_data[
+                    "deidentified_confirmed"
+                ],
+                expected_updated_at=serializer.validated_data["expected_updated_at"],
+                user=request.user,
+            )
+        except DraftConflictError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+        except AssetValidationError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        refreshed = self.get_object(request, case_id)
+        return Response(CaseDraftSerializer(refreshed).data, status=status.HTTP_201_CREATED)
+
+
+class TeacherPhysicalExamAssetDeleteView(TeacherCaseDraftView):
+    def delete(self, request, case_id, asset_id):
+        draft = self.get_object(request, case_id)
+        serializer = PhysicalExamAssetDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        link = get_object_or_404(PhysicalExamAsset, pk=asset_id, version=draft)
+        try:
+            delete_physical_exam_asset(
+                draft=draft,
+                link=link,
+                expected_updated_at=serializer.validated_data["expected_updated_at"],
+            )
+        except DraftConflictError as error:
+            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+        refreshed = self.get_object(request, case_id)
+        return Response(CaseDraftSerializer(refreshed).data)
+
+
+class TeacherPhysicalExamAssetContentView(TeacherCaseDraftView):
+    def get(self, request, case_id, asset_id):
+        draft = self.get_object(request, case_id)
+        link = get_object_or_404(
+            PhysicalExamAsset.objects.select_related("stored_asset"),
+            pk=asset_id,
+            version=draft,
+        )
+        path = asset_path(link.stored_asset)
+        if not path.is_file():
+            raise Http404
+        is_attachment = link.kind == "attachment"
+        response = FileResponse(
+            path.open("rb"),
+            as_attachment=is_attachment,
+            filename=link.stored_asset.original_name,
+            content_type=(
+                "application/octet-stream"
+                if is_attachment
+                else link.stored_asset.content_type
+            ),
+        )
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, no-store"
+        return response
 
 
 class TeacherCasePublishView(APIView):

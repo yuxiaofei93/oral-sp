@@ -34,6 +34,12 @@ const createdDraft = {
     avatar_asset_id: '',
     voice_id: '',
   },
+  physical_exam: {
+    findings_text: '',
+    consent_text: '可以，麻烦您检查吧。',
+    images: [],
+    attachments: [],
+  },
   facts: [],
   tests: [],
   diagnosis_rules: [],

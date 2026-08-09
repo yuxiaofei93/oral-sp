@@ -168,6 +168,12 @@ class MessageRole(models.TextChoices):
     SYSTEM = "system", "系统"
 
 
+class MessageKind(models.TextChoices):
+    CHAT = "chat", "普通消息"
+    PHYSICAL_EXAM_CONSENT = "physical_exam_consent", "体格检查同意"
+    PHYSICAL_EXAM_RESULT = "physical_exam_result", "体格检查结果"
+
+
 class ResponseStatus(models.TextChoices):
     PROCESSING = "processing", "生成中"
     COMPLETED = "completed", "已完成"
@@ -184,6 +190,11 @@ class Message(models.Model):
     )
     sequence = models.PositiveIntegerField()
     role = models.CharField(max_length=16, choices=MessageRole.choices)
+    kind = models.CharField(
+        max_length=32,
+        choices=MessageKind.choices,
+        default=MessageKind.CHAT,
+    )
     content = models.TextField()
     client_message_id = models.CharField(max_length=64, blank=True)
     reply_to = models.OneToOneField(
@@ -226,6 +237,7 @@ class Message(models.Model):
                 "session_id",
                 "sequence",
                 "role",
+                "kind",
                 "content",
                 "client_message_id",
                 "reply_to_id",
@@ -241,6 +253,31 @@ class Message(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("已发送消息不可删除。")
+
+
+class PhysicalExamRelease(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.OneToOneField(
+        SimulationSession,
+        on_delete=models.CASCADE,
+        related_name="physical_exam_release",
+    )
+    trigger_message = models.OneToOneField(
+        Message,
+        on_delete=models.PROTECT,
+        related_name="triggered_physical_exam",
+    )
+    consent_message = models.OneToOneField(
+        Message,
+        on_delete=models.PROTECT,
+        related_name="physical_exam_consent_release",
+    )
+    result_message = models.OneToOneField(
+        Message,
+        on_delete=models.PROTECT,
+        related_name="physical_exam_result_release",
+    )
+    released_at = models.DateTimeField(auto_now_add=True)
 
 
 class SubmissionType(models.TextChoices):
@@ -308,6 +345,13 @@ class ModelCall(models.Model):
     prompt_version = models.CharField(max_length=40, default="patient-v1")
     request_hash = models.CharField(max_length=64)
     matched_fact_codes = models.JSONField(default=list)
+    routed_intent = models.CharField(max_length=40, blank=True)
+    route_confidence = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        null=True,
+        blank=True,
+    )
     status = models.CharField(max_length=16, choices=ModelCallStatus.choices)
     latency_ms = models.PositiveIntegerField(default=0)
     input_tokens = models.PositiveIntegerField(null=True, blank=True)

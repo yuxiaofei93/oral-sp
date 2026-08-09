@@ -17,6 +17,8 @@ from .models import (
     PatientProfile,
     PatientPromptMode,
     PatientPromptTemplate,
+    PhysicalExam,
+    PhysicalExamAsset,
     ScoringItem,
     TestDefinition,
     VersionStatus,
@@ -85,6 +87,7 @@ def create_case_with_draft(*, title_internal: str, user) -> Case:
             created_by=user,
         )
         PatientProfile.objects.create(version=draft)
+        PhysicalExam.objects.create(version=draft)
         return case
 
 
@@ -92,7 +95,14 @@ def update_draft(*, draft: CaseVersion, data: dict) -> CaseVersion:
     expected_updated_at: datetime | None = data.pop("expected_updated_at", None)
     nested = {
         name: data.pop(name)
-        for name in ("patient_profile", "facts", "tests", "diagnosis_rules", "scoring_items")
+        for name in (
+            "patient_profile",
+            "physical_exam",
+            "facts",
+            "tests",
+            "diagnosis_rules",
+            "scoring_items",
+        )
         if name in data
     }
 
@@ -109,6 +119,12 @@ def update_draft(*, draft: CaseVersion, data: dict) -> CaseVersion:
             for field, value in nested["patient_profile"].items():
                 setattr(profile, field, value)
             profile.save()
+
+        if "physical_exam" in nested:
+            physical_exam, _ = PhysicalExam.objects.get_or_create(version=locked)
+            for field, value in nested["physical_exam"].items():
+                setattr(physical_exam, field, value)
+            physical_exam.save()
 
         replacement_models = {
             "facts": (CaseFact, locked.facts),
@@ -185,6 +201,21 @@ def draft_content(draft: CaseVersion) -> dict:
     content["patient_profile"] = {
         field: _json_value(getattr(profile, field)) for field in profile_fields
     }
+    physical_exam, _ = PhysicalExam.objects.get_or_create(version=draft)
+    content["physical_exam"] = {
+        "findings_text": physical_exam.findings_text,
+        "consent_text": physical_exam.consent_text,
+        "assets": [
+            {
+                "kind": link.kind,
+                "display_order": link.display_order,
+                "sha256": link.stored_asset.sha256,
+                "size_bytes": link.stored_asset.size_bytes,
+                "original_name": link.stored_asset.original_name,
+            }
+            for link in physical_exam.assets.select_related("stored_asset").all()
+        ],
+    }
     for related_name, fields in child_fields.items():
         content[related_name] = [
             {field: _json_value(getattr(item, field)) for field in fields}
@@ -209,6 +240,13 @@ def publish_draft(*, draft: CaseVersion, user) -> PublishResult:
             raise PublishValidationError("发布前必须填写患者开场白。")
         if not locked.facts.exists():
             raise PublishValidationError("发布前至少需要一条病情信息。")
+        physical_exam, _ = PhysicalExam.objects.get_or_create(version=locked)
+        if not physical_exam.findings_text.strip():
+            raise PublishValidationError("发布前必须填写口腔体格检查所见。")
+        if physical_exam.assets.filter(
+            stored_asset__deidentified_confirmed=False
+        ).exists():
+            raise PublishValidationError("发布前必须确认全部体格检查媒体资料已获授权并脱敏。")
 
         content = draft_content(locked)
         digest = _content_hash(content)
@@ -247,6 +285,26 @@ def publish_draft(*, draft: CaseVersion, user) -> PublishResult:
             if field.name not in {"id", "version"}
         }
         PatientProfile.objects.bulk_create([PatientProfile(version=published, **profile_values)])
+        published_physical_exam = PhysicalExam(
+            version=published,
+            findings_text=physical_exam.findings_text,
+            consent_text=physical_exam.consent_text,
+        )
+        PhysicalExam.objects.bulk_create([published_physical_exam])
+        if published_physical_exam.pk is None:
+            published_physical_exam = PhysicalExam.objects.get(version=published)
+        PhysicalExamAsset.objects.bulk_create(
+            [
+                PhysicalExamAsset(
+                    version=published,
+                    physical_exam=published_physical_exam,
+                    stored_asset=link.stored_asset,
+                    kind=link.kind,
+                    display_order=link.display_order,
+                )
+                for link in physical_exam.assets.select_related("stored_asset").all()
+            ]
+        )
 
         for model, related_name in (
             (CaseFact, "facts"),

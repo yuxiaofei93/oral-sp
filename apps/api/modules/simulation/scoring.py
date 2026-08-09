@@ -12,6 +12,7 @@ from modules.cases.models import (
 
 from .models import (
     ModelCall,
+    PhysicalExamRelease,
     ScoreDecision,
     ScoreResult,
     SessionAssessment,
@@ -284,6 +285,53 @@ def _keyword_evaluation(item, config, submissions) -> Evaluation:
     )
 
 
+def _physical_exam_evaluation(item, session) -> Evaluation:
+    release = PhysicalExamRelease.objects.filter(session=session).select_related(
+        "trigger_message",
+        "consent_message",
+        "result_message",
+    ).first()
+    max_score = _money(item.max_score)
+    if release:
+        message_ids = [
+            str(release.trigger_message_id),
+            str(release.consent_message_id),
+            str(release.result_message_id),
+        ]
+        evidence_excerpt = (
+            f"学生：{release.trigger_message.content}\n"
+            f"患者：{release.consent_message.content}\n"
+            f"体格检查：{release.result_message.content}"
+        )[:2000]
+        score = max_score
+        decision = ScoreDecision.ACHIEVED
+        reason = "学生在问诊阶段主动申请并完成了口腔体格检查。"
+    else:
+        message_ids = []
+        evidence_excerpt = ""
+        score = Decimal("0.00")
+        decision = ScoreDecision.MISSED
+        reason = "学生未在问诊阶段主动申请口腔体格检查。"
+    return Evaluation(
+        scoring_item=item,
+        code=item.code,
+        label=item.label,
+        dimension=item.dimension,
+        evaluation_method=item.evaluation_method,
+        score=score,
+        max_score=max_score,
+        decision=decision,
+        confidence=Decimal("1.0000"),
+        message_ids=message_ids,
+        submission_ids=[],
+        evidence_excerpt=evidence_excerpt,
+        standard_answer="主动征得患者同意并完成口腔体格检查。",
+        reason=reason,
+        is_student_visible=item.is_student_visible,
+        source="physical_exam_request",
+    )
+
+
 def _evaluate_item(item, session, submissions, covered_calls) -> Evaluation:
     if item.evaluation_method != EvaluationMethod.RULE:
         label = "AI 辅助评价" if item.evaluation_method == EvaluationMethod.AI else "教师评价"
@@ -301,6 +349,8 @@ def _evaluate_item(item, session, submissions, covered_calls) -> Evaluation:
         return _test_evaluation(item, session, config, submissions)
     if source == "submission_keywords":
         return _keyword_evaluation(item, config, submissions)
+    if source == "physical_exam_request":
+        return _physical_exam_evaluation(item, session)
     return _pending(item, "该评分项没有可执行的规则配置。")
 
 

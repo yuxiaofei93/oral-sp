@@ -35,6 +35,12 @@ const draft: CaseDraft = {
     avatar_asset_id: '',
     voice_id: '',
   },
+  physical_exam: {
+    findings_text: '',
+    consent_text: '可以，麻烦您检查吧。',
+    images: [],
+    attachments: [],
+  },
   facts: [],
   tests: [],
   diagnosis_rules: [],
@@ -88,13 +94,15 @@ describe('CaseEditor', () => {
     expect(screen.queryByRole('heading', { name: '患者身份与表达方式' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '患者信息 [0点]' })).toBeInTheDocument()
     expect(screen.queryByText('每个事实都是独立信息点。AI 只能围绕这些事实回答，未定义内容不得补齐。')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '检查资料（0）' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '口腔体格检查' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '辅助检查资料（0）' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '诊断规则（0）' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '评分规则（0）' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '发布前检查' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /基础信息/ })).toHaveAttribute('href', '#basic-info')
     expect(screen.getByRole('link', { name: /患者提示词/ })).toHaveAttribute('href', '#patient-prompt')
     expect(screen.getByRole('link', { name: /病情信息/ })).toHaveAttribute('href', '#patient-facts')
+    expect(screen.getByRole('link', { name: /口腔体格检查/ })).toHaveAttribute('href', '#physical-exam')
     expect(screen.queryByRole('button', { name: '保存并继续' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '保存全部修改' })).not.toBeInTheDocument()
     const publishButton = screen.getByRole('button', { name: '发布病例' })
@@ -182,11 +190,57 @@ describe('CaseEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加检查' }))
 
     expect(await screen.findByText(
-      '病情信息 1 / 内容：该字段不能为空。；检查资料 1 / 检查名称：该字段不能为空。',
+      '病情信息 1 / 内容：该字段不能为空。；辅助检查资料 1 / 检查名称：该字段不能为空。',
       {},
       { timeout: 2000 },
     )).toBeInTheDocument()
     expect(screen.queryByText('请求失败，请稍后重试。')).not.toBeInTheDocument()
+  })
+
+  it('uploads a confirmed physical exam image and renders its private preview', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input)
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"case-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/physical-exam/assets/')) {
+        expect(init?.method).toBe('POST')
+        expect(init?.headers).toMatchObject({ 'X-CSRFToken': 'case-csrf' })
+        const body = init?.body as FormData
+        expect(body.get('kind')).toBe('image')
+        expect(body.get('deidentified_confirmed')).toBe('true')
+        return Promise.resolve(new Response(JSON.stringify({
+          ...draft,
+          updated_at: '2026-08-04T00:01:00Z',
+          physical_exam: {
+            ...draft.physical_exam,
+            images: [{
+              id: 1,
+              kind: 'image',
+              display_order: 0,
+              filename: '口内照.jpg',
+              content_type: 'image/jpeg',
+              size_bytes: 2048,
+              deidentified_confirmed: true,
+              content_url: '/api/teacher/cases/case-1/draft/physical-exam/assets/1/content/',
+            }],
+          },
+        }), { status: 201 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<CaseEditor initialDraft={draft} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByLabelText('我确认上传资料已获授权并完成脱敏'))
+    const file = new File(['image'], '口内照.jpg', { type: 'image/jpeg' })
+    fireEvent.change(screen.getByLabelText('添加检查图片'), {
+      target: { files: [file] },
+    })
+
+    expect(await screen.findByRole('img', { name: '口内照.jpg' })).toHaveAttribute(
+      'src',
+      '/api/teacher/cases/case-1/draft/physical-exam/assets/1/content/',
+    )
   })
 
   it('saves pending changes before returning to the case list', async () => {

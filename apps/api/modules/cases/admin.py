@@ -7,7 +7,10 @@ from .models import (
     DiagnosisRule,
     PatientProfile,
     PatientPromptTemplate,
+    PhysicalExam,
+    PhysicalExamAsset,
     ScoringItem,
+    StoredAsset,
     TestDefinition,
 )
 
@@ -19,3 +22,6 @@ admin.site.register(TestDefinition)
 admin.site.register(DiagnosisRule)
 admin.site.register(ScoringItem)
 admin.site.register(PatientPromptTemplate)
+admin.site.register(PhysicalExam)
+admin.site.register(PhysicalExamAsset)
+admin.site.register(StoredAsset)

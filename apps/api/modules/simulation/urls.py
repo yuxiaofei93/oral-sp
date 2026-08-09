@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     StudentAssignmentListView,
+    StudentPhysicalExamAssetContentView,
     StudentSessionDetailView,
     StudentSessionFeedbackView,
     StudentSessionMessageView,
@@ -14,6 +15,7 @@ from .views import (
     TeacherAssignmentReleaseFeedbackView,
     TeacherAssignmentResponseListView,
     TeacherAssignmentStatisticsView,
+    TeacherPhysicalExamAssetContentView,
     TeacherSessionAIEvaluationView,
     TeacherSessionRecordView,
     TeacherSessionReviewView,
@@ -61,6 +63,11 @@ urlpatterns = [
         name="teacher-session-record",
     ),
     path(
+        "teacher/sessions/<uuid:session_id>/physical-exam/assets/<int:asset_id>/content/",
+        TeacherPhysicalExamAssetContentView.as_view(),
+        name="teacher-session-physical-exam-asset-content",
+    ),
+    path(
         "teacher/sessions/<uuid:session_id>/reviews/",
         TeacherSessionReviewView.as_view(),
         name="teacher-session-review",
@@ -89,6 +96,11 @@ urlpatterns = [
         "student/sessions/<uuid:session_id>/messages/",
         StudentSessionMessageView.as_view(),
         name="student-session-message",
+    ),
+    path(
+        "student/sessions/<uuid:session_id>/physical-exam/assets/<int:asset_id>/content/",
+        StudentPhysicalExamAssetContentView.as_view(),
+        name="student-session-physical-exam-asset-content",
     ),
     path(
         "student/sessions/<uuid:session_id>/submissions/",

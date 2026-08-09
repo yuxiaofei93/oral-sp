@@ -1,5 +1,5 @@
 from django.db.models import Count, OuterRef, Prefetch, Q, Subquery
-from django.http import HttpResponse
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -8,7 +8,8 @@ from rest_framework.views import APIView
 
 from modules.accounts.models import RoleCode
 from modules.accounts.permissions import IsStudent, IsTeacherOrAdministrator
-from modules.cases.models import CaseVersion, VersionStatus
+from modules.cases.assets import asset_path
+from modules.cases.models import CaseVersion, PhysicalExamAsset, VersionStatus
 from modules.teaching.models import ClassGroup
 
 from .ai_evaluation import AIEvaluationError, run_ai_evaluation
@@ -132,6 +133,7 @@ def student_session_queryset(user):
             "assessment",
         )
         .prefetch_related("messages", "submissions")
+        .prefetch_related("case_version__physical_exam__assets__stored_asset")
     )
 
 
@@ -152,6 +154,7 @@ def teacher_session_queryset(user):
             "ai_evaluation_runs__results__score_result",
             "case_version__diagnosis_rules",
             "case_version__tests",
+            "case_version__physical_exam__assets__stored_asset",
         )
     )
     if user.is_superuser or user.has_role(RoleCode.ADMINISTRATOR):
@@ -196,6 +199,7 @@ class TeacherAssignmentOptionView(APIView):
             status=VersionStatus.PUBLISHED,
             case__is_active=True,
             version_number=Subquery(latest_version_number),
+            physical_exam__findings_text__regex=r"\S",
         ).select_related("case")
         class_groups = ClassGroup.objects.filter(is_active=True).annotate(
             student_count=Count("memberships", distinct=True)
@@ -358,6 +362,7 @@ class TeacherSessionRecordView(APIView):
                     "review": review,
                     "ai_run": ai_run,
                     "latest_ai_attempt": latest_ai_attempt(session),
+                    "teacher_access": True,
                 },
             ).data
         )
@@ -535,4 +540,57 @@ class StudentSessionFeedbackView(APIView):
             feedback = feedback_for_session(session=session, student=request.user)
         except SimulationError as error:
             return simulation_error_response(error)
+        feedback["physical_exam_result"] = SessionSerializer(session).data[
+            "physical_exam_result"
+        ]
         return Response(FeedbackSerializer(feedback).data)
+
+
+def _physical_exam_asset_response(link: PhysicalExamAsset):
+    path = asset_path(link.stored_asset)
+    if not path.is_file():
+        raise Http404
+    is_attachment = link.kind == "attachment"
+    response = FileResponse(
+        path.open("rb"),
+        as_attachment=is_attachment,
+        filename=link.stored_asset.original_name,
+        content_type=(
+            "application/octet-stream"
+            if is_attachment
+            else link.stored_asset.content_type
+        ),
+    )
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+class StudentPhysicalExamAssetContentView(APIView):
+    permission_classes = [IsStudent]
+
+    def get(self, request, session_id, asset_id):
+        session = get_object_or_404(student_session_queryset(request.user), pk=session_id)
+        has_release = hasattr(session, "physical_exam_release")
+        has_feedback = session.assignment.feedback_released_at is not None
+        if not (has_release or has_feedback):
+            raise Http404
+        link = get_object_or_404(
+            PhysicalExamAsset.objects.select_related("stored_asset"),
+            pk=asset_id,
+            version=session.case_version,
+        )
+        return _physical_exam_asset_response(link)
+
+
+class TeacherPhysicalExamAssetContentView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def get(self, request, session_id, asset_id):
+        session = get_object_or_404(teacher_session_queryset(request.user), pk=session_id)
+        link = get_object_or_404(
+            PhysicalExamAsset.objects.select_related("stored_asset"),
+            pk=asset_id,
+            version=session.case_version,
+        )
+        return _physical_exam_asset_response(link)

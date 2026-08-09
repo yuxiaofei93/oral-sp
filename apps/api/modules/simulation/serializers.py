@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from modules.cases.models import CaseVersion, VersionStatus
+from modules.cases.models import CaseVersion, PhysicalExam, VersionStatus
 from modules.teaching.models import ClassGroup
 
 from .models import (
@@ -8,6 +8,7 @@ from .models import (
     AIScoreResult,
     CaseAssignment,
     Message,
+    PhysicalExamRelease,
     ScoreResult,
     SessionAssessment,
     SimulationSession,
@@ -134,6 +135,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "id",
             "sequence",
             "role",
+            "kind",
             "content",
             "client_message_id",
             "reply_to_id",
@@ -162,6 +164,7 @@ class SessionSerializer(serializers.ModelSerializer):
     remaining_seconds = serializers.SerializerMethodField()
     messages = MessageSerializer(many=True, read_only=True)
     submissions = StageSubmissionSerializer(many=True, read_only=True)
+    physical_exam_result = serializers.SerializerMethodField()
 
     class Meta:
         model = SimulationSession
@@ -179,10 +182,57 @@ class SessionSerializer(serializers.ModelSerializer):
             "remaining_seconds",
             "messages",
             "submissions",
+            "physical_exam_result",
         ]
 
     def get_remaining_seconds(self, session):
         return remaining_seconds(session)
+
+    def get_physical_exam_result(self, session):
+        try:
+            release = session.physical_exam_release
+        except PhysicalExamRelease.DoesNotExist:
+            release = None
+        teacher_access = bool(self.context.get("teacher_access"))
+        feedback_access = session.assignment.feedback_released_at is not None
+        if not (release or teacher_access or feedback_access):
+            return None
+        try:
+            physical_exam = session.case_version.physical_exam
+        except PhysicalExam.DoesNotExist:
+            return None
+        if not physical_exam.findings_text.strip():
+            return None
+        audience = "teacher" if teacher_access else "student"
+
+        def assets(kind):
+            return [
+                {
+                    "id": link.id,
+                    "kind": link.kind,
+                    "filename": link.stored_asset.original_name,
+                    "content_type": link.stored_asset.content_type,
+                    "size_bytes": link.stored_asset.size_bytes,
+                    "content_url": (
+                        f"/api/{audience}/sessions/{session.id}/physical-exam/"
+                        f"assets/{link.id}/content/"
+                    ),
+                }
+                for link in physical_exam.assets.filter(kind=kind).select_related(
+                    "stored_asset"
+                )
+            ]
+
+        return {
+            "release_id": str(release.id) if release else None,
+            "released_at": release.released_at if release else None,
+            "access_reason": (
+                "triggered" if release else "teacher" if teacher_access else "feedback"
+            ),
+            "findings_text": physical_exam.findings_text,
+            "images": assets("image"),
+            "attachments": assets("attachment"),
+        }
 
 
 class AskPatientSerializer(serializers.Serializer):
@@ -194,6 +244,9 @@ class ExchangeSerializer(serializers.Serializer):
     student_message = MessageSerializer()
     patient_message = MessageSerializer(allow_null=True)
     reused = serializers.BooleanField()
+    interaction_type = serializers.ChoiceField(
+        choices=["patient_answer", "physical_exam_released", "physical_exam_reopened"]
+    )
 
 
 class SubmissionCreateSerializer(serializers.Serializer):
@@ -217,6 +270,7 @@ class FeedbackSerializer(serializers.Serializer):
     feedback_summary = serializers.CharField()
     ai_feedback = serializers.CharField(allow_null=True, allow_blank=True)
     teacher_comment = serializers.CharField(allow_blank=True)
+    physical_exam_result = serializers.DictField(allow_null=True, required=False)
 
 
 class ScoreResultSerializer(serializers.ModelSerializer):

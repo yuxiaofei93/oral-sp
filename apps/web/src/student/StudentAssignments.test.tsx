@@ -17,6 +17,7 @@ const session = {
   remaining_seconds: 1200,
   messages: [],
   submissions: [],
+  physical_exam_result: null,
 }
 
 describe('StudentAssignments', () => {
@@ -168,6 +169,97 @@ describe('StudentAssignments', () => {
       name: '初步诊断与鉴别诊断',
     })).toBeInTheDocument())
     expect(screen.queryByText('阶段提交失败。')).not.toBeInTheDocument()
+  })
+
+  it('opens released physical exam results and keeps a reusable transcript link', async () => {
+    const physicalExamResult = {
+      release_id: 'release-1',
+      released_at: '2026-08-04T01:03:00Z',
+      access_reason: 'triggered',
+      findings_text: '右下后牙区牙龈红肿，局部可见瘘管。',
+      images: [{
+        id: 1,
+        kind: 'image',
+        display_order: 0,
+        filename: '口内照.jpg',
+        content_type: 'image/jpeg',
+        size_bytes: 2048,
+        deidentified_confirmed: true,
+        content_url: '/api/student/sessions/session-1/physical-exam/assets/1/content/',
+      }],
+      attachments: [{
+        id: 2,
+        kind: 'attachment',
+        display_order: 0,
+        filename: '检查记录.custom',
+        content_type: 'application/x-custom',
+        size_bytes: 1024,
+        deidentified_confirmed: true,
+        content_url: '/api/student/sessions/session-1/physical-exam/assets/2/content/',
+      }],
+    }
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input)
+      if (url.endsWith('/student/assignments/')) {
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 'assignment-1',
+          title: '牙周问诊练习',
+          difficulty: 'intermediate',
+          duration_minutes: 20,
+          opens_at: '2026-08-04T00:00:00Z',
+          deadline_at: '2099-08-04T02:00:00Z',
+          status: 'open',
+          feedback_released_at: null,
+          attempt_status: 'not_started',
+          session_id: null,
+        }]), { status: 200 }))
+      }
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"student-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/assignment-1/session/')) {
+        return Promise.resolve(new Response(JSON.stringify({ created: true, session }), { status: 201 }))
+      }
+      if (url.endsWith('/session-1/messages/')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          reused: false,
+          interaction_type: 'physical_exam_released',
+          student_message: { id: 'm1' },
+          patient_message: { id: 'm2' },
+        }), { status: 200 }))
+      }
+      if (url.endsWith('/student/sessions/session-1/')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...session,
+          physical_exam_result: physicalExamResult,
+          messages: [
+            { id: 'm1', sequence: 1, role: 'student', kind: 'chat', content: '可以检查一下您的口腔吗？', response_status: 'completed' },
+            { id: 'm2', sequence: 2, role: 'patient', kind: 'physical_exam_consent', content: '可以，麻烦您检查吧。', response_status: 'not_applicable' },
+            { id: 'm3', sequence: 3, role: 'system', kind: 'physical_exam_result', content: physicalExamResult.findings_text, response_status: 'not_applicable' },
+          ],
+        }), { status: 200 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<StudentAssignments />)
+    fireEvent.click(await screen.findByRole('button', { name: '开始作答' }))
+    await waitFor(() => screen.getByLabelText('向患者提问'))
+    fireEvent.change(screen.getByLabelText('向患者提问'), {
+      target: { value: '可以检查一下您的口腔吗？' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
+
+    const dialog = await screen.findByRole('dialog', { name: '口腔体格检查所见' })
+    expect(dialog).toHaveTextContent('右下后牙区牙龈红肿，局部可见瘘管。')
+    expect(screen.getByRole('link', { name: /检查记录.custom/ })).toHaveAttribute(
+      'href',
+      physicalExamResult.attachments[0].content_url,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '关闭体格检查结果' }))
+    expect(screen.queryByRole('dialog', { name: '口腔体格检查所见' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '查看完整体格检查资料' }))
+    expect(screen.getByRole('dialog', { name: '口腔体格检查所见' })).toBeInTheDocument()
   })
 
   it('shows released score, omissions and standard answers only from feedback API', async () => {

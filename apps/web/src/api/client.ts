@@ -67,6 +67,24 @@ export type CaseTest = {
   display_order: number
 }
 
+export type PhysicalExamAsset = {
+  id: number
+  kind: 'image' | 'attachment'
+  display_order?: number
+  filename: string
+  content_type: string
+  size_bytes: number
+  deidentified_confirmed?: boolean
+  content_url: string
+}
+
+export type PhysicalExam = {
+  findings_text: string
+  consent_text: string
+  images: PhysicalExamAsset[]
+  attachments: PhysicalExamAsset[]
+}
+
 export type DiagnosisRule = {
   id?: number
   diagnosis_type: string
@@ -111,6 +129,7 @@ export type CaseDraft = {
   created_at: string
   updated_at: string
   patient_profile: PatientProfile
+  physical_exam: PhysicalExam
   facts: CaseFact[]
   tests: CaseTest[]
   diagnosis_rules: DiagnosisRule[]
@@ -168,12 +187,22 @@ export type SessionMessage = {
   id: string
   sequence: number
   role: 'student' | 'patient' | 'system'
+  kind: 'chat' | 'physical_exam_consent' | 'physical_exam_result'
   content: string
   client_message_id: string
   reply_to_id: string | null
   response_status: 'processing' | 'completed' | 'failed' | 'not_applicable'
   error_code: string
   created_at: string
+}
+
+export type PhysicalExamResult = {
+  release_id: string | null
+  released_at: string | null
+  access_reason: 'triggered' | 'feedback' | 'teacher'
+  findings_text: string
+  images: PhysicalExamAsset[]
+  attachments: PhysicalExamAsset[]
 }
 
 export type StageSubmission = {
@@ -197,6 +226,7 @@ export type SimulationSession = {
   remaining_seconds: number
   messages: SessionMessage[]
   submissions: StageSubmission[]
+  physical_exam_result: PhysicalExamResult | null
 }
 
 export type SessionFeedback = {
@@ -219,6 +249,7 @@ export type SessionFeedback = {
   feedback_summary: string
   ai_feedback: string | null
   teacher_comment: string
+  physical_exam_result: PhysicalExamResult | null
 }
 
 export type AssessmentScore = {
@@ -460,7 +491,8 @@ export class ApiError extends Error {
 const validationFieldLabels: Record<string, string> = {
   patient_profile: '患者身份',
   facts: '病情信息',
-  tests: '检查资料',
+  physical_exam: '口腔体格检查',
+  tests: '辅助检查资料',
   diagnosis_rules: '诊断规则',
   scoring_items: '评分规则',
   title_internal: '病例名称',
@@ -475,6 +507,8 @@ const validationFieldLabels: Record<string, string> = {
   personality: '性格与配合程度',
   emotion: '当前情绪',
   opening_statement: '患者开场白',
+  findings_text: '体格检查所见',
+  consent_text: '患者同意语',
   code: '编码',
   category: '分类',
   standard_fact: '内容',
@@ -594,6 +628,17 @@ async function mutate<T>(
   return parseResponse<T>(response)
 }
 
+async function mutateForm<T>(path: string, payload: FormData): Promise<T> {
+  const csrfToken = await getCsrfToken()
+  const response = await fetch(path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'X-CSRFToken': csrfToken },
+    body: payload,
+  })
+  return parseResponse<T>(response)
+}
+
 export async function getCurrentUser(): Promise<CurrentUser> {
   const response = await fetch('/api/auth/me/', { credentials: 'same-origin' })
   return parseResponse<CurrentUser>(response)
@@ -672,6 +717,38 @@ export function saveCaseDraft(
   return mutate<CaseDraft>('PATCH', `/api/teacher/cases/${caseId}/draft/`, payload)
 }
 
+export function uploadPhysicalExamAsset(
+  caseId: string,
+  payload: {
+    file: File
+    kind: 'image' | 'attachment'
+    deidentified_confirmed: boolean
+    expected_updated_at: string
+  },
+): Promise<CaseDraft> {
+  const form = new FormData()
+  form.append('file', payload.file)
+  form.append('kind', payload.kind)
+  form.append('deidentified_confirmed', String(payload.deidentified_confirmed))
+  form.append('expected_updated_at', payload.expected_updated_at)
+  return mutateForm<CaseDraft>(
+    `/api/teacher/cases/${caseId}/draft/physical-exam/assets/`,
+    form,
+  )
+}
+
+export function deletePhysicalExamAsset(
+  caseId: string,
+  assetId: number,
+  expectedUpdatedAt: string,
+): Promise<CaseDraft> {
+  return mutate<CaseDraft>(
+    'DELETE',
+    `/api/teacher/cases/${caseId}/draft/physical-exam/assets/${assetId}/`,
+    { expected_updated_at: expectedUpdatedAt },
+  )
+}
+
 export function publishCase(caseId: string): Promise<{
   created: boolean
   version: { id: string; version_number: number; published_at: string; content_hash: string }
@@ -704,6 +781,7 @@ export function askPatient(
   student_message: SessionMessage
   patient_message: SessionMessage | null
   reused: boolean
+  interaction_type: 'patient_answer' | 'physical_exam_released' | 'physical_exam_reopened'
 }> {
   return mutate('POST', `/api/student/sessions/${sessionId}/messages/`, payload)
 }

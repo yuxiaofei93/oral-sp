@@ -1,11 +1,15 @@
+from io import BytesIO
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from PIL import Image
 from rest_framework.test import APIClient
 
 from modules.accounts.models import Role, RoleCode
-from modules.cases.models import CaseVersion, VersionStatus
+from modules.cases.models import CaseVersion, PhysicalExamAsset, VersionStatus
 
 User = get_user_model()
 PASSWORD = "MolarTraining!2026"
@@ -137,6 +141,7 @@ def test_published_case_snapshots_default_patient_prompt():
         draft_url,
         {
             "patient_profile": {"opening_statement": "医生您好，我牙龈疼。"},
+            "physical_exam": {"findings_text": "牙龈局部红肿。"},
             "facts": [{"code": "pain", "standard_fact": "牙龈疼痛三天"}],
         },
         format="json",
@@ -175,6 +180,7 @@ def test_publish_creates_immutable_snapshot_and_is_idempotent():
         draft_url,
         {
             "patient_profile": {"opening_statement": "医生您好，我口腔不舒服。"},
+            "physical_exam": {"findings_text": "右下后牙区牙龈红肿。"},
             "facts": [
                 {
                     "code": "chief.issue",
@@ -215,6 +221,28 @@ def test_publish_creates_immutable_snapshot_and_is_idempotent():
 
     with pytest.raises(ValidationError):
         published.delete()
+
+
+@pytest.mark.django_db
+def test_publish_requires_physical_exam_findings():
+    teacher = make_user("13800138108", RoleCode.TEACHER)
+    client = APIClient()
+    client.force_authenticate(teacher)
+    created = client.post(reverse("teacher-case-list"), {}, format="json")
+    case_id = created.json()["case_id"]
+    client.patch(
+        reverse("teacher-case-draft", kwargs={"case_id": case_id}),
+        {
+            "patient_profile": {"opening_statement": "医生您好，我牙龈疼。"},
+            "facts": [{"code": "pain", "standard_fact": "牙龈疼痛三天"}],
+        },
+        format="json",
+    )
+
+    response = client.post(reverse("teacher-case-publish", kwargs={"case_id": case_id}))
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "发布前必须填写口腔体格检查所见。"
 
 
 @pytest.mark.django_db
@@ -262,3 +290,134 @@ def test_case_codes_are_generated_in_sequence():
     assert first.json()["title_internal"] == "未命名病例"
     assert first.json()["case_code"] == "CASE-000001"
     assert second.json()["case_code"] == "CASE-000002"
+
+
+@pytest.mark.django_db
+def test_teacher_uploads_private_physical_exam_media_and_publish_snapshots_it(
+    settings,
+    tmp_path,
+):
+    settings.MEDIA_ROOT = tmp_path
+    teacher = make_user("13800138107", RoleCode.TEACHER)
+    client = APIClient()
+    client.force_authenticate(teacher)
+    created = client.post(reverse("teacher-case-list"), {}, format="json")
+    case_id = created.json()["case_id"]
+    draft_url = reverse("teacher-case-draft", kwargs={"case_id": case_id})
+    configured = client.patch(
+        draft_url,
+        {
+            "expected_updated_at": created.json()["updated_at"],
+            "patient_profile": {"opening_statement": "医生您好，我牙龈疼。"},
+            "physical_exam": {
+                "findings_text": "右下后牙区牙龈红肿，局部可见瘘管。",
+            },
+            "facts": [{"code": "pain", "standard_fact": "牙龈疼痛三天"}],
+        },
+        format="json",
+    )
+    assert configured.status_code == 200
+
+    image_buffer = BytesIO()
+    Image.new("RGB", (12, 8), color=(180, 20, 30)).save(image_buffer, format="JPEG")
+    upload_url = reverse(
+        "teacher-physical-exam-asset-upload",
+        kwargs={"case_id": case_id},
+    )
+    rejected = client.post(
+        upload_url,
+        {
+            "kind": "image",
+            "file": SimpleUploadedFile(
+                "口内照片.jpg",
+                image_buffer.getvalue(),
+                content_type="image/jpeg",
+            ),
+            "deidentified_confirmed": False,
+            "expected_updated_at": configured.json()["updated_at"],
+        },
+        format="multipart",
+    )
+    assert rejected.status_code == 400
+
+    uploaded_image = client.post(
+        upload_url,
+        {
+            "kind": "image",
+            "file": SimpleUploadedFile(
+                "口内照片.jpg",
+                image_buffer.getvalue(),
+                content_type="image/jpeg",
+            ),
+            "deidentified_confirmed": True,
+            "expected_updated_at": configured.json()["updated_at"],
+        },
+        format="multipart",
+    )
+    assert uploaded_image.status_code == 201
+    image_data = uploaded_image.json()["physical_exam"]["images"][0]
+    assert image_data["filename"] == "口内照片.jpg"
+    image_link = PhysicalExamAsset.objects.get(pk=image_data["id"])
+    assert image_link.stored_asset.object_key.endswith(".jpg")
+    assert image_link.stored_asset.deidentified_confirmed is True
+
+    image_content = client.get(
+        reverse(
+            "teacher-physical-exam-asset-content",
+            kwargs={"case_id": case_id, "asset_id": image_data["id"]},
+        )
+    )
+    assert image_content.status_code == 200
+    assert image_content["Content-Type"] == "image/jpeg"
+    assert image_content["X-Content-Type-Options"] == "nosniff"
+
+    uploaded_attachment = client.post(
+        upload_url,
+        {
+            "kind": "attachment",
+            "file": SimpleUploadedFile(
+                "任意资料.custom",
+                b"private attachment",
+                content_type="application/x-custom",
+            ),
+            "deidentified_confirmed": True,
+            "expected_updated_at": uploaded_image.json()["updated_at"],
+        },
+        format="multipart",
+    )
+    assert uploaded_attachment.status_code == 201
+    attachment_data = uploaded_attachment.json()["physical_exam"]["attachments"][0]
+    attachment_content = client.get(
+        reverse(
+            "teacher-physical-exam-asset-content",
+            kwargs={"case_id": case_id, "asset_id": attachment_data["id"]},
+        )
+    )
+    assert attachment_content.status_code == 200
+    assert attachment_content["Content-Type"] == "application/octet-stream"
+    assert "attachment;" in attachment_content["Content-Disposition"]
+
+    published_response = client.post(
+        reverse("teacher-case-publish", kwargs={"case_id": case_id})
+    )
+    assert published_response.status_code == 201
+    published = CaseVersion.objects.get(pk=published_response.json()["version"]["id"])
+    assert published.physical_exam.findings_text == configured.json()["physical_exam"][
+        "findings_text"
+    ]
+    assert published.physical_exam.assets.count() == 2
+
+    deleted = client.delete(
+        reverse(
+            "teacher-physical-exam-asset-delete",
+            kwargs={"case_id": case_id, "asset_id": image_data["id"]},
+        ),
+        {"expected_updated_at": uploaded_attachment.json()["updated_at"]},
+        format="json",
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["physical_exam"]["images"] == []
+    assert published.physical_exam.assets.count() == 2
+    assert image_link.stored_asset_id in published.physical_exam.assets.values_list(
+        "stored_asset_id", flat=True
+    )

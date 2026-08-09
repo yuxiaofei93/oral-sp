@@ -1,21 +1,24 @@
-import { ReactNode, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, ReactNode, useEffect, useRef, useState } from 'react'
 
 import {
   ApiError,
   CaseDraft,
   CaseFact,
   CaseTest,
+  deletePhysicalExamAsset,
   DiagnosisRule,
   publishCase,
   saveCaseDraft,
   ScoringItem,
+  uploadPhysicalExamAsset,
 } from '../api/client'
 
 const editorSections = [
   { id: 'basic-info', label: '基础信息' },
   { id: 'patient-prompt', label: '患者提示词' },
   { id: 'patient-facts', label: '病情信息' },
-  { id: 'case-tests', label: '检查资料' },
+  { id: 'physical-exam', label: '口腔体格检查' },
+  { id: 'case-tests', label: '辅助检查资料' },
   { id: 'diagnosis-rules', label: '诊断规则' },
   { id: 'scoring-rules', label: '评分规则' },
 ]
@@ -134,6 +137,8 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
   const [revision, setRevision] = useState(0)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
   const [publishing, setPublishing] = useState(false)
+  const [mediaBusy, setMediaBusy] = useState(false)
+  const [mediaConfirmed, setMediaConfirmed] = useState(false)
   const [error, setError] = useState('')
   const draftRef = useRef(initialDraft)
   const revisionRef = useRef(0)
@@ -164,6 +169,16 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     }))
   }
 
+  function setPhysicalExam(
+    field: 'findings_text' | 'consent_text',
+    value: string,
+  ) {
+    updateDraft((current) => ({
+      ...current,
+      physical_exam: { ...current.physical_exam, [field]: value },
+    }))
+  }
+
   function setPatientPromptMode(mode: CaseDraft['patient_prompt_mode']) {
     updateDraft((current) => ({
       ...current,
@@ -191,6 +206,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
       patient_prompt_mode: source.patient_prompt_mode,
       patient_prompt: source.patient_prompt,
       patient_profile: source.patient_profile,
+      physical_exam: source.physical_exam,
       facts: source.facts.map((fact) => ({
         ...fact,
         patient_expression: fact.standard_fact,
@@ -245,7 +261,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
   }
 
   useEffect(() => {
-    if (revision === 0 || savedRevisionRef.current >= revision) return undefined
+    if (mediaBusy || revision === 0 || savedRevisionRef.current >= revision) return undefined
     const timer = setTimeout(() => {
       autoSaveTimerRef.current = null
       void persistLatestDraft()
@@ -255,7 +271,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
       clearTimeout(timer)
       if (autoSaveTimerRef.current === timer) autoSaveTimerRef.current = null
     }
-  }, [revision])
+  }, [mediaBusy, revision])
 
   function clearAutoSaveTimer() {
     if (!autoSaveTimerRef.current) return
@@ -283,6 +299,74 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
       setError(requestError instanceof ApiError ? requestError.message : '发布失败，请稍后重试。')
     } finally {
       setPublishing(false)
+    }
+  }
+
+  function mergeServerMedia(updated: CaseDraft) {
+    serverUpdatedAtRef.current = updated.updated_at
+    const current = {
+      ...draftRef.current,
+      updated_at: updated.updated_at,
+      physical_exam: {
+        ...draftRef.current.physical_exam,
+        images: updated.physical_exam.images,
+        attachments: updated.physical_exam.attachments,
+      },
+    }
+    draftRef.current = current
+    setDraft(current)
+    if (savedRevisionRef.current >= revisionRef.current) setSaveStatus('saved')
+  }
+
+  async function handleAssetUpload(
+    event: ChangeEvent<HTMLInputElement>,
+    kind: 'image' | 'attachment',
+  ) {
+    const input = event.currentTarget
+    const files = Array.from(input.files ?? [])
+    input.value = ''
+    if (files.length === 0) return
+    if (!mediaConfirmed) {
+      setError('上传前请确认资料已获授权并完成脱敏。')
+      return
+    }
+    clearAutoSaveTimer()
+    if (!(await persistLatestDraft())) return
+    setMediaBusy(true)
+    setError('')
+    try {
+      for (const file of files) {
+        const updated = await uploadPhysicalExamAsset(draftRef.current.case_id, {
+          file,
+          kind,
+          deidentified_confirmed: true,
+          expected_updated_at: serverUpdatedAtRef.current,
+        })
+        mergeServerMedia(updated)
+      }
+    } catch (requestError: unknown) {
+      setError(requestError instanceof ApiError ? requestError.message : '文件上传失败。')
+    } finally {
+      setMediaBusy(false)
+    }
+  }
+
+  async function handleAssetDelete(assetId: number) {
+    clearAutoSaveTimer()
+    if (!(await persistLatestDraft())) return
+    setMediaBusy(true)
+    setError('')
+    try {
+      const updated = await deletePhysicalExamAsset(
+        draftRef.current.case_id,
+        assetId,
+        serverUpdatedAtRef.current,
+      )
+      mergeServerMedia(updated)
+    } catch (requestError: unknown) {
+      setError(requestError instanceof ApiError ? requestError.message : '文件删除失败。')
+    } finally {
+      setMediaBusy(false)
     }
   }
 
@@ -469,8 +553,86 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
             </button>
           </EditorCard>
 
-          <EditorCard id="case-tests" title={`检查资料（${draft.tests.length}）`}>
-            <p className="section-help">文字检查结果为主，图片和附件后续可选添加。</p>
+          <EditorCard id="physical-exam" title="口腔体格检查">
+            <p className="section-help">
+              学生在问诊中主动申请检查后，系统会释放以下所见。文字所见是病例发布必填项。
+            </p>
+            <div className="form-grid">
+              <label className="form-grid__wide">
+                口腔体格检查所见(必填)
+                <textarea
+                  rows={6}
+                  value={draft.physical_exam.findings_text}
+                  onChange={(event) => setPhysicalExam('findings_text', event.target.value)}
+                  placeholder="例如：右下后牙区牙龈红肿，局部可见瘘管……"
+                />
+              </label>
+              <label className="form-grid__wide">
+                患者同意检查时的回复
+                <input
+                  maxLength={500}
+                  value={draft.physical_exam.consent_text}
+                  onChange={(event) => setPhysicalExam('consent_text', event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="physical-exam-media">
+              <label className="checkbox-field physical-exam-media__confirmation">
+                <input
+                  type="checkbox"
+                  checked={mediaConfirmed}
+                  onChange={(event) => setMediaConfirmed(event.target.checked)}
+                />
+                我确认上传资料已获授权并完成脱敏
+              </label>
+              <div className="physical-exam-media__uploaders">
+                <label className={`button button--secondary ${mediaBusy ? 'is-disabled' : ''}`}>
+                  添加检查图片
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    disabled={mediaBusy}
+                    onChange={(event) => void handleAssetUpload(event, 'image')}
+                  />
+                </label>
+                <label className={`button button--secondary ${mediaBusy ? 'is-disabled' : ''}`}>
+                  添加其它附件
+                  <input
+                    type="file"
+                    multiple
+                    disabled={mediaBusy}
+                    onChange={(event) => void handleAssetUpload(event, 'attachment')}
+                  />
+                </label>
+                <small>单个文件不超过 10 MB；图片可预览，其它附件仅供下载。</small>
+              </div>
+              {draft.physical_exam.images.length > 0 && (
+                <div className="physical-exam-media__images">
+                  {draft.physical_exam.images.map((asset) => (
+                    <article key={asset.id}>
+                      <img src={asset.content_url} alt={asset.filename} />
+                      <span title={asset.filename}>{asset.filename}</span>
+                      <button type="button" disabled={mediaBusy} onClick={() => void handleAssetDelete(asset.id)}>删除</button>
+                    </article>
+                  ))}
+                </div>
+              )}
+              {draft.physical_exam.attachments.length > 0 && (
+                <div className="physical-exam-media__attachments">
+                  {draft.physical_exam.attachments.map((asset) => (
+                    <article key={asset.id}>
+                      <a href={asset.content_url} download>{asset.filename}</a>
+                      <button type="button" disabled={mediaBusy} onClick={() => void handleAssetDelete(asset.id)}>删除</button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </EditorCard>
+
+          <EditorCard id="case-tests" title={`辅助检查资料（${draft.tests.length}）`}>
+            <p className="section-help">配置影像学、实验室检查等需要学生在检查计划中选择的项目。</p>
             <div className="repeat-list">
               {draft.tests.map((test, index) => (
                 <article className="repeat-item" key={test.id ?? `test-${index}`}>
@@ -536,6 +698,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                           <option value="history_facts">问诊事实点</option>
                           <option value="diagnoses">诊断名称</option>
                           <option value="tests">检查项目</option>
+                          <option value="physical_exam_request">体格检查申请</option>
                           <option value="submission_keywords">阶段答案关键词</option>
                         </select>
                       </label>

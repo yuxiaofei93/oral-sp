@@ -159,6 +159,53 @@ def test_deepseek_patient_gateway_routes_semantic_question_to_fact_code(monkeypa
     assert result.input_tokens == 80
 
 
+def test_deepseek_router_recognizes_only_confident_physical_exam_requests(monkeypatch):
+    configure_deepseek(monkeypatch)
+    captured = []
+    responses = iter(
+        [
+            '{"intent":"physical_exam_request","fact_codes":[],"confidence":0.91}',
+            '{"intent":"physical_exam_request","fact_codes":[],"confidence":0.70}',
+        ]
+    )
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        captured.append(json.loads(request.data.decode("utf-8")))
+        return JsonResponse(
+            {
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": next(responses)},
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    gateway = OpenAICompatiblePatientGateway(provider="deepseek")
+    confident = gateway.route(
+        question="可以让我检查一下您的口腔吗？",
+        facts=[],
+        history=[],
+        physical_exam_available=True,
+    )
+    uncertain = gateway.route(
+        question="是不是该看看？",
+        facts=[],
+        history=[],
+        physical_exam_available=True,
+    )
+
+    assert confident.intent == "physical_exam_request"
+    assert uncertain.intent == "patient_question"
+    router_payload = json.loads(captured[0]["messages"][1]["content"])
+    assert router_payload["physical_exam_available"] is True
+    assert "findings_text" not in router_payload
+
+
 def test_patient_gateway_retries_a_verbatim_written_fact_as_spoken_language(monkeypatch):
     configure_deepseek(monkeypatch)
     requests = []

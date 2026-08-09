@@ -10,7 +10,14 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from modules.accounts.models import Role, RoleCode
-from modules.cases.models import DiagnosisType, VersionStatus
+from modules.cases.models import (
+    DiagnosisType,
+    PhysicalExam,
+    PhysicalExamAsset,
+    ScoringItem,
+    StoredAsset,
+    VersionStatus,
+)
 from modules.cases.services import create_case_with_draft, publish_draft, update_draft
 from modules.simulation.ai_evaluation import (
     AIEvaluationError,
@@ -29,8 +36,10 @@ from modules.simulation.models import (
     AIScoreResult,
     AssignmentStudent,
     Message,
+    MessageKind,
     MessageRole,
     ModelCallStatus,
+    PhysicalExamRelease,
     ResponseStatus,
     ScoreDecision,
     SessionAssessment,
@@ -40,6 +49,7 @@ from modules.simulation.models import (
     TeacherReview,
 )
 from modules.simulation.reviews import create_teacher_review
+from modules.simulation.scoring import generate_assessment
 from modules.simulation.services import (
     AttemptAlreadyUsedError,
     StageLockedError,
@@ -53,6 +63,27 @@ from modules.teaching.models import ClassGroup, ClassMembership
 
 User = get_user_model()
 PASSWORD = "MolarTraining!2026"
+
+
+def test_local_router_only_recognizes_an_explicit_oral_examination_request():
+    gateway = PatientGateway()
+
+    request = gateway.route(
+        question="可以让我检查一下您的口腔吗？",
+        facts=[],
+        history=[],
+        physical_exam_available=True,
+    )
+    symptom_question = gateway.route(
+        question="您自己有看到口腔里面红肿吗？",
+        facts=[],
+        history=[],
+        physical_exam_available=True,
+    )
+
+    assert request.intent == "physical_exam_request"
+    assert request.confidence == 1.0
+    assert symptom_question.intent == "patient_question"
 
 
 class StaticAIEvaluationGateway(AIEvaluationGateway):
@@ -118,6 +149,10 @@ def make_exam_data(*, suffix="1", patient_prompt=""):
             "patient_profile": {
                 "display_name": "陈女士",
                 "opening_statement": "医生您好，我的牙龈总是疼。",
+            },
+            "physical_exam": {
+                "findings_text": "全口牙龈红肿，探诊易出血。",
+                "consent_text": "可以，麻烦您检查吧。",
             },
             "facts": [
                 {
@@ -358,8 +393,9 @@ class SemanticRoutingGateway(PatientGateway):
         self.histories = []
         self.patient_prompts = []
 
-    def route(self, *, question, facts, history):
+    def route(self, *, question, facts, history, physical_exam_available=False):
         assert question == "不舒服从什么时候开始的？"
+        assert physical_exam_available is True
         self.histories.append(history)
         return RoutingResult(
             fact_codes=["history.duration"],
@@ -405,7 +441,7 @@ def test_semantic_router_maps_natural_question_without_teacher_keyword():
 
     assert exchange.patient_message.content == "差不多有三年了。"
     assert gateway.patient_prompts == ["请表现得有些紧张，只用一两句话回答。"]
-    route_call = session.model_calls.get(prompt_version="patient-route-v1")
+    route_call = session.model_calls.get(prompt_version="patient-route-v2")
     assert route_call.provider == "deepseek"
     assert route_call.matched_fact_codes == ["history.duration"]
     answer_call = session.model_calls.get(patient_message__isnull=False)
@@ -460,11 +496,214 @@ def test_unrelated_question_uses_system_default_response_after_empty_route():
         exchange.patient_message.content
         == "这个我不太清楚。要不我们还是聊聊我这次口腔不舒服的情况吧。"
     )
-    assert session.model_calls.filter(prompt_version="patient-route-v1").count() == 1
+    assert session.model_calls.filter(prompt_version="patient-route-v2").count() == 1
     answer_call = session.model_calls.get(patient_message__isnull=False)
     assert answer_call.provider == "rules"
     assert answer_call.model == "unknown-fact-policy-v2"
     assert answer_call.matched_fact_codes == []
+
+
+@pytest.mark.django_db
+def test_physical_exam_request_releases_once_reopens_and_is_traceably_scored():
+    _, student, assignment = make_exam_data(suffix="9")
+    session = start_session(assignment=assignment, student=student).session
+    client = APIClient()
+    client.force_authenticate(student)
+
+    before = client.get(reverse("student-session-detail", kwargs={"session_id": session.id}))
+    assert before.status_code == 200
+    assert before.json()["physical_exam_result"] is None
+
+    first = ask_patient(
+        session=session,
+        student=student,
+        content="可以让我检查一下您的口腔吗？",
+        client_message_id="physical_exam_request_01",
+    )
+    assert first.interaction_type == "physical_exam_released"
+    assert first.patient_message.content == "可以，麻烦您检查吧。"
+    assert first.patient_message.kind == MessageKind.PHYSICAL_EXAM_CONSENT
+    release = PhysicalExamRelease.objects.get(session=session)
+    assert release.trigger_message.content == "可以让我检查一下您的口腔吗？"
+    assert release.result_message.kind == MessageKind.PHYSICAL_EXAM_RESULT
+    assert release.result_message.role == MessageRole.SYSTEM
+    assert release.result_message.content == "全口牙龈红肿，探诊易出血。"
+    route_call = session.model_calls.get(prompt_version="patient-route-v2")
+    assert route_call.routed_intent == "physical_exam_request"
+    assert float(route_call.route_confidence) == 1.0
+    assert session.model_calls.filter(prompt_version="patient-answer-v4").count() == 0
+
+    visible = client.get(reverse("student-session-detail", kwargs={"session_id": session.id}))
+    assert visible.json()["physical_exam_result"]["access_reason"] == "triggered"
+    assert visible.json()["physical_exam_result"]["findings_text"] == release.result_message.content
+
+    second = ask_patient(
+        session=session,
+        student=student,
+        content="我想再检查一下您的口腔。",
+        client_message_id="physical_exam_request_02",
+    )
+    assert second.interaction_type == "physical_exam_reopened"
+    assert second.patient_message.content == "刚才已经检查过了，您可以再查看检查结果。"
+    assert PhysicalExamRelease.objects.filter(session=session).count() == 1
+    assert session.messages.filter(kind=MessageKind.PHYSICAL_EXAM_RESULT).count() == 1
+
+    class CapturingGateway(PatientGateway):
+        def __init__(self):
+            self.history = []
+
+        def route(
+            self,
+            *,
+            question,
+            facts,
+            history,
+            physical_exam_available=False,
+        ):
+            del question, facts, physical_exam_available
+            self.history = history
+            return RoutingResult(
+                fact_codes=["history.duration"],
+                confidence=1.0,
+                provider="test",
+                model="capturing-router",
+                latency_ms=1,
+            )
+
+        def answer(self, *, question, facts, history, patient_prompt):
+            del question, history, patient_prompt
+            return GatewayResult(
+                answer="差不多三年了。",
+                fact_codes=[facts[0].code],
+                provider="test",
+                model="capturing-patient",
+                latency_ms=1,
+            )
+
+    capturing_gateway = CapturingGateway()
+    ask_patient(
+        session=session,
+        student=student,
+        content="牙龈疼了多久？",
+        client_message_id="after_physical_exam_question_01",
+        gateway=capturing_gateway,
+    )
+    assert release.result_message.content not in {
+        item["content"] for item in capturing_gateway.history
+    }
+
+    scoring_item = ScoringItem(
+        version=session.case_version,
+        code="score.physical_exam",
+        dimension="clinical",
+        label="主动申请体格检查",
+        max_score="1.00",
+        evaluation_method="rule",
+        matching_config={"source": "physical_exam_request"},
+        display_order=99,
+    )
+    ScoringItem.objects.bulk_create([scoring_item])
+    generate_assessment(session)
+    result = session.score_results.get(code="score.physical_exam")
+    assert result.automatic_score == 1
+    assert result.decision == ScoreDecision.ACHIEVED
+    assert result.evidence_message_ids == [
+        str(release.trigger_message_id),
+        str(release.consent_message_id),
+        str(release.result_message_id),
+    ]
+
+
+@pytest.mark.django_db
+def test_physical_exam_stays_hidden_when_not_requested_until_feedback_release():
+    _, student, assignment = make_exam_data(suffix="9")
+    session = start_session(assignment=assignment, student=student).session
+    client = APIClient()
+    client.force_authenticate(student)
+
+    symptom_question = ask_patient(
+        session=session,
+        student=student,
+        content="你自己能看到牙龈红肿吗？",
+        client_message_id="self_observation_question_01",
+    )
+    assert symptom_question.interaction_type == "patient_answer"
+    assert not PhysicalExamRelease.objects.filter(session=session).exists()
+    assert client.get(
+        reverse("student-session-detail", kwargs={"session_id": session.id})
+    ).json()["physical_exam_result"] is None
+
+    close_assignment(assignment=assignment)
+    assignment.feedback_released_at = timezone.now()
+    assignment.save(update_fields=["feedback_released_at", "updated_at"])
+    after_feedback = client.get(
+        reverse("student-session-detail", kwargs={"session_id": session.id})
+    )
+    assert after_feedback.json()["physical_exam_result"]["access_reason"] == "feedback"
+    assert after_feedback.json()["physical_exam_result"]["findings_text"] == (
+        "全口牙龈红肿，探诊易出血。"
+    )
+
+
+@pytest.mark.django_db
+def test_physical_exam_asset_requires_the_authorized_session_release(
+    settings,
+    tmp_path,
+):
+    settings.MEDIA_ROOT = tmp_path
+    teacher, student, assignment = make_exam_data(suffix="9")
+    session = start_session(assignment=assignment, student=student).session
+    object_key = "physical-exam/aa/private.bin"
+    stored_path = tmp_path / object_key
+    stored_path.parent.mkdir(parents=True)
+    stored_path.write_bytes(b"private physical exam attachment")
+    stored_asset = StoredAsset.objects.create(
+        object_key=object_key,
+        original_name="检查附件.custom",
+        content_type="application/x-custom",
+        size_bytes=32,
+        sha256="a" * 64,
+        deidentified_confirmed=True,
+        created_by=teacher,
+    )
+    link = PhysicalExamAsset(
+        version=session.case_version,
+        physical_exam=session.case_version.physical_exam,
+        stored_asset=stored_asset,
+        kind="attachment",
+    )
+    PhysicalExamAsset.objects.bulk_create([link])
+    student_url = reverse(
+        "student-session-physical-exam-asset-content",
+        kwargs={"session_id": session.id, "asset_id": link.id},
+    )
+
+    client = APIClient()
+    client.force_authenticate(student)
+    assert client.get(student_url).status_code == 404
+    ask_patient(
+        session=session,
+        student=student,
+        content="请允许我检查一下您的口腔。",
+        client_message_id="physical_exam_asset_request_01",
+    )
+    content = client.get(student_url)
+    assert content.status_code == 200
+    assert content["Content-Type"] == "application/octet-stream"
+    assert "attachment;" in content["Content-Disposition"]
+
+    outsider = make_user("13700000009", RoleCode.STUDENT)
+    client.force_authenticate(outsider)
+    assert client.get(student_url).status_code == 404
+
+    client.force_authenticate(teacher)
+    teacher_content = client.get(
+        reverse(
+            "teacher-session-physical-exam-asset-content",
+            kwargs={"session_id": session.id, "asset_id": link.id},
+        )
+    )
+    assert teacher_content.status_code == 200
 
 
 @pytest.mark.django_db
@@ -630,6 +869,11 @@ def test_assignment_options_only_include_teachers_published_cases_and_classes():
     )
     assert stale_assignment.status_code == 403
     assert "最新发布版本" in stale_assignment.json()["detail"]
+
+    PhysicalExam.objects.filter(version=latest_version).update(findings_text=" \n ")
+    unavailable = client.get(reverse("teacher-assignment-options"))
+    assert unavailable.status_code == 200
+    assert unavailable.json()["case_versions"] == []
 
 
 def complete_scored_session(*, session, student, correct: bool):

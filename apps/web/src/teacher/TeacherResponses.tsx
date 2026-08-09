@@ -13,6 +13,7 @@ import {
   saveTeacherReview,
   teacherAssignmentCsvUrl,
 } from '../api/client'
+import { PhysicalExamDialog } from '../PhysicalExamDialog'
 
 const attemptNames = {
   not_started: '未开始',
@@ -58,6 +59,7 @@ export function TeacherResponses({
   const [reviewScores, setReviewScores] = useState<Record<string, string>>({})
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({})
   const [teacherComment, setTeacherComment] = useState('')
+  const [physicalExamOpen, setPhysicalExamOpen] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -189,8 +191,13 @@ export function TeacherResponses({
             <article className="message message--patient"><span>患者开场白</span><p>{record.opening_statement}</p></article>
             {record.messages.map((message) => (
               <article className={`message message--${message.role}`} key={message.id}>
-                <span>{message.role === 'student' ? '学生' : '患者'} · #{message.sequence}</span>
+                <span>{message.role === 'student' ? '学生' : message.role === 'system' ? '系统 · 体格检查' : '患者'} · #{message.sequence}</span>
                 <p>{message.content}</p>
+                {message.kind === 'physical_exam_result' && record.physical_exam_result && (
+                  <button className="physical-exam-message-link" type="button" onClick={() => setPhysicalExamOpen(true)}>
+                    查看完整体格检查资料
+                  </button>
+                )}
               </article>
             ))}
           </div>
@@ -324,7 +331,17 @@ export function TeacherResponses({
           {record.standard_diagnoses.map((item) => <p key={`${item.type}-${item.name}`}>{item.name}：{item.supporting_evidence.join('、')}</p>)}
           <h4>标准检查</h4>
           {record.standard_tests.map((item) => <p key={item.code}>{item.name}：{item.result}（{item.interpretation}）</p>)}
+          {record.physical_exam_result && (
+            <button className="button button--secondary" type="button" onClick={() => setPhysicalExamOpen(true)}>
+              查看口腔体格检查资料
+            </button>
+          )}
         </section>
+        <PhysicalExamDialog
+          result={record.physical_exam_result}
+          open={physicalExamOpen}
+          onClose={() => setPhysicalExamOpen(false)}
+        />
       </section>
     )
   }
