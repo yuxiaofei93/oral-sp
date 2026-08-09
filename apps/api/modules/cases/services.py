@@ -17,6 +17,7 @@ from .models import (
     PatientProfile,
     PatientPromptMode,
     PatientPromptTemplate,
+    PatientQuestionTemplate,
     PhysicalExam,
     PhysicalExamAsset,
     ScoringItem,
@@ -27,6 +28,11 @@ from .prompts import (
     DEFAULT_PATIENT_PROMPT,
     PATIENT_PROMPT_TEMPLATE_ID,
     PATIENT_PROMPT_TEMPLATE_NAME,
+    PATIENT_QUESTION_TEMPLATE_ID,
+    PATIENT_QUESTION_TEMPLATE_NAME,
+)
+from .prompts import (
+    default_patient_questions as built_in_patient_questions,
 )
 
 
@@ -69,6 +75,34 @@ def effective_patient_prompt(version: CaseVersion) -> str:
     if version.status == VersionStatus.PUBLISHED and configured:
         return configured
     return default_patient_prompt()
+
+
+def get_patient_question_template() -> PatientQuestionTemplate:
+    template, _ = PatientQuestionTemplate.objects.get_or_create(
+        pk=PATIENT_QUESTION_TEMPLATE_ID,
+        defaults={
+            "name": PATIENT_QUESTION_TEMPLATE_NAME,
+            "questions": built_in_patient_questions(),
+        },
+    )
+    return template
+
+
+def default_patient_questions() -> list[dict]:
+    template = PatientQuestionTemplate.objects.filter(
+        pk=PATIENT_QUESTION_TEMPLATE_ID
+    ).first()
+    source = template.questions if template else built_in_patient_questions()
+    return [dict(item) for item in source]
+
+
+def effective_patient_questions(version: CaseVersion) -> list[dict]:
+    configured = list(version.patient_questions or [])
+    if version.patient_questions_mode == PatientPromptMode.CUSTOM:
+        return [dict(item) for item in configured]
+    if version.status == VersionStatus.PUBLISHED:
+        return [dict(item) for item in configured]
+    return default_patient_questions()
 
 
 def create_case_with_draft(*, title_internal: str, user) -> Case:
@@ -162,6 +196,8 @@ def draft_content(draft: CaseVersion) -> dict:
         "time_limit_minutes",
         "enabled_stages",
         "patient_prompt_mode",
+        "patient_questions_enabled",
+        "patient_questions_mode",
     ]
     profile_fields = [
         "display_name",
@@ -198,6 +234,7 @@ def draft_content(draft: CaseVersion) -> dict:
     profile = draft.patient_profile
     content = {field: _json_value(getattr(draft, field)) for field in scalar_fields}
     content["patient_prompt"] = effective_patient_prompt(draft)
+    content["patient_questions"] = effective_patient_questions(draft)
     content["patient_profile"] = {
         field: _json_value(getattr(profile, field)) for field in profile_fields
     }
@@ -251,6 +288,11 @@ def publish_draft(*, draft: CaseVersion, user) -> PublishResult:
         content = draft_content(locked)
         digest = _content_hash(content)
         patient_prompt = effective_patient_prompt(locked)
+        patient_questions = effective_patient_questions(locked)
+        if locked.patient_questions_enabled and not any(
+            bool(item.get("enabled")) for item in patient_questions
+        ):
+            raise PublishValidationError("启用患者主动提问时至少需要一个启用的问题。")
         latest = (
             CaseVersion.objects.filter(case=locked.case, status=VersionStatus.PUBLISHED)
             .order_by("-version_number")
@@ -273,6 +315,9 @@ def publish_draft(*, draft: CaseVersion, user) -> PublishResult:
             enabled_stages=locked.enabled_stages,
             patient_prompt_mode=locked.patient_prompt_mode,
             patient_prompt=patient_prompt,
+            patient_questions_enabled=locked.patient_questions_enabled,
+            patient_questions_mode=locked.patient_questions_mode,
+            patient_questions=patient_questions,
             based_on=latest,
             created_by=user,
             published_at=timezone.now(),

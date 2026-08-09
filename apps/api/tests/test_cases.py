@@ -165,6 +165,72 @@ def test_published_case_snapshots_default_patient_prompt():
 
 
 @pytest.mark.django_db
+def test_only_administrator_edits_patient_question_template_and_publish_snapshots_it():
+    teacher = make_user("13800138115", RoleCode.TEACHER)
+    administrator = make_user("13800138116", RoleCode.ADMINISTRATOR)
+    template_url = reverse("teacher-patient-question-template")
+    client = APIClient()
+    client.force_authenticate(teacher)
+    default_template = client.get(template_url)
+    assert default_template.status_code == 200
+    assert [item["id"] for item in default_template.json()["questions"]] == [
+        "diagnosis",
+        "treatment",
+        "examinations",
+    ]
+    assert client.patch(
+        template_url,
+        {"questions": default_template.json()["questions"]},
+        format="json",
+    ).status_code == 403
+
+    client.force_authenticate(administrator)
+    customized_questions = [
+        {
+            "id": "cost",
+            "base_question": "这大概要花多少钱？",
+            "answer_criteria": "说明费用范围或解释需要结合方案评估。",
+            "enabled": True,
+        }
+    ]
+    updated = client.patch(
+        template_url,
+        {"questions": customized_questions},
+        format="json",
+    )
+    assert updated.status_code == 200
+
+    client.force_authenticate(teacher)
+    created = client.post(reverse("teacher-case-list"), {}, format="json")
+    assert created.json()["effective_patient_questions"] == customized_questions
+    case_id = created.json()["case_id"]
+    client.patch(
+        reverse("teacher-case-draft", kwargs={"case_id": case_id}),
+        {
+            "patient_profile": {"opening_statement": "医生您好，我牙龈疼。"},
+            "physical_exam": {"findings_text": "牙龈局部红肿。"},
+            "facts": [{"code": "pain", "standard_fact": "牙龈疼痛三天"}],
+        },
+        format="json",
+    )
+    published_response = client.post(
+        reverse("teacher-case-publish", kwargs={"case_id": case_id})
+    )
+    published = CaseVersion.objects.get(pk=published_response.json()["version"]["id"])
+    assert published.patient_questions == customized_questions
+
+    client.force_authenticate(administrator)
+    changed_questions = [{**customized_questions[0], "base_question": "费用高吗？"}]
+    assert client.patch(
+        template_url,
+        {"questions": changed_questions},
+        format="json",
+    ).status_code == 200
+    published.refresh_from_db()
+    assert published.patient_questions == customized_questions
+
+
+@pytest.mark.django_db
 def test_publish_creates_immutable_snapshot_and_is_idempotent():
     teacher = make_user("13800138102", RoleCode.TEACHER)
     client = APIClient()

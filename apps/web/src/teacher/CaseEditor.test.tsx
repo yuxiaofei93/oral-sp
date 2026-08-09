@@ -19,6 +19,15 @@ const draft: CaseDraft = {
   patient_prompt: '',
   effective_patient_prompt: '默认患者问诊提示词。',
   default_patient_prompt: '默认患者问诊提示词。',
+  patient_questions_enabled: true,
+  patient_questions_mode: 'default' as const,
+  patient_questions: [],
+  effective_patient_questions: [
+    { id: 'diagnosis', base_question: '医生，我这是个什么病？', answer_criteria: '给出诊断或下一步。', enabled: true },
+  ],
+  default_patient_questions: [
+    { id: 'diagnosis', base_question: '医生，我这是个什么病？', answer_criteria: '给出诊断或下一步。', enabled: true },
+  ],
   created_at: '2026-08-04T00:00:00Z',
   updated_at: '2026-08-04T00:00:00Z',
   patient_profile: {

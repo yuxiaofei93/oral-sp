@@ -24,7 +24,7 @@ export function TeacherWorkspace({ isAdministrator = false }: { isAdministrator?
       {tab === 'assignments' && <TeacherAssignments />}
       {tab === 'students' && isAdministrator && <StudentManagement />}
       {tab === 'classes' && <ClassManagement />}
-      {tab === 'system_settings' && <PatientPromptTemplateEditor />}
+      {tab === 'system_settings' && <PatientPromptTemplateEditor isAdministrator={isAdministrator} />}
     </div>
   )
 }

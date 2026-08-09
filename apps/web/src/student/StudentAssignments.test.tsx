@@ -30,12 +30,20 @@ const session = {
   case_draft_revision: 0,
   case_record: null,
   physical_exam_result: null,
+  patient_initiative: {
+    enabled: true,
+    phase: 'inactive',
+    activated_at: null,
+    next_due_at: null,
+    active_message_id: null,
+  },
 }
 
 describe('StudentAssignments', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   it('starts an assigned exam and records an idempotent patient question', async () => {
@@ -90,6 +98,17 @@ describe('StudentAssignments', () => {
           ),
         )
       }
+      if (url.endsWith('/patient-initiative/activate/')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          patient_initiative: {
+            enabled: true,
+            phase: 'idle',
+            activated_at: '2026-08-04T01:03:30Z',
+            next_due_at: '2099-08-04T01:04:00Z',
+            active_message_id: null,
+          },
+        }), { status: 200 }))
+      }
       return Promise.reject(new Error(`unexpected request: ${url}`))
     })
 
@@ -103,7 +122,7 @@ describe('StudentAssignments', () => {
     expect(screen.queryByRole('navigation', { name: '问诊阶段' })).not.toBeInTheDocument()
     expect(screen.queryByText('标准化患者在线')).not.toBeInTheDocument()
     expect(screen.queryByText(/条记录/)).not.toBeInTheDocument()
-    expect(screen.getByPlaceholderText('输入你想向患者了解的问题…')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('输入你想说的话或向患者提出的问题…')).toBeInTheDocument()
     expect(screen.getByText('病例编辑')).toBeInTheDocument()
     const basicInformation = screen.getByRole('region', { name: '基本信息' })
     expect(basicInformation).toHaveTextContent('患者化名陈女士')
@@ -114,8 +133,8 @@ describe('StudentAssignments', () => {
 
     const conversation = screen.getByLabelText('问诊记录')
     Object.defineProperty(conversation, 'scrollHeight', { configurable: true, value: 500 })
-    fireEvent.change(screen.getByLabelText('向患者提问'), { target: { value: '有多久了？' } })
-    fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
+    fireEvent.change(screen.getByLabelText('输入对话内容'), { target: { value: '有多久了？' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
 
     const outgoingMessage = await screen.findByText('有多久了？')
     const thinking = screen.getByRole('status')
@@ -255,7 +274,7 @@ describe('StudentAssignments', () => {
     expect(completionRequests).toHaveLength(1)
     expect(screen.getByRole('textbox', { name: '主诉' })).toHaveAttribute('readonly')
     expect(screen.getByRole('textbox', { name: '诊断' })).toHaveAttribute('readonly')
-    expect(screen.queryByLabelText('向患者提问')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('输入对话内容')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '提交并完成问诊' })).not.toBeInTheDocument()
   })
 
@@ -393,16 +412,27 @@ describe('StudentAssignments', () => {
           ],
         }), { status: 200 }))
       }
+      if (url.endsWith('/patient-initiative/activate/')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          patient_initiative: {
+            enabled: true,
+            phase: 'idle',
+            activated_at: '2026-08-04T01:03:30Z',
+            next_due_at: '2099-08-04T01:04:00Z',
+            active_message_id: null,
+          },
+        }), { status: 200 }))
+      }
       return Promise.reject(new Error(`unexpected request: ${url}`))
     })
 
     render(<StudentAssignments />)
     fireEvent.click(await screen.findByRole('button', { name: '开始作答' }))
-    await waitFor(() => screen.getByLabelText('向患者提问'))
-    fireEvent.change(screen.getByLabelText('向患者提问'), {
+    await waitFor(() => screen.getByLabelText('输入对话内容'))
+    fireEvent.change(screen.getByLabelText('输入对话内容'), {
       target: { value: '可以检查一下您的口腔吗？' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
+    fireEvent.click(screen.getByRole('button', { name: '发送消息' }))
 
     const dialog = await screen.findByRole('dialog', { name: '口腔体格检查所见' })
     expect(dialog).toHaveTextContent('右下后牙区牙龈红肿，局部可见瘘管。')
@@ -417,6 +447,84 @@ describe('StudentAssignments', () => {
     expect(screen.queryByRole('dialog', { name: '口腔体格检查所见' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '查看完整体格检查资料' }))
     expect(screen.getByRole('dialog', { name: '口腔体格检查所见' })).toBeInTheDocument()
+  })
+
+  it('uses the server due time to request a patient question and preserves typed text', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-08-04T01:03:00Z'))
+    let triggered = false
+    const timedSession = {
+      ...session,
+      patient_initiative: {
+        enabled: true,
+        phase: 'idle',
+        activated_at: '2026-08-04T01:02:30Z',
+        next_due_at: '2026-08-04T01:03:30Z',
+        active_message_id: null,
+      },
+    }
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = String(input)
+      if (url.endsWith('/student/assignments/')) {
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 'assignment-1',
+          title: '牙周问诊练习',
+          difficulty: 'intermediate',
+          duration_minutes: 20,
+          opens_at: '2026-08-04T00:00:00Z',
+          deadline_at: '2099-08-04T02:00:00Z',
+          status: 'open',
+          feedback_released_at: null,
+          attempt_status: 'not_started',
+          session_id: null,
+        }]), { status: 200 }))
+      }
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"initiative-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/assignment-1/session/')) {
+        return Promise.resolve(new Response(JSON.stringify({ created: true, session: timedSession }), { status: 201 }))
+      }
+      if (url.endsWith('/patient-initiative/trigger/')) {
+        triggered = true
+        return Promise.resolve(new Response(JSON.stringify({
+          patient_message: { id: 'm4', sequence: 4, role: 'patient', kind: 'patient_initiated_question', content: '医生，我这是个什么病？', response_status: 'not_applicable' },
+          reused: false,
+          patient_initiative: {
+            enabled: true,
+            phase: 'awaiting_student',
+            activated_at: '2026-08-04T01:02:30Z',
+            next_due_at: '2026-08-04T01:04:00Z',
+            active_message_id: 'm4',
+          },
+        }), { status: 200 }))
+      }
+      if (url.endsWith('/student/sessions/session-1/')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...timedSession,
+          messages: triggered ? [{ id: 'm4', sequence: 4, role: 'patient', kind: 'patient_initiated_question', content: '医生，我这是个什么病？', response_status: 'not_applicable' }] : [],
+          patient_initiative: triggered ? {
+            enabled: true,
+            phase: 'awaiting_student',
+            activated_at: '2026-08-04T01:02:30Z',
+            next_due_at: '2026-08-04T01:04:00Z',
+            active_message_id: 'm4',
+          } : timedSession.patient_initiative,
+        }), { status: 200 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<StudentAssignments />)
+    fireEvent.click(await screen.findByRole('button', { name: '开始作答' }))
+    const input = await screen.findByLabelText('输入对话内容')
+    fireEvent.change(input, { target: { value: '我正在组织回答' } })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+
+    expect(await screen.findByText('医生，我这是个什么病？')).toBeInTheDocument()
+    expect(screen.getByLabelText('输入对话内容')).toHaveValue('我正在组织回答')
   })
 
   it('shows released score, omissions and standard answers only from feedback API', async () => {

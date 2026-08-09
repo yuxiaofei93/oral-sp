@@ -8,16 +8,49 @@ from .models import (
     PatientProfile,
     PatientPromptMode,
     PatientPromptTemplate,
+    PatientQuestionTemplate,
     PhysicalExam,
     PhysicalExamAsset,
     ScoringItem,
     TestDefinition,
 )
-from .services import default_patient_prompt, effective_patient_prompt
+from .services import (
+    default_patient_prompt,
+    default_patient_questions,
+    effective_patient_prompt,
+    effective_patient_questions,
+)
 
 
 class StringListField(serializers.ListField):
     child = serializers.CharField(max_length=160)
+
+
+class PatientQuestionItemSerializer(serializers.Serializer):
+    id = serializers.RegexField(
+        r"^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$",
+        max_length=80,
+    )
+    base_question = serializers.CharField(max_length=300)
+    answer_criteria = serializers.CharField(max_length=1000)
+    enabled = serializers.BooleanField(default=True)
+
+    def validate_base_question(self, value: str) -> str:
+        return value.strip()
+
+    def validate_answer_criteria(self, value: str) -> str:
+        return value.strip()
+
+
+def validate_patient_question_list(value: list[dict], *, require_enabled: bool) -> list[dict]:
+    if len(value) > 20:
+        raise serializers.ValidationError("主动问题最多配置 20 项。")
+    identifiers = [str(item["id"]) for item in value]
+    if len(identifiers) != len(set(identifiers)):
+        raise serializers.ValidationError("主动问题 ID 不可重复。")
+    if require_enabled and not any(bool(item.get("enabled")) for item in value):
+        raise serializers.ValidationError("至少需要启用一个主动问题。")
+    return [dict(item) for item in value]
 
 
 class PhysicalExamAssetUploadSerializer(serializers.Serializer):
@@ -157,6 +190,23 @@ class PatientPromptTemplateSerializer(serializers.ModelSerializer):
         return value.strip()
 
 
+class PatientQuestionTemplateSerializer(serializers.ModelSerializer):
+    questions = PatientQuestionItemSerializer(many=True)
+    updated_by_name = serializers.CharField(
+        source="updated_by.display_name",
+        read_only=True,
+        default="",
+    )
+
+    class Meta:
+        model = PatientQuestionTemplate
+        fields = ["id", "name", "questions", "updated_by_name", "updated_at"]
+        read_only_fields = ["id", "name", "updated_by_name", "updated_at"]
+
+    def validate_questions(self, value):
+        return validate_patient_question_list(value, require_enabled=True)
+
+
 class CaseDraftSerializer(serializers.ModelSerializer):
     case_id = serializers.UUIDField(source="case.id", read_only=True)
     case_code = serializers.CharField(source="case.code", read_only=True)
@@ -174,6 +224,9 @@ class CaseDraftSerializer(serializers.ModelSerializer):
     )
     effective_patient_prompt = serializers.SerializerMethodField()
     default_patient_prompt = serializers.SerializerMethodField()
+    patient_questions = PatientQuestionItemSerializer(many=True, required=False)
+    effective_patient_questions = serializers.SerializerMethodField()
+    default_patient_questions = serializers.SerializerMethodField()
     enabled_stages = StringListField(required=False)
     expected_updated_at = serializers.DateTimeField(write_only=True, required=False)
 
@@ -194,6 +247,11 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             "patient_prompt",
             "effective_patient_prompt",
             "default_patient_prompt",
+            "patient_questions_enabled",
+            "patient_questions_mode",
+            "patient_questions",
+            "effective_patient_questions",
+            "default_patient_questions",
             "created_at",
             "updated_at",
             "expected_updated_at",
@@ -210,6 +268,8 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             "version_number",
             "effective_patient_prompt",
             "default_patient_prompt",
+            "effective_patient_questions",
+            "default_patient_questions",
             "created_at",
             "updated_at",
         ]
@@ -220,6 +280,13 @@ class CaseDraftSerializer(serializers.ModelSerializer):
     def get_default_patient_prompt(self, version: CaseVersion) -> str:
         del version
         return default_patient_prompt()
+
+    def get_effective_patient_questions(self, version: CaseVersion) -> list[dict]:
+        return effective_patient_questions(version)
+
+    def get_default_patient_questions(self, version: CaseVersion) -> list[dict]:
+        del version
+        return default_patient_questions()
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -237,6 +304,34 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             attrs["patient_prompt"] = ""
         elif "patient_prompt" in attrs:
             attrs["patient_prompt"] = prompt.strip()
+
+        current_questions_mode = getattr(
+            self.instance,
+            "patient_questions_mode",
+            PatientPromptMode.DEFAULT,
+        )
+        current_questions = getattr(self.instance, "patient_questions", [])
+        current_enabled = getattr(self.instance, "patient_questions_enabled", True)
+        questions_mode = attrs.get("patient_questions_mode", current_questions_mode)
+        questions = attrs.get("patient_questions", current_questions)
+        questions_enabled = attrs.get("patient_questions_enabled", current_enabled)
+        if questions_mode == PatientPromptMode.DEFAULT and (
+            "patient_questions_mode" in attrs or "patient_questions" in attrs
+        ):
+            attrs["patient_questions"] = []
+        elif "patient_questions" in attrs:
+            attrs["patient_questions"] = validate_patient_question_list(
+                list(questions),
+                require_enabled=bool(questions_enabled),
+            )
+        if (
+            questions_enabled
+            and questions_mode == PatientPromptMode.CUSTOM
+            and not any(bool(item.get("enabled")) for item in questions)
+        ):
+            raise serializers.ValidationError(
+                {"patient_questions": "启用主动提问时至少需要一个启用的问题。"}
+            )
         return attrs
 
 

@@ -34,6 +34,7 @@ from .serializers import (
     CaseDraftUpdateSerializer,
     ExchangeSerializer,
     FeedbackSerializer,
+    MessageSerializer,
     SessionCompleteSerializer,
     SessionSerializer,
     StudentAssignmentSerializer,
@@ -52,6 +53,7 @@ from .services import (
     SessionExpiredError,
     SessionLockedError,
     SimulationError,
+    activate_patient_initiative,
     ask_patient,
     close_assignment,
     complete_session,
@@ -61,6 +63,7 @@ from .services import (
     release_feedback,
     save_case_draft,
     start_session,
+    trigger_patient_initiative,
 )
 
 
@@ -513,6 +516,50 @@ class StudentSessionMessageView(APIView):
         return Response(
             ExchangeSerializer(exchange).data,
             status=status.HTTP_200_OK if exchange.patient_message else status.HTTP_202_ACCEPTED,
+        )
+
+
+class StudentPatientInitiativeActivateView(APIView):
+    permission_classes = [IsStudent]
+
+    def post(self, request, session_id):
+        session = get_object_or_404(student_session_queryset(request.user), pk=session_id)
+        try:
+            activate_patient_initiative(session=session, student=request.user)
+        except SimulationError as error:
+            return simulation_error_response(error)
+        refreshed = student_session_queryset(request.user).get(pk=session_id)
+        return Response(
+            {
+                "patient_initiative": SessionSerializer(refreshed).data[
+                    "patient_initiative"
+                ]
+            }
+        )
+
+
+class StudentPatientInitiativeTriggerView(APIView):
+    permission_classes = [IsStudent]
+
+    def post(self, request, session_id):
+        session = get_object_or_404(student_session_queryset(request.user), pk=session_id)
+        try:
+            result = trigger_patient_initiative(session=session, student=request.user)
+        except SimulationError as error:
+            return simulation_error_response(error)
+        refreshed = student_session_queryset(request.user).get(pk=session_id)
+        return Response(
+            {
+                "patient_message": (
+                    MessageSerializer(result.patient_message).data
+                    if result.patient_message
+                    else None
+                ),
+                "reused": result.reused,
+                "patient_initiative": SessionSerializer(refreshed).data[
+                    "patient_initiative"
+                ],
+            }
         )
 
 

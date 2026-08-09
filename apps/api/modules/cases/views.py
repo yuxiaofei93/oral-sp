@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from modules.accounts.models import RoleCode
-from modules.accounts.permissions import IsTeacherOrAdministrator
+from modules.accounts.permissions import IsAdministrator, IsTeacherOrAdministrator
 
 from .assets import (
     AssetValidationError,
@@ -19,6 +19,7 @@ from .serializers import (
     CaseDraftSerializer,
     CaseListSerializer,
     PatientPromptTemplateSerializer,
+    PatientQuestionTemplateSerializer,
     PhysicalExamAssetDeleteSerializer,
     PhysicalExamAssetUploadSerializer,
     PublishedVersionSerializer,
@@ -28,6 +29,7 @@ from .services import (
     PublishValidationError,
     create_case_with_draft,
     get_patient_prompt_template,
+    get_patient_question_template,
     publish_draft,
     update_draft,
 )
@@ -66,6 +68,30 @@ class TeacherPatientPromptTemplateView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save(updated_by=request.user)
         return Response(PatientPromptTemplateSerializer(template).data)
+
+
+class TeacherPatientQuestionTemplateView(APIView):
+    def get_permissions(self):
+        permission_class = (
+            IsAdministrator if self.request.method == "PATCH" else IsTeacherOrAdministrator
+        )
+        return [permission_class()]
+
+    def get(self, request):
+        return Response(
+            PatientQuestionTemplateSerializer(get_patient_question_template()).data
+        )
+
+    def patch(self, request):
+        template = get_patient_question_template()
+        serializer = PatientQuestionTemplateSerializer(
+            template,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(updated_by=request.user)
+        return Response(PatientQuestionTemplateSerializer(template).data)
 
 
 class TeacherCaseDraftView(APIView):

@@ -5,6 +5,9 @@ from .models import (
     AIScoreResult,
     CaseAssignment,
     ModelCall,
+    PatientInitiativeSchedule,
+    PatientQuestionAttempt,
+    PatientQuestionState,
     PhysicalExamRelease,
     ScoreResult,
     SessionAssessment,
@@ -61,6 +64,14 @@ class PhysicalExamReleaseAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+for audit_model in (
+    PatientInitiativeSchedule,
+    PatientQuestionState,
+    PatientQuestionAttempt,
+):
+    admin.site.register(audit_model)
 
 
 @admin.register(SessionAssessment)
