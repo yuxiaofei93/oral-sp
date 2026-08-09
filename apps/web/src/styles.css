@@ -841,31 +841,13 @@ h1 {
   border-bottom: 1px solid #e1eae7;
 }
 
-.consultation-panel__header h3,
-.consultation-panel__header p {
+.consultation-panel__header h3 {
   margin: 0;
 }
 
 .consultation-panel__header h3 {
   color: #193f38;
   font-size: 16px;
-}
-
-.consultation-panel__header p {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 3px;
-  color: #6b817c;
-  font-size: 12px;
-}
-
-.consultation-panel__header p i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #28a982;
-  box-shadow: 0 0 0 3px rgb(40 169 130 / 12%);
 }
 
 .patient-avatar {
@@ -886,16 +868,6 @@ h1 {
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.conversation-count {
-  margin-left: auto;
-  padding: 5px 9px;
-  border-radius: 999px;
-  color: #6b817c;
-  background: #f1f5f4;
-  font-size: 11px;
-  font-weight: 650;
 }
 
 .conversation {

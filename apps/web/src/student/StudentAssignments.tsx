@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   ApiError,
@@ -81,8 +81,11 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
   const [pendingQuestion, setPendingQuestion] = useState<{ content: string; id: string } | null>(null)
   const [feedback, setFeedback] = useState<SessionFeedback | null>(null)
   const [physicalExamOpen, setPhysicalExamOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [questionBusy, setQuestionBusy] = useState(false)
+  const [stageBusy, setStageBusy] = useState(false)
+  const [feedbackBusy, setFeedbackBusy] = useState(false)
   const [error, setError] = useState('')
+  const conversationRef = useRef<HTMLDivElement>(null)
 
   async function refreshSession() {
     const refreshed = await getStudentSession(session.id)
@@ -104,6 +107,12 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
     void refreshSession().catch(() => setError('无法同步交卷状态，请刷新页面。'))
   }, [remaining, session.status])
 
+  useEffect(() => {
+    const conversation = conversationRef.current
+    if (!conversation) return
+    conversation.scrollTop = conversation.scrollHeight
+  }, [session.messages.length, pendingQuestion])
+
   async function handleQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const content = question.trim()
@@ -111,7 +120,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
     const outgoing =
       pendingQuestion?.content === content ? pendingQuestion : { content, id: requestId() }
     setPendingQuestion(outgoing)
-    setBusy(true)
+    setQuestionBusy(true)
     setError('')
     try {
       const exchange = await askPatient(session.id, {
@@ -129,7 +138,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
           : '患者暂时没有回答，请稍后重试。',
       )
     } finally {
-      setBusy(false)
+      setQuestionBusy(false)
     }
   }
 
@@ -139,7 +148,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
     const form = event.currentTarget
     const config = stageConfig[session.stage]
     const data = new FormData(form)
-    setBusy(true)
+    setStageBusy(true)
     setError('')
     try {
       await submitSessionStage(session.id, {
@@ -167,19 +176,19 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
       }
       setError(requestError instanceof ApiError ? requestError.message : '阶段提交失败。')
     } finally {
-      setBusy(false)
+      setStageBusy(false)
     }
   }
 
   async function loadFeedback() {
-    setBusy(true)
+    setFeedbackBusy(true)
     setError('')
     try {
       setFeedback(await getSessionFeedback(session.id))
     } catch (requestError: unknown) {
       setError(requestError instanceof ApiError ? requestError.message : '反馈加载失败。')
     } finally {
-      setBusy(false)
+      setFeedbackBusy(false)
     }
   }
 
@@ -261,12 +270,10 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
             </span>
             <div>
               <h3 id="consultation-title">与{patientName}问诊</h3>
-              <p><i aria-hidden="true" />标准化患者在线</p>
             </div>
-            <span className="conversation-count">{session.messages.length + 1} 条记录</span>
           </header>
 
-          <div className="conversation" aria-label="问诊记录">
+          <div className="conversation" aria-label="问诊记录" ref={conversationRef}>
             <article className="message message--patient">
               <span>{patientName} · 开场白</span>
               <p>{session.opening_statement}</p>
@@ -283,11 +290,19 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                 {message.response_status === 'failed' && <small>回答生成失败，可安全重试</small>}
               </article>
             ))}
-            {busy && pendingQuestion && (
-              <div className="patient-thinking" role="status">
-                <span /><span /><span />
-                <small>患者正在回答…</small>
-              </div>
+            {pendingQuestion && (
+              <>
+                <article className="message message--student message--pending">
+                  <span>我 · 发送中</span>
+                  <p>{pendingQuestion.content}</p>
+                </article>
+                {questionBusy && (
+                  <div className="patient-thinking" role="status">
+                    <span /><span /><span />
+                    <small>患者正在思考</small>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -298,6 +313,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                 <input
                   id="patient-question"
                   value={question}
+                  disabled={questionBusy}
                   onChange={(event) => {
                     setQuestion(event.target.value)
                     if (pendingQuestion?.content !== event.target.value.trim()) setPendingQuestion(null)
@@ -307,8 +323,8 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   autoComplete="off"
                   required
                 />
-                <button className="button question-form__submit" type="submit" disabled={busy} aria-label="发送问题">
-                  <span>{busy ? '发送中' : '发送'}</span>
+                <button className="button question-form__submit" type="submit" disabled={questionBusy} aria-label="发送问题">
+                  <span>{questionBusy ? '发送中' : '发送'}</span>
                   <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 14-7-4.5 14-3-5.5L5 12Z" /><path d="m11.5 13.5 3-3" /></svg>
                 </button>
               </div>
@@ -347,9 +363,9 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                 <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
                 <span>提交前请确认内容完整。进入下一阶段后，本阶段答案不可修改。</span>
               </div>
-              <button className="button" type="submit" disabled={busy}>
-                {busy ? '正在提交…' : session.stage === 'final_reasoning' ? '提交并完成问诊' : '提交并进入下一阶段'}
-                {!busy && <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>}
+              <button className="button" type="submit" disabled={stageBusy}>
+                {stageBusy ? '正在提交…' : session.stage === 'final_reasoning' ? '提交并完成问诊' : '提交并进入下一阶段'}
+                {!stageBusy && <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>}
               </button>
             </form>
           </aside>
@@ -360,7 +376,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
         <section className="feedback-card">
           <h3>{session.status === 'completed' ? '已完成交卷' : '本次作答已超时'}</h3>
           {!feedback ? (
-            <button className="button button--secondary" type="button" onClick={loadFeedback} disabled={busy}>
+            <button className="button button--secondary" type="button" onClick={loadFeedback} disabled={feedbackBusy}>
               查看教师已发布反馈
             </button>
           ) : (

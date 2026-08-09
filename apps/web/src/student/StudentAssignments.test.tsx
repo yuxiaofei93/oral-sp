@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { StudentAssignments } from './StudentAssignments'
@@ -27,6 +27,7 @@ describe('StudentAssignments', () => {
   })
 
   it('starts an assigned exam and records an idempotent patient question', async () => {
+    let resolvePatientQuestion: ((response: Response) => void) | undefined
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input)
       if (url.endsWith('/student/assignments/')) {
@@ -59,16 +60,9 @@ describe('StudentAssignments', () => {
       if (url.endsWith('/session-1/messages/')) {
         const body = JSON.parse(String(init?.body))
         expect(body.client_message_id).toMatch(/^question_[a-f0-9]+$/)
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              reused: false,
-              student_message: { id: 'm1' },
-              patient_message: { id: 'm2' },
-            }),
-            { status: 200 },
-          ),
-        )
+        return new Promise<Response>((resolve) => {
+          resolvePatientQuestion = resolve
+        })
       }
       if (url.endsWith('/student/sessions/session-1/')) {
         return Promise.resolve(
@@ -96,12 +90,35 @@ describe('StudentAssignments', () => {
     await waitFor(() => screen.getByRole('heading', { name: '牙周问诊练习' }))
     expect(screen.getByRole('navigation', { name: '问诊阶段' })).toBeInTheDocument()
     expect(screen.getByText('问诊采集').closest('li')).toHaveAttribute('aria-current', 'step')
-    expect(screen.getByText('标准化患者在线')).toBeInTheDocument()
+    expect(screen.queryByText('标准化患者在线')).not.toBeInTheDocument()
+    expect(screen.queryByText(/条记录/)).not.toBeInTheDocument()
     expect(screen.getByPlaceholderText('输入你想向患者了解的问题…')).toBeInTheDocument()
 
+    const conversation = screen.getByLabelText('问诊记录')
+    Object.defineProperty(conversation, 'scrollHeight', { configurable: true, value: 500 })
     fireEvent.change(screen.getByLabelText('向患者提问'), { target: { value: '有多久了？' } })
     fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
 
+    const outgoingMessage = await screen.findByText('有多久了？')
+    const thinking = screen.getByRole('status')
+    expect(thinking).toHaveTextContent('患者正在思考')
+    expect(outgoingMessage.compareDocumentPosition(thinking) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('button', { name: '提交并进入下一阶段' })).toBeEnabled()
+    expect(conversation.scrollTop).toBe(500)
+
+    act(() => {
+      resolvePatientQuestion?.(
+        new Response(
+          JSON.stringify({
+            reused: false,
+            interaction_type: 'patient_answer',
+            student_message: { id: 'm1' },
+            patient_message: { id: 'm2' },
+          }),
+          { status: 200 },
+        ),
+      )
+    })
     await waitFor(() => expect(screen.getByText('差不多三年。')).toBeInTheDocument())
     expect(fetchMock).toHaveBeenCalled()
   })
