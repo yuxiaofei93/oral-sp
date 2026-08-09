@@ -673,19 +673,6 @@ h1 {
   background: #f7d7d2;
 }
 
-.exam-notice {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
-  border: 1px solid #f1dfaf;
-  border-radius: 12px;
-  color: #6d5c3e;
-  background: #fff9e9;
-  font-size: 13px;
-}
-
-.exam-notice svg,
 .case-record-form__tip svg {
   flex: 0 0 auto;
   width: 18px;

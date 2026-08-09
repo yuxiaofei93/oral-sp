@@ -361,13 +361,6 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
         </div>
       </header>
 
-      <div className="exam-notice">
-        <svg aria-hidden="true" viewBox="0 0 24 24">
-          <path d="M12 8v4.5M12 16h.01" />
-          <circle cx="12" cy="12" r="9" />
-        </svg>
-        <span>整场任务限时，病例内容会自动保存；问题发送和最终交卷后将自动留痕，无法修改或删除。</span>
-      </div>
       {error && <p className="form-error workbench-error" role="alert">{error}</p>}
 
       <div className="workbench-layout">
