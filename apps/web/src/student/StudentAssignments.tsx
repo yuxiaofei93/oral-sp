@@ -3,15 +3,16 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   SessionFeedback,
-  SessionStage,
   SimulationSession,
+  StudentCaseDraft,
   StudentAssignment,
   askPatient,
+  completeStudentSession,
   getSessionFeedback,
   getStudentSession,
   listStudentAssignments,
+  saveStudentCaseDraft,
   startStudentSession,
-  submitSessionStage,
 } from '../api/client'
 import { PhysicalExamDialog } from '../PhysicalExamDialog'
 
@@ -22,35 +23,17 @@ const attemptNames = {
   completed: '已交卷',
   expired: '已超时',
 }
-const stageConfig: Record<
-  Exclude<SessionStage, 'interview' | 'completed'> | 'interview',
-  { title: string; shortTitle: string; help: string; submissionType: string }
-> = {
-  interview: {
-    title: '病史摘要',
-    shortTitle: '问诊采集',
-    help: '确认问诊充分后提交摘要。提交后不能继续向患者提问。',
-    submissionType: 'history_summary',
-  },
-  initial_reasoning: {
-    title: '初步诊断与鉴别诊断',
-    shortTitle: '初步判断',
-    help: '写下当前判断及依据。提交后不可返回修改病史摘要。',
-    submissionType: 'initial_reasoning',
-  },
-  test_selection: {
-    title: '检查计划',
-    shortTitle: '检查计划',
-    help: '说明拟申请的检查及理由。',
-    submissionType: 'test_selection',
-  },
-  final_reasoning: {
-    title: '最终诊断与处理原则',
-    shortTitle: '最终诊断',
-    help: '完成最终判断后交卷。',
-    submissionType: 'final_reasoning',
-  },
-}
+const AUTO_SAVE_DELAY_MS = 500
+const editableFieldNames: Array<[keyof CaseDraft, string]> = [
+  ['chiefComplaint', '主诉'],
+  ['presentIllness', '现病史'],
+  ['pastHistory', '既往史'],
+  ['familyHistory', '家族史'],
+  ['diagnosis', '诊断'],
+  ['treatment', '处理'],
+  ['medicalAdvice', '医嘱'],
+]
+type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error'
 
 type CaseDraft = {
   chiefComplaint: string
@@ -61,23 +44,6 @@ type CaseDraft = {
   treatment: string
   medicalAdvice: string
 }
-
-const emptyCaseDraft: CaseDraft = {
-  chiefComplaint: '',
-  presentIllness: '',
-  pastHistory: '',
-  familyHistory: '',
-  diagnosis: '',
-  treatment: '',
-  medicalAdvice: '',
-}
-
-const stageOrder: Array<Exclude<SessionStage, 'completed'>> = [
-  'interview',
-  'initial_reasoning',
-  'test_selection',
-  'final_reasoning',
-]
 
 function formatTime(seconds: number) {
   const safeSeconds = Math.max(0, seconds)
@@ -90,39 +56,28 @@ function requestId() {
   return `question_${globalThis.crypto.randomUUID().replaceAll('-', '')}`
 }
 
-function payloadText(payload: Record<string, unknown>, key: string) {
-  const value = payload[key]
-  return typeof value === 'string' ? value : ''
+function fromApiCaseDraft(source?: Partial<StudentCaseDraft> | null): CaseDraft {
+  return {
+    chiefComplaint: source?.chief_complaint ?? '',
+    presentIllness: source?.present_illness ?? '',
+    pastHistory: source?.past_history ?? '',
+    familyHistory: source?.family_history ?? '',
+    diagnosis: source?.diagnosis ?? '',
+    treatment: source?.treatment ?? '',
+    medicalAdvice: source?.medical_advice ?? '',
+  }
 }
 
-function initialCaseDraft(submissions: SimulationSession['submissions']): CaseDraft {
-  return submissions.reduce<CaseDraft>((draft, submission) => {
-    const { payload } = submission
-    if (submission.submission_type === 'history_summary') {
-      return {
-        ...draft,
-        chiefComplaint: payloadText(payload, 'chief_complaint'),
-        presentIllness: payloadText(payload, 'present_illness') || payloadText(payload, 'text'),
-        pastHistory: payloadText(payload, 'past_history'),
-        familyHistory: payloadText(payload, 'family_history'),
-      }
-    }
-    if (submission.submission_type === 'initial_reasoning') {
-      return { ...draft, diagnosis: payloadText(payload, 'diagnosis') || payloadText(payload, 'text') }
-    }
-    if (submission.submission_type === 'test_selection') {
-      return { ...draft, treatment: payloadText(payload, 'treatment') || payloadText(payload, 'text') }
-    }
-    if (submission.submission_type === 'final_reasoning') {
-      return {
-        ...draft,
-        diagnosis: payloadText(payload, 'diagnosis') || draft.diagnosis,
-        treatment: payloadText(payload, 'treatment') || draft.treatment,
-        medicalAdvice: payloadText(payload, 'medical_advice'),
-      }
-    }
-    return draft
-  }, emptyCaseDraft)
+function toApiCaseDraft(source: CaseDraft): StudentCaseDraft {
+  return {
+    chief_complaint: source.chiefComplaint,
+    present_illness: source.presentIllness,
+    past_history: source.pastHistory,
+    family_history: source.familyHistory,
+    diagnosis: source.diagnosis,
+    treatment: source.treatment,
+    medical_advice: source.medicalAdvice,
+  }
 }
 
 function visitDate(startedAt: string) {
@@ -143,56 +98,30 @@ function recordNumber(sessionId: string) {
   return String(10_000_000 + (hash % 90_000_000))
 }
 
-function stagePayload(stage: Exclude<SessionStage, 'completed'>, draft: CaseDraft, examText: string) {
-  if (stage === 'interview') {
-    const text = [
-      `主诉：${draft.chiefComplaint}`,
-      `现病史：${draft.presentIllness}`,
-      `既往史：${draft.pastHistory}`,
-      `家族史：${draft.familyHistory}`,
-      examText ? `专科检查：${examText}` : '',
-    ].filter(Boolean).join('\n')
-    return {
-      text,
-      chief_complaint: draft.chiefComplaint,
-      present_illness: draft.presentIllness,
-      past_history: draft.pastHistory,
-      family_history: draft.familyHistory,
-      specialty_exam: examText,
-    }
-  }
-  if (stage === 'initial_reasoning') {
-    return { text: draft.diagnosis, diagnosis: draft.diagnosis }
-  }
-  if (stage === 'test_selection') {
-    return { text: draft.treatment, treatment: draft.treatment }
-  }
-  const text = [
-    `诊断：${draft.diagnosis}`,
-    `处理：${draft.treatment}`,
-    `医嘱：${draft.medicalAdvice}`,
-  ].join('\n')
-  return {
-    text,
-    diagnosis: draft.diagnosis,
-    treatment: draft.treatment,
-    medical_advice: draft.medicalAdvice,
-  }
-}
-
 function Workbench({ initialSession, onExit }: { initialSession: SimulationSession; onExit: () => void }) {
+  const initialCaseDraft = fromApiCaseDraft(initialSession.case_record ?? initialSession.case_draft)
   const [session, setSession] = useState(initialSession)
   const [remaining, setRemaining] = useState(initialSession.remaining_seconds)
   const [question, setQuestion] = useState('')
   const [pendingQuestion, setPendingQuestion] = useState<{ content: string; id: string } | null>(null)
-  const [caseDraft, setCaseDraft] = useState<CaseDraft>(() => initialCaseDraft(initialSession.submissions))
+  const [caseDraft, setCaseDraft] = useState<CaseDraft>(initialCaseDraft)
+  const [draftRevision, setDraftRevision] = useState(0)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
+  const [saveError, setSaveError] = useState('')
+  const [blankFields, setBlankFields] = useState<string[] | null>(null)
   const [feedback, setFeedback] = useState<SessionFeedback | null>(null)
   const [physicalExamOpen, setPhysicalExamOpen] = useState(false)
   const [questionBusy, setQuestionBusy] = useState(false)
-  const [stageBusy, setStageBusy] = useState(false)
+  const [completionBusy, setCompletionBusy] = useState(false)
   const [feedbackBusy, setFeedbackBusy] = useState(false)
   const [error, setError] = useState('')
   const conversationRef = useRef<HTMLDivElement>(null)
+  const draftRef = useRef(initialCaseDraft)
+  const localRevisionRef = useRef(0)
+  const savedRevisionRef = useRef(0)
+  const serverRevisionRef = useRef(initialSession.case_draft_revision)
+  const saveInFlightRef = useRef<Promise<boolean> | null>(null)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   async function refreshSession() {
     const refreshed = await getStudentSession(session.id)
@@ -219,6 +148,95 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
     if (!conversation) return
     conversation.scrollTop = conversation.scrollHeight
   }, [session.messages.length, pendingQuestion])
+
+  async function persistLatestDraft(): Promise<boolean> {
+    if (session.status !== 'active') return true
+    if (saveInFlightRef.current) {
+      const result = await saveInFlightRef.current
+      if (savedRevisionRef.current < localRevisionRef.current) return persistLatestDraft()
+      return result
+    }
+    if (savedRevisionRef.current >= localRevisionRef.current) return true
+
+    const operation = (async () => {
+      setSaveError('')
+      while (savedRevisionRef.current < localRevisionRef.current) {
+        setSaveStatus('saving')
+        const snapshot = draftRef.current
+        const snapshotRevision = localRevisionRef.current
+        try {
+          const updated = await saveStudentCaseDraft(session.id, {
+            expected_revision: serverRevisionRef.current,
+            case_draft: toApiCaseDraft(snapshot),
+          })
+          serverRevisionRef.current = updated.case_draft_revision
+          savedRevisionRef.current = snapshotRevision
+          setSession((current) => ({
+            ...current,
+            case_draft: updated.case_draft,
+            case_draft_revision: updated.case_draft_revision,
+          }))
+        } catch (requestError: unknown) {
+          setSaveStatus('error')
+          setSaveError(
+            requestError instanceof ApiError
+              ? requestError.message
+              : '自动保存失败，请检查网络后重试。',
+          )
+          return false
+        }
+      }
+      setSaveStatus('saved')
+      return true
+    })()
+
+    saveInFlightRef.current = operation
+    try {
+      return await operation
+    } finally {
+      if (saveInFlightRef.current === operation) saveInFlightRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    if (
+      session.status !== 'active'
+      || draftRevision === 0
+      || savedRevisionRef.current >= draftRevision
+    ) return undefined
+    const timer = globalThis.setTimeout(() => {
+      autoSaveTimerRef.current = null
+      void persistLatestDraft()
+    }, AUTO_SAVE_DELAY_MS)
+    autoSaveTimerRef.current = timer
+    return () => {
+      globalThis.clearTimeout(timer)
+      if (autoSaveTimerRef.current === timer) autoSaveTimerRef.current = null
+    }
+  }, [draftRevision, session.status])
+
+  function clearAutoSaveTimer() {
+    if (!autoSaveTimerRef.current) return
+    globalThis.clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = null
+  }
+
+  function updateCaseDraft(field: keyof CaseDraft, value: string) {
+    if (session.status !== 'active') return
+    const updated = { ...draftRef.current, [field]: value }
+    const nextRevision = localRevisionRef.current + 1
+    draftRef.current = updated
+    localRevisionRef.current = nextRevision
+    setCaseDraft(updated)
+    setDraftRevision(nextRevision)
+    setSaveStatus('dirty')
+    setSaveError('')
+  }
+
+  async function handleExit() {
+    clearAutoSaveTimer()
+    if (await persistLatestDraft()) onExit()
+  }
 
   async function handleQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -249,38 +267,38 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
     }
   }
 
-  async function handleStageSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (session.stage === 'completed') return
-    const config = stageConfig[session.stage]
-    setStageBusy(true)
+  async function finalizeSession() {
+    clearAutoSaveTimer()
+    if (!(await persistLatestDraft())) return
+    setCompletionBusy(true)
     setError('')
     try {
-      await submitSessionStage(session.id, {
-        submission_type: config.submissionType,
-        payload: stagePayload(session.stage, caseDraft, session.physical_exam_result?.findings_text ?? ''),
+      const result = await completeStudentSession(session.id, {
+        expected_revision: serverRevisionRef.current,
+        case_record: toApiCaseDraft(draftRef.current),
       })
-      try {
-        await refreshSession()
-      } catch {
-        setError('本阶段已提交成功，但页面状态同步失败，请刷新页面继续。')
-      }
+      serverRevisionRef.current = result.session.case_draft_revision
+      setSession(result.session)
+      setRemaining(result.session.remaining_seconds)
+      setSaveStatus('saved')
     } catch (requestError: unknown) {
-      try {
-        const refreshed = await refreshSession()
-        const submissionExists = refreshed.submissions.some(
-          (submission) => submission.submission_type === config.submissionType,
-        )
-        if (submissionExists) {
-          return
-        }
-      } catch {
-        // Keep the original submission error when server state cannot be reconciled.
-      }
-      setError(requestError instanceof ApiError ? requestError.message : '阶段提交失败。')
+      setError(requestError instanceof ApiError ? requestError.message : '交卷失败，请稍后重试。')
     } finally {
-      setStageBusy(false)
+      setCompletionBusy(false)
     }
+  }
+
+  function handleCaseSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (session.status !== 'active') return
+    const missing = editableFieldNames
+      .filter(([field]) => !draftRef.current[field].trim())
+      .map(([, label]) => label)
+    if (missing.length > 0) {
+      setBlankFields(missing)
+      return
+    }
+    void finalizeSession()
   }
 
   async function loadFeedback() {
@@ -295,24 +313,27 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
     }
   }
 
-  const currentStage = session.stage === 'completed' ? null : stageConfig[session.stage]
-  const currentStageIndex = session.stage === 'completed' ? stageOrder.length : stageOrder.indexOf(session.stage)
   const patientName = session.patient_name || '标准化患者'
   const availablePhysicalExam = session.physical_exam_result ?? feedback?.physical_exam_result ?? null
-  const isHistoryEditable = session.stage === 'interview'
-  const isDiagnosisEditable = session.stage === 'initial_reasoning' || session.stage === 'final_reasoning'
-  const isTreatmentEditable = session.stage === 'test_selection' || session.stage === 'final_reasoning'
-  const isAdviceEditable = session.stage === 'final_reasoning'
-
-  function updateCaseDraft(field: keyof CaseDraft, value: string) {
-    setCaseDraft((current) => ({ ...current, [field]: value }))
-  }
+  const caseEditable = session.status === 'active'
+  const specialtyExamText = session.case_record?.specialty_exam || availablePhysicalExam?.findings_text || ''
+  const saveStatusText = session.status === 'completed'
+    ? '已交卷'
+    : session.status === 'expired'
+      ? '已超时'
+      : saveStatus === 'dirty'
+        ? '未保存'
+        : saveStatus === 'saving'
+          ? '保存中…'
+          : saveStatus === 'error'
+            ? '保存失败'
+            : '已保存'
 
   return (
     <section className="student-workbench" aria-labelledby="workbench-title">
       <header className="workbench-header">
         <div className="workbench-header__identity">
-          <button className="workbench-back" type="button" onClick={onExit} aria-label="返回任务列表">
+          <button className="workbench-back" type="button" onClick={() => void handleExit()} aria-label="返回任务列表">
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="m15 18-6-6 6-6" />
             </svg>
@@ -340,37 +361,16 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
         </div>
       </header>
 
-      <nav className="stage-progress" aria-label="问诊阶段">
-        <ol>
-          {stageOrder.map((stage, index) => {
-            const state = index < currentStageIndex ? 'complete' : index === currentStageIndex ? 'current' : 'upcoming'
-            return (
-              <li className={`stage-progress__item is-${state}`} key={stage} aria-current={state === 'current' ? 'step' : undefined}>
-                <span className="stage-progress__marker" aria-hidden="true">
-                  {state === 'complete' ? (
-                    <svg viewBox="0 0 24 24"><path d="m7 12.5 3.2 3.2L17.5 8.5" /></svg>
-                  ) : index + 1}
-                </span>
-                <span>
-                  <small>阶段 {index + 1}</small>
-                  <strong>{stageConfig[stage].shortTitle}</strong>
-                </span>
-              </li>
-            )
-          })}
-        </ol>
-      </nav>
-
       <div className="exam-notice">
         <svg aria-hidden="true" viewBox="0 0 24 24">
           <path d="M12 8v4.5M12 16h.01" />
           <circle cx="12" cy="12" r="9" />
         </svg>
-        <span>整场任务限时，问题发送和阶段提交后将自动留痕，无法修改或删除。</span>
+        <span>整场任务限时，病例内容会自动保存；问题发送和最终交卷后将自动留痕，无法修改或删除。</span>
       </div>
       {error && <p className="form-error workbench-error" role="alert">{error}</p>}
 
-      <div className={`workbench-layout ${session.status !== 'active' ? 'is-review' : ''}`}>
+      <div className="workbench-layout">
         <section className="consultation-panel" aria-labelledby="consultation-title">
           <header className="consultation-panel__header">
             <span className="patient-avatar" aria-hidden="true">
@@ -417,7 +417,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
             )}
           </div>
 
-          {session.status === 'active' && session.stage === 'interview' ? (
+          {session.status === 'active' ? (
             <form className="question-form" onSubmit={handleQuestion}>
               <label className="visually-hidden" htmlFor="patient-question">向患者提问</label>
               <div>
@@ -441,26 +441,21 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
               </div>
               <small>请一次询问一个清晰的问题，患者会根据病例信息作答。</small>
             </form>
-          ) : session.status === 'active' ? (
-            <div className="conversation-locked">
-              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="6" y="10" width="12" height="9" rx="2" /><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10" /></svg>
-              问诊阶段已结束，对话记录仅供回顾
-            </div>
           ) : null}
         </section>
 
-        {session.status === 'active' && currentStage && (
-          <aside className="clinical-panel" aria-labelledby="stage-title">
+          <aside className="clinical-panel" aria-labelledby="case-editor-title">
             <div className="clinical-panel__heading">
-              <span>病例编辑</span>
-              <b>{Math.min(currentStageIndex + 1, stageOrder.length)} / {stageOrder.length}</b>
-            </div>
-            <form className="case-record-form" onSubmit={handleStageSubmit}>
-              <div className="case-record-form__stage">
-                <span>当前阶段</span>
-                <h3 id="stage-title">{currentStage.title}</h3>
-                <p>{currentStage.help}</p>
+              <span id="case-editor-title">病例编辑</span>
+              <div className={`case-save-status is-${session.status === 'active' ? saveStatus : 'saved'}`}>
+                <b>{saveStatusText}</b>
+                {session.status === 'active' && saveStatus === 'error' && (
+                  <button type="button" onClick={() => void persistLatestDraft()}>重试</button>
+                )}
               </div>
+            </div>
+            <form className="case-record-form" onSubmit={handleCaseSubmit}>
+              {saveError && <p className="case-save-error" role="alert">{saveError}</p>}
 
               <section className="case-record-section case-record-section--identity" aria-labelledby="case-section-identity">
                 <h3 id="case-section-identity"><span aria-hidden="true">1</span>基本信息</h3>
@@ -480,10 +475,10 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   id="case-chief-complaint"
                   value={caseDraft.chiefComplaint}
                   onChange={(event) => updateCaseDraft('chiefComplaint', event.target.value)}
-                  placeholder={isHistoryEditable ? '请用一段文字记录患者此次就诊的主要症状及持续时间…' : '本阶段已提交'}
+                  placeholder={caseEditable ? '请用一段文字记录患者此次就诊的主要症状及持续时间…' : '未填写'}
                   rows={3}
-                  readOnly={!isHistoryEditable}
-                  required={isHistoryEditable}
+                  maxLength={4000}
+                  readOnly={!caseEditable}
                 />
               </section>
 
@@ -495,10 +490,10 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   id="case-present-illness"
                   value={caseDraft.presentIllness}
                   onChange={(event) => updateCaseDraft('presentIllness', event.target.value)}
-                  placeholder={isHistoryEditable ? '请记录本次疾病的发生、发展及诊疗经过…' : '本阶段已提交'}
+                  placeholder={caseEditable ? '请记录本次疾病的发生、发展及诊疗经过…' : '未填写'}
                   rows={3}
-                  readOnly={!isHistoryEditable}
-                  required={isHistoryEditable}
+                  maxLength={4000}
+                  readOnly={!caseEditable}
                 />
               </section>
 
@@ -510,10 +505,10 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   id="case-past-history"
                   value={caseDraft.pastHistory}
                   onChange={(event) => updateCaseDraft('pastHistory', event.target.value)}
-                  placeholder={isHistoryEditable ? '请记录既往疾病、手术、过敏及用药等情况…' : '本阶段已提交'}
+                  placeholder={caseEditable ? '请记录既往疾病、手术、过敏及用药等情况…' : '未填写'}
                   rows={3}
-                  readOnly={!isHistoryEditable}
-                  required={isHistoryEditable}
+                  maxLength={4000}
+                  readOnly={!caseEditable}
                 />
               </section>
 
@@ -525,17 +520,17 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   id="case-family-history"
                   value={caseDraft.familyHistory}
                   onChange={(event) => updateCaseDraft('familyHistory', event.target.value)}
-                  placeholder={isHistoryEditable ? '请记录家族中相关疾病及遗传病史…' : '本阶段已提交'}
+                  placeholder={caseEditable ? '请记录家族中相关疾病及遗传病史…' : '未填写'}
                   rows={3}
-                  readOnly={!isHistoryEditable}
-                  required={isHistoryEditable}
+                  maxLength={4000}
+                  readOnly={!caseEditable}
                 />
               </section>
 
               <section className="case-record-section" aria-labelledby="case-section-exam">
                 <h3 id="case-section-exam"><span aria-hidden="true">6</span>专科检查<i>自动带入</i></h3>
-                <div className={`case-record-section__readonly ${availablePhysicalExam ? '' : 'is-empty'}`}>
-                  {availablePhysicalExam?.findings_text || '尚未进行专科检查，完成体格检查后将自动带入文字结果。'}
+                <div className={`case-record-section__readonly ${specialtyExamText ? '' : 'is-empty'}`}>
+                  {specialtyExamText || '尚未进行专科检查，完成体格检查后将自动带入文字结果。'}
                 </div>
               </section>
 
@@ -547,10 +542,10 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   id="case-diagnosis"
                   value={caseDraft.diagnosis}
                   onChange={(event) => updateCaseDraft('diagnosis', event.target.value)}
-                  placeholder={isDiagnosisEditable ? '请记录诊断、鉴别诊断及判断依据…' : '进入诊断阶段后填写'}
+                  placeholder={caseEditable ? '请记录诊断、鉴别诊断及判断依据…' : '未填写'}
                   rows={3}
-                  readOnly={!isDiagnosisEditable}
-                  required={isDiagnosisEditable}
+                  maxLength={4000}
+                  readOnly={!caseEditable}
                 />
               </section>
 
@@ -562,10 +557,10 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   id="case-treatment"
                   value={caseDraft.treatment}
                   onChange={(event) => updateCaseDraft('treatment', event.target.value)}
-                  placeholder={isTreatmentEditable ? '请记录拟申请的检查、处置及治疗计划…' : '进入检查计划阶段后填写'}
+                  placeholder={caseEditable ? '请记录拟申请的检查、处置及治疗计划…' : '未填写'}
                   rows={3}
-                  readOnly={!isTreatmentEditable}
-                  required={isTreatmentEditable}
+                  maxLength={4000}
+                  readOnly={!caseEditable}
                 />
               </section>
 
@@ -577,24 +572,27 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                   id="case-advice"
                   value={caseDraft.medicalAdvice}
                   onChange={(event) => updateCaseDraft('medicalAdvice', event.target.value)}
-                  placeholder={isAdviceEditable ? '请记录用药、复诊、饮食及生活方式等医嘱…' : '进入最终诊断阶段后填写'}
+                  placeholder={caseEditable ? '请记录用药、复诊、饮食及生活方式等医嘱…' : '未填写'}
                   rows={3}
-                  readOnly={!isAdviceEditable}
-                  required={isAdviceEditable}
+                  maxLength={4000}
+                  readOnly={!caseEditable}
                 />
               </section>
 
-              <div className="stage-form__tip">
-                <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
-                <span>提交前请确认内容完整。进入下一阶段后，本阶段答案不可修改。</span>
-              </div>
-              <button className="button" type="submit" disabled={stageBusy}>
-                {stageBusy ? '正在提交…' : session.stage === 'final_reasoning' ? '提交并完成问诊' : '提交并进入下一阶段'}
-                {!stageBusy && <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>}
-              </button>
+              {session.status === 'active' && (
+                <>
+                  <div className="case-record-form__tip">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
+                    <span>病例会自动保存。最终交卷后，病例内容和问诊记录均不可修改。</span>
+                  </div>
+                  <button className="button" type="submit" disabled={completionBusy}>
+                    {completionBusy ? '正在交卷…' : '提交并完成问诊'}
+                    {!completionBusy && <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>}
+                  </button>
+                </>
+              )}
             </form>
           </aside>
-        )}
       </div>
 
       {session.status !== 'active' && (
@@ -645,6 +643,31 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
             </div>
           )}
         </section>
+      )}
+      {blankFields && (
+        <div className="case-submit-dialog__backdrop">
+          <section className="case-submit-dialog" role="dialog" aria-modal="true" aria-labelledby="blank-fields-title">
+            <span>确认交卷</span>
+            <h2 id="blank-fields-title">以下内容尚未填写</h2>
+            <p>{blankFields.join('、')}</p>
+            <small>留空不会阻止交卷，但提交后将无法补充或修改。</small>
+            <div>
+              <button className="button button--secondary" type="button" onClick={() => setBlankFields(null)}>
+                返回补充
+              </button>
+              <button
+                className="button"
+                type="button"
+                onClick={() => {
+                  setBlankFields(null)
+                  void finalizeSession()
+                }}
+              >
+                仍然提交
+              </button>
+            </div>
+          </section>
+        </div>
       )}
       <PhysicalExamDialog
         result={availablePhysicalExam}

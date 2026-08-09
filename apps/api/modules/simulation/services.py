@@ -75,12 +75,12 @@ class SessionExpiredError(SimulationError):
     code = "session_expired"
 
 
-class StageLockedError(SimulationError):
-    code = "stage_locked"
+class SessionLockedError(SimulationError):
+    code = "session_locked"
 
 
-class DuplicateSubmissionError(SimulationError):
-    code = "duplicate_submission"
+class CaseDraftConflictError(SimulationError):
+    code = "case_draft_conflict"
 
 
 class ModelUnavailableError(SimulationError):
@@ -311,15 +311,18 @@ def start_session(*, assignment: CaseAssignment, student) -> StartSessionResult:
 def require_active_session(*, session: SimulationSession, student) -> SimulationSession:
     if session.student_id != student.id:
         raise AssignmentUnavailableError("无权访问该问诊会话。")
+    expired = False
     with transaction.atomic():
         locked = SimulationSession.objects.select_for_update().select_related("assignment").get(
             pk=session.pk
         )
         if _expire_if_needed(locked):
-            raise SessionExpiredError("考试时间已经结束，当前内容已自动保存。")
-        if locked.status != SessionStatus.ACTIVE:
-            raise StageLockedError("该问诊会话已经结束。")
-        return locked
+            expired = True
+        elif locked.status != SessionStatus.ACTIVE:
+            raise SessionLockedError("该问诊会话已经结束。")
+    if expired:
+        raise SessionExpiredError("考试时间已经结束，当前内容已自动保存。")
+    return locked
 
 
 def remaining_seconds(session: SimulationSession) -> int:
@@ -381,7 +384,7 @@ def _create_student_message(*, session: SimulationSession, content: str, client_
         if _expire_if_needed(locked):
             raise SessionExpiredError("考试时间已经结束，当前内容已自动保存。")
         if locked.stage != SessionStage.INTERVIEW or locked.status != SessionStatus.ACTIVE:
-            raise StageLockedError("当前阶段不允许继续向患者提问。")
+            raise SessionLockedError("当前会话不允许继续向患者提问。")
 
         existing = Message.objects.filter(
             session=locked,
@@ -777,65 +780,103 @@ def ask_patient(
     return ExchangeResult(student_message, patient_message, reused, "patient_answer")
 
 
-SUBMISSION_FLOW = {
-    SessionStage.INTERVIEW: (SubmissionType.HISTORY_SUMMARY, SessionStage.INITIAL_REASONING),
-    SessionStage.INITIAL_REASONING: (
-        SubmissionType.INITIAL_REASONING,
-        SessionStage.TEST_SELECTION,
-    ),
-    SessionStage.TEST_SELECTION: (SubmissionType.TEST_SELECTION, SessionStage.FINAL_REASONING),
-    SessionStage.FINAL_REASONING: (SubmissionType.FINAL_REASONING, SessionStage.COMPLETED),
-}
-
-
-def submit_stage(
+def save_case_draft(
     *,
     session: SimulationSession,
     student,
-    submission_type: str,
-    payload: dict,
-) -> StageSubmission:
-    require_active_session(session=session, student=student)
+    case_draft: dict,
+    expected_revision: int,
+) -> SimulationSession:
+    if session.student_id != student.id:
+        raise AssignmentUnavailableError("无权访问该问诊会话。")
     now = timezone.now()
-    completed = False
+    expired = False
     with transaction.atomic():
         locked = SimulationSession.objects.select_for_update().select_related("assignment").get(
             pk=session.pk
         )
         if _expire_if_needed(locked, now=now):
-            raise SessionExpiredError("考试时间已经结束，当前内容已自动保存。")
-        expected = SUBMISSION_FLOW.get(locked.stage)
-        if expected is None or submission_type != expected[0]:
-            raise StageLockedError("提交类型与当前阶段不一致，不能返回修改上一阶段。")
-        if StageSubmission.objects.filter(
-            session=locked,
-            submission_type=submission_type,
-        ).exists():
-            raise DuplicateSubmissionError("该阶段已经提交，不能覆盖历史内容。")
-        if (
-            locked.stage == SessionStage.INTERVIEW
-            and Message.objects.filter(
-                session=locked,
-                role=MessageRole.STUDENT,
-                response_status=ResponseStatus.PROCESSING,
-            ).exists()
-        ):
-            raise StageLockedError("仍有患者回答正在生成，请等待回答完成后再结束问诊。")
+            expired = True
+        elif locked.status != SessionStatus.ACTIVE or locked.stage != SessionStage.INTERVIEW:
+            raise SessionLockedError("该问诊会话已经结束。")
+        elif locked.case_draft_revision != expected_revision:
+            raise CaseDraftConflictError("病例草稿已在其他页面更新，请刷新后继续编辑。")
+        else:
+            locked.case_draft = case_draft
+            locked.case_draft_revision += 1
+            locked.save(update_fields=["case_draft", "case_draft_revision", "updated_at"])
+    if expired:
+        raise SessionExpiredError("考试时间已经结束，当前内容已自动保存。")
+    return locked
 
-        submission = StageSubmission.objects.create(
-            session=locked,
-            submission_type=submission_type,
-            payload=payload,
+
+@dataclass(frozen=True)
+class CompleteSessionResult:
+    session: SimulationSession
+    submission: StageSubmission
+    reused: bool
+
+
+def complete_session(
+    *,
+    session: SimulationSession,
+    student,
+    case_record: dict,
+    expected_revision: int,
+) -> CompleteSessionResult:
+    if session.student_id != student.id:
+        raise AssignmentUnavailableError("无权访问该问诊会话。")
+    now = timezone.now()
+    expired = False
+    with transaction.atomic():
+        locked = (
+            SimulationSession.objects.select_for_update()
+            .select_related("assignment", "case_version")
+            .get(pk=session.pk)
         )
-        previous = locked.stage
-        locked.stage = expected[1]
-        if locked.stage == SessionStage.COMPLETED:
-            completed = True
+        existing = StageSubmission.objects.filter(
+            session=locked,
+            submission_type=SubmissionType.CASE_RECORD,
+        ).first()
+        if locked.status == SessionStatus.COMPLETED and existing:
+            return CompleteSessionResult(locked, existing, True)
+        if _expire_if_needed(locked, now=now):
+            expired = True
+        elif locked.status != SessionStatus.ACTIVE or locked.stage != SessionStage.INTERVIEW:
+            raise SessionLockedError("该问诊会话已经结束。")
+        elif locked.case_draft_revision != expected_revision:
+            raise CaseDraftConflictError("病例草稿已在其他页面更新，请刷新后继续编辑。")
+        elif Message.objects.filter(
+            session=locked,
+            role=MessageRole.STUDENT,
+            response_status=ResponseStatus.PROCESSING,
+        ).exists():
+            raise SessionLockedError("仍有患者回答正在生成，请等待回答完成后再交卷。")
+        else:
+            specialty_exam = ""
+            if PhysicalExamRelease.objects.filter(session=locked).exists():
+                try:
+                    specialty_exam = PhysicalExam.objects.get(
+                        version=locked.case_version
+                    ).findings_text
+                except PhysicalExam.DoesNotExist:
+                    specialty_exam = ""
+            final_record = {**case_record, "specialty_exam": specialty_exam}
+            submission = StageSubmission.objects.create(
+                session=locked,
+                submission_type=SubmissionType.CASE_RECORD,
+                payload=final_record,
+            )
+            locked.case_draft = case_record
+            locked.case_draft_revision += 1
+            locked.stage = SessionStage.COMPLETED
             locked.status = SessionStatus.COMPLETED
             locked.completed_at = now
             locked.retention_expires_at = now + timedelta(days=RETENTION_DAYS)
             locked.save(
                 update_fields=[
+                    "case_draft",
+                    "case_draft_revision",
                     "stage",
                     "status",
                     "completed_at",
@@ -843,16 +884,15 @@ def submit_stage(
                     "updated_at",
                 ]
             )
-        else:
-            locked.save(update_fields=["stage", "updated_at"])
-        SessionStageEvent.objects.create(
-            session=locked,
-            from_stage=previous,
-            to_stage=locked.stage,
-        )
-    if completed:
-        generate_assessment(locked)
-    return submission
+            SessionStageEvent.objects.create(
+                session=locked,
+                from_stage=SessionStage.INTERVIEW,
+                to_stage=SessionStage.COMPLETED,
+            )
+    if expired:
+        raise SessionExpiredError("考试时间已经结束，当前内容已自动保存。")
+    generate_assessment(locked)
+    return CompleteSessionResult(locked, submission, False)
 
 
 def feedback_for_session(*, session: SimulationSession, student) -> dict:

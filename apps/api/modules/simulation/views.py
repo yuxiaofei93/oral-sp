@@ -31,12 +31,12 @@ from .serializers import (
     AssignmentCreateSerializer,
     AssignmentOptionSerializer,
     AssignmentStatisticsSerializer,
+    CaseDraftUpdateSerializer,
     ExchangeSerializer,
     FeedbackSerializer,
+    SessionCompleteSerializer,
     SessionSerializer,
-    StageSubmissionSerializer,
     StudentAssignmentSerializer,
-    SubmissionCreateSerializer,
     TeacherAssignmentSerializer,
     TeacherResponseRowSerializer,
     TeacherReviewCreateSerializer,
@@ -46,20 +46,21 @@ from .serializers import (
 from .services import (
     AssignmentUnavailableError,
     AttemptAlreadyUsedError,
-    DuplicateSubmissionError,
+    CaseDraftConflictError,
     FeedbackUnavailableError,
     ModelUnavailableError,
     SessionExpiredError,
+    SessionLockedError,
     SimulationError,
-    StageLockedError,
     ask_patient,
     close_assignment,
+    complete_session,
     create_assignment,
     feedback_for_session,
     refresh_session_status,
     release_feedback,
+    save_case_draft,
     start_session,
-    submit_stage,
 )
 
 
@@ -70,7 +71,12 @@ def simulation_error_response(error: SimulationError) -> Response:
         response_status = status.HTTP_403_FORBIDDEN
     elif isinstance(
         error,
-        (AttemptAlreadyUsedError, SessionExpiredError, StageLockedError, DuplicateSubmissionError),
+        (
+            AttemptAlreadyUsedError,
+            SessionExpiredError,
+            SessionLockedError,
+            CaseDraftConflictError,
+        ),
     ):
         response_status = status.HTTP_409_CONFLICT
     else:
@@ -510,15 +516,15 @@ class StudentSessionMessageView(APIView):
         )
 
 
-class StudentSessionSubmissionView(APIView):
+class StudentSessionDraftView(APIView):
     permission_classes = [IsStudent]
 
-    def post(self, request, session_id):
+    def patch(self, request, session_id):
         session = get_object_or_404(student_session_queryset(request.user), pk=session_id)
-        serializer = SubmissionCreateSerializer(data=request.data)
+        serializer = CaseDraftUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            submission = submit_stage(
+            updated = save_case_draft(
                 session=session,
                 student=request.user,
                 **serializer.validated_data,
@@ -526,8 +532,32 @@ class StudentSessionSubmissionView(APIView):
         except SimulationError as error:
             return simulation_error_response(error)
         return Response(
-            StageSubmissionSerializer(submission).data,
-            status=status.HTTP_201_CREATED,
+            {
+                "case_draft": updated.case_draft,
+                "case_draft_revision": updated.case_draft_revision,
+            }
+        )
+
+
+class StudentSessionCompleteView(APIView):
+    permission_classes = [IsStudent]
+
+    def post(self, request, session_id):
+        session = get_object_or_404(student_session_queryset(request.user), pk=session_id)
+        serializer = SessionCompleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = complete_session(
+                session=session,
+                student=request.user,
+                **serializer.validated_data,
+            )
+        except SimulationError as error:
+            return simulation_error_response(error)
+        refreshed = student_session_queryset(request.user).get(pk=session_id)
+        return Response(
+            {"reused": result.reused, "session": SessionSerializer(refreshed).data},
+            status=status.HTTP_200_OK if result.reused else status.HTTP_201_CREATED,
         )
 
 

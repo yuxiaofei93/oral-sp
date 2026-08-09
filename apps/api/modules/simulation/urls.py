@@ -3,11 +3,12 @@ from django.urls import path
 from .views import (
     StudentAssignmentListView,
     StudentPhysicalExamAssetContentView,
+    StudentSessionCompleteView,
     StudentSessionDetailView,
+    StudentSessionDraftView,
     StudentSessionFeedbackView,
     StudentSessionMessageView,
     StudentSessionStartView,
-    StudentSessionSubmissionView,
     TeacherAssignmentCloseView,
     TeacherAssignmentCsvExportView,
     TeacherAssignmentListCreateView,
@@ -103,9 +104,14 @@ urlpatterns = [
         name="student-session-physical-exam-asset-content",
     ),
     path(
-        "student/sessions/<uuid:session_id>/submissions/",
-        StudentSessionSubmissionView.as_view(),
-        name="student-session-submission",
+        "student/sessions/<uuid:session_id>/draft/",
+        StudentSessionDraftView.as_view(),
+        name="student-session-draft",
+    ),
+    path(
+        "student/sessions/<uuid:session_id>/complete/",
+        StudentSessionCompleteView.as_view(),
+        name="student-session-complete",
     ),
     path(
         "student/sessions/<uuid:session_id>/feedback/",

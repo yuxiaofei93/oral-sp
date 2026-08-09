@@ -94,9 +94,6 @@ class SessionStatus(models.TextChoices):
 
 class SessionStage(models.TextChoices):
     INTERVIEW = "interview", "问诊"
-    INITIAL_REASONING = "initial_reasoning", "初步判断"
-    TEST_SELECTION = "test_selection", "检查选择"
-    FINAL_REASONING = "final_reasoning", "最终判断"
     COMPLETED = "completed", "已完成"
 
 
@@ -132,6 +129,8 @@ class SimulationSession(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     retention_expires_at = models.DateTimeField()
     last_message_sequence = models.PositiveIntegerField(default=0)
+    case_draft = models.JSONField(default=dict, blank=True)
+    case_draft_revision = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -281,10 +280,7 @@ class PhysicalExamRelease(models.Model):
 
 
 class SubmissionType(models.TextChoices):
-    HISTORY_SUMMARY = "history_summary", "病史摘要"
-    INITIAL_REASONING = "initial_reasoning", "初步诊断和鉴别诊断"
-    TEST_SELECTION = "test_selection", "检查计划"
-    FINAL_REASONING = "final_reasoning", "最终诊断和处理原则"
+    CASE_RECORD = "case_record", "病例记录"
 
 
 class StageSubmission(models.Model):
@@ -309,11 +305,11 @@ class StageSubmission(models.Model):
 
     def save(self, *args, **kwargs):
         if self.pk and type(self).objects.filter(pk=self.pk).exists():
-            raise ValidationError("阶段提交不可修改。")
+            raise ValidationError("病例记录不可修改。")
         return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        raise ValidationError("阶段提交不可删除。")
+        raise ValidationError("病例记录不可删除。")
 
 
 class ModelCallStatus(models.TextChoices):

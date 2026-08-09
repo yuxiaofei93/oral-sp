@@ -12,7 +12,6 @@ from .models import (
     ScoreResult,
     SessionAssessment,
     SimulationSession,
-    StageSubmission,
     SubmissionType,
     TeacherReview,
 )
@@ -145,10 +144,44 @@ class MessageSerializer(serializers.ModelSerializer):
         ]
 
 
-class StageSubmissionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = StageSubmission
-        fields = ["id", "submission_type", "payload", "submitted_at"]
+CASE_RECORD_FIELDS = (
+    "chief_complaint",
+    "present_illness",
+    "past_history",
+    "family_history",
+    "diagnosis",
+    "treatment",
+    "medical_advice",
+)
+
+
+def normalized_case_draft(value):
+    source = value if isinstance(value, dict) else {}
+    return {field: str(source.get(field, "")) for field in CASE_RECORD_FIELDS}
+
+
+class CaseRecordInputSerializer(serializers.Serializer):
+    chief_complaint = serializers.CharField(
+        max_length=4000, allow_blank=True, trim_whitespace=False
+    )
+    present_illness = serializers.CharField(
+        max_length=4000, allow_blank=True, trim_whitespace=False
+    )
+    past_history = serializers.CharField(max_length=4000, allow_blank=True, trim_whitespace=False)
+    family_history = serializers.CharField(max_length=4000, allow_blank=True, trim_whitespace=False)
+    diagnosis = serializers.CharField(max_length=4000, allow_blank=True, trim_whitespace=False)
+    treatment = serializers.CharField(max_length=4000, allow_blank=True, trim_whitespace=False)
+    medical_advice = serializers.CharField(max_length=4000, allow_blank=True, trim_whitespace=False)
+
+
+class CaseDraftUpdateSerializer(serializers.Serializer):
+    expected_revision = serializers.IntegerField(min_value=0)
+    case_draft = CaseRecordInputSerializer()
+
+
+class SessionCompleteSerializer(serializers.Serializer):
+    expected_revision = serializers.IntegerField(min_value=0)
+    case_record = CaseRecordInputSerializer()
 
 
 class SessionSerializer(serializers.ModelSerializer):
@@ -163,7 +196,8 @@ class SessionSerializer(serializers.ModelSerializer):
     )
     remaining_seconds = serializers.SerializerMethodField()
     messages = MessageSerializer(many=True, read_only=True)
-    submissions = StageSubmissionSerializer(many=True, read_only=True)
+    case_draft = serializers.SerializerMethodField()
+    case_record = serializers.SerializerMethodField()
     physical_exam_result = serializers.SerializerMethodField()
 
     class Meta:
@@ -181,12 +215,34 @@ class SessionSerializer(serializers.ModelSerializer):
             "completed_at",
             "remaining_seconds",
             "messages",
-            "submissions",
+            "case_draft",
+            "case_draft_revision",
+            "case_record",
             "physical_exam_result",
         ]
 
     def get_remaining_seconds(self, session):
         return remaining_seconds(session)
+
+    def get_case_draft(self, session):
+        return normalized_case_draft(session.case_draft)
+
+    def get_case_record(self, session):
+        submission = next(
+            (
+                item
+                for item in session.submissions.all()
+                if item.submission_type == SubmissionType.CASE_RECORD
+            ),
+            None,
+        )
+        if submission is None:
+            return None
+        return {
+            **normalized_case_draft(submission.payload),
+            "specialty_exam": str(submission.payload.get("specialty_exam", "")),
+            "submitted_at": submission.submitted_at,
+        }
 
     def get_physical_exam_result(self, session):
         try:
@@ -247,16 +303,6 @@ class ExchangeSerializer(serializers.Serializer):
     interaction_type = serializers.ChoiceField(
         choices=["patient_answer", "physical_exam_released", "physical_exam_reopened"]
     )
-
-
-class SubmissionCreateSerializer(serializers.Serializer):
-    submission_type = serializers.ChoiceField(choices=SubmissionType.choices)
-    payload = serializers.DictField()
-
-    def validate_payload(self, value):
-        if not value:
-            raise serializers.ValidationError("提交内容不能为空。")
-        return value
 
 
 class FeedbackSerializer(serializers.Serializer):

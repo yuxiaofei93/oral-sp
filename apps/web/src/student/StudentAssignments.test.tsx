@@ -3,6 +3,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { StudentAssignments } from './StudentAssignments'
 
+const emptyCaseDraft = {
+  chief_complaint: '',
+  present_illness: '',
+  past_history: '',
+  family_history: '',
+  diagnosis: '',
+  treatment: '',
+  medical_advice: '',
+}
+
 const session = {
   id: 'session-1',
   assignment_id: 'assignment-1',
@@ -16,7 +26,9 @@ const session = {
   completed_at: null,
   remaining_seconds: 1200,
   messages: [],
-  submissions: [],
+  case_draft: emptyCaseDraft,
+  case_draft_revision: 0,
+  case_record: null,
   physical_exam_result: null,
 }
 
@@ -88,8 +100,7 @@ describe('StudentAssignments', () => {
     await waitFor(() => screen.getByRole('button', { name: '开始作答' }))
     fireEvent.click(screen.getByRole('button', { name: '开始作答' }))
     await waitFor(() => screen.getByRole('heading', { name: '牙周问诊练习' }))
-    expect(screen.getByRole('navigation', { name: '问诊阶段' })).toBeInTheDocument()
-    expect(screen.getByText('问诊采集').closest('li')).toHaveAttribute('aria-current', 'step')
+    expect(screen.queryByRole('navigation', { name: '问诊阶段' })).not.toBeInTheDocument()
     expect(screen.queryByText('标准化患者在线')).not.toBeInTheDocument()
     expect(screen.queryByText(/条记录/)).not.toBeInTheDocument()
     expect(screen.getByPlaceholderText('输入你想向患者了解的问题…')).toBeInTheDocument()
@@ -99,7 +110,7 @@ describe('StudentAssignments', () => {
     expect(basicInformation).toHaveTextContent('科室口腔粘膜科')
     expect(basicInformation).toHaveTextContent('就诊日期2026-08-04')
     expect(within(basicInformation).getByText(/^\d{8}$/)).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: '诊断' })).toHaveAttribute('readonly')
+    expect(screen.getByRole('textbox', { name: '诊断' })).not.toHaveAttribute('readonly')
 
     const conversation = screen.getByLabelText('问诊记录')
     Object.defineProperty(conversation, 'scrollHeight', { configurable: true, value: 500 })
@@ -110,7 +121,7 @@ describe('StudentAssignments', () => {
     const thinking = screen.getByRole('status')
     expect(thinking).toHaveTextContent('患者正在思考')
     expect(outgoingMessage.compareDocumentPosition(thinking) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.getByRole('button', { name: '提交并进入下一阶段' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '提交并完成问诊' })).toBeEnabled()
     expect(conversation.scrollTop).toBe(500)
 
     act(() => {
@@ -130,15 +141,20 @@ describe('StudentAssignments', () => {
     expect(fetchMock).toHaveBeenCalled()
   })
 
-  it('advances to the next stage without reporting a false submission failure', async () => {
-    const historyPayload = {
-      text: '主诉：牙龈疼痛约三年。\n现病史：三年前开始反复牙龈疼痛。\n既往史：否认重大疾病史。\n家族史：无相关家族史。',
+  it('auto-saves the case and creates one read-only record on completion', async () => {
+    const completedDraft = {
       chief_complaint: '牙龈疼痛约三年。',
       present_illness: '三年前开始反复牙龈疼痛。',
       past_history: '否认重大疾病史。',
       family_history: '无相关家族史。',
-      specialty_exam: '',
+      diagnosis: '慢性牙周炎。',
+      treatment: '完善牙周探诊。',
+      medical_advice: '保持口腔卫生，按期复诊。',
     }
+    let revision = 0
+    let savedDraft = emptyCaseDraft
+    const patchRequests: Array<{ expected_revision: number; case_draft: typeof emptyCaseDraft }> = []
+    const completionRequests: Array<{ expected_revision: number; case_record: typeof emptyCaseDraft }> = []
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input)
       if (url.endsWith('/student/assignments/')) {
@@ -161,29 +177,39 @@ describe('StudentAssignments', () => {
       if (url.endsWith('/assignment-1/session/')) {
         return Promise.resolve(new Response(JSON.stringify({ created: false, session }), { status: 200 }))
       }
-      if (url.endsWith('/session-1/submissions/')) {
-        expect(JSON.parse(String(init?.body))).toEqual({
-          submission_type: 'history_summary',
-          payload: historyPayload,
-        })
+      if (url.endsWith('/session-1/draft/')) {
+        const body = JSON.parse(String(init?.body))
+        expect(body.expected_revision).toBe(revision)
+        patchRequests.push(body)
+        savedDraft = body.case_draft
+        revision += 1
         return Promise.resolve(new Response(JSON.stringify({
-          id: 'submission-1',
-          submission_type: 'history_summary',
-          payload: historyPayload,
-          submitted_at: '2026-08-06T01:00:00Z',
-        }), { status: 201 }))
-      }
-      if (url.endsWith('/student/sessions/session-1/')) {
-        return Promise.resolve(new Response(JSON.stringify({
-          ...session,
-          stage: 'initial_reasoning',
-          submissions: [{
-            id: 'submission-1',
-            submission_type: 'history_summary',
-            payload: historyPayload,
-            submitted_at: '2026-08-06T01:00:00Z',
-          }],
+          case_draft: savedDraft,
+          case_draft_revision: revision,
         }), { status: 200 }))
+      }
+      if (url.endsWith('/session-1/complete/')) {
+        const body = JSON.parse(String(init?.body))
+        completionRequests.push(body)
+        expect(body).toEqual({ expected_revision: revision, case_record: completedDraft })
+        revision += 1
+        return Promise.resolve(new Response(JSON.stringify({
+          reused: false,
+          session: {
+          ...session,
+            status: 'completed',
+            stage: 'completed',
+            completed_at: '2026-08-06T01:00:00Z',
+            remaining_seconds: 0,
+            case_draft: completedDraft,
+            case_draft_revision: revision,
+            case_record: {
+              ...completedDraft,
+              specialty_exam: '',
+              submitted_at: '2026-08-06T01:00:00Z',
+            },
+          },
+        }), { status: 201 }))
       }
       return Promise.reject(new Error(`unexpected request: ${url}`))
     })
@@ -191,28 +217,112 @@ describe('StudentAssignments', () => {
     render(<StudentAssignments />)
     await waitFor(() => screen.getByRole('button', { name: '继续作答' }))
     fireEvent.click(screen.getByRole('button', { name: '继续作答' }))
-    await waitFor(() => screen.getByRole('heading', { name: '病史摘要' }))
+    await waitFor(() => screen.getByRole('heading', { name: '牙周问诊练习' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '提交并完成问诊' }))
+    const blankDialog = screen.getByRole('dialog', { name: '以下内容尚未填写' })
+    expect(blankDialog).toHaveTextContent('主诉、现病史、既往史、家族史、诊断、处理、医嘱')
+    fireEvent.click(within(blankDialog).getByRole('button', { name: '返回补充' }))
 
     fireEvent.change(screen.getByRole('textbox', { name: '主诉' }), {
-      target: { value: historyPayload.chief_complaint },
+      target: { value: completedDraft.chief_complaint },
     })
     fireEvent.change(screen.getByRole('textbox', { name: '现病史' }), {
-      target: { value: historyPayload.present_illness },
+      target: { value: completedDraft.present_illness },
     })
     fireEvent.change(screen.getByRole('textbox', { name: '既往史' }), {
-      target: { value: historyPayload.past_history },
+      target: { value: completedDraft.past_history },
     })
     fireEvent.change(screen.getByRole('textbox', { name: '家族史' }), {
-      target: { value: historyPayload.family_history },
+      target: { value: completedDraft.family_history },
     })
-    fireEvent.click(screen.getByRole('button', { name: '提交并进入下一阶段' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '诊断' }), {
+      target: { value: completedDraft.diagnosis },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: '处理' }), {
+      target: { value: completedDraft.treatment },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: '医嘱' }), {
+      target: { value: completedDraft.medical_advice },
+    })
 
-    await waitFor(() => expect(screen.getByRole('heading', {
-      name: '初步诊断与鉴别诊断',
-    })).toBeInTheDocument())
+    await waitFor(() => expect(patchRequests).toHaveLength(1))
+    expect(patchRequests[0]).toEqual({ expected_revision: 0, case_draft: completedDraft })
+    expect(screen.getByText('已保存')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '提交并完成问诊' }))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: '已完成交卷' })).toBeInTheDocument())
+    expect(completionRequests).toHaveLength(1)
     expect(screen.getByRole('textbox', { name: '主诉' })).toHaveAttribute('readonly')
-    expect(screen.getByRole('textbox', { name: '诊断' })).not.toHaveAttribute('readonly')
-    expect(screen.queryByText('阶段提交失败。')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '诊断' })).toHaveAttribute('readonly')
+    expect(screen.queryByLabelText('向患者提问')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '提交并完成问诊' })).not.toBeInTheDocument()
+  })
+
+  it('serializes in-flight draft changes and allows a failed save to retry', async () => {
+    let resolveFirstSave: ((response: Response) => void) | undefined
+    const draftRequests: Array<{ expected_revision: number; case_draft: typeof emptyCaseDraft }> = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = String(input)
+      if (url.endsWith('/student/assignments/')) {
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 'assignment-1', title: '牙周问诊练习', difficulty: 'intermediate',
+          duration_minutes: 20, opens_at: '2026-08-04T00:00:00Z',
+          deadline_at: '2099-08-04T02:00:00Z', status: 'open', feedback_released_at: null,
+          attempt_status: 'active', session_id: 'session-1',
+        }]), { status: 200 }))
+      }
+      if (url.endsWith('/csrf/')) {
+        return Promise.resolve(new Response('{"csrf_token":"student-csrf"}', { status: 200 }))
+      }
+      if (url.endsWith('/assignment-1/session/')) {
+        return Promise.resolve(new Response(JSON.stringify({ created: false, session }), { status: 200 }))
+      }
+      if (url.endsWith('/session-1/draft/')) {
+        const body = JSON.parse(String(init?.body))
+        draftRequests.push(body)
+        if (draftRequests.length === 1) {
+          return new Promise<Response>((resolve) => { resolveFirstSave = resolve })
+        }
+        if (draftRequests.length === 2) {
+          return Promise.resolve(new Response(JSON.stringify({ detail: '自动保存暂时失败。' }), { status: 503 }))
+        }
+        return Promise.resolve(new Response(JSON.stringify({
+          case_draft: body.case_draft,
+          case_draft_revision: 2,
+        }), { status: 200 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    })
+
+    render(<StudentAssignments />)
+    fireEvent.click(await screen.findByRole('button', { name: '继续作答' }))
+    await waitFor(() => screen.getByRole('heading', { name: '牙周问诊练习' }))
+    fireEvent.change(screen.getByRole('textbox', { name: '主诉' }), {
+      target: { value: '牙龈疼痛约三年。' },
+    })
+    await waitFor(() => expect(draftRequests).toHaveLength(1))
+    expect(draftRequests[0].expected_revision).toBe(0)
+
+    fireEvent.change(screen.getByRole('textbox', { name: '诊断' }), {
+      target: { value: '慢性牙周炎。' },
+    })
+    act(() => {
+      resolveFirstSave?.(new Response(JSON.stringify({
+        case_draft: draftRequests[0].case_draft,
+        case_draft_revision: 1,
+      }), { status: 200 }))
+    })
+
+    await waitFor(() => expect(draftRequests).toHaveLength(2))
+    expect(draftRequests[1].expected_revision).toBe(1)
+    expect(draftRequests[1].case_draft.diagnosis).toBe('慢性牙周炎。')
+    expect(await screen.findByRole('alert')).toHaveTextContent('自动保存暂时失败。')
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+
+    await waitFor(() => expect(draftRequests).toHaveLength(3))
+    expect(draftRequests[2]).toEqual(draftRequests[1])
+    await waitFor(() => expect(screen.getByText('已保存')).toBeInTheDocument())
   })
 
   it('opens released physical exam results and keeps a reusable transcript link', async () => {

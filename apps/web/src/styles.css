@@ -673,109 +673,6 @@ h1 {
   background: #f7d7d2;
 }
 
-.stage-progress {
-  overflow-x: auto;
-  padding: 17px 22px;
-  border: 1px solid #dce7e4;
-  border-radius: 16px;
-  background: #fff;
-  scrollbar-width: thin;
-}
-
-.stage-progress ol {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
-  min-width: 620px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.stage-progress__item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #8a9b97;
-}
-
-.stage-progress__item:not(:last-child)::after {
-  position: absolute;
-  z-index: 0;
-  top: 50%;
-  right: 10px;
-  left: 46px;
-  height: 1px;
-  background: #dce5e2;
-  content: "";
-}
-
-.stage-progress__item > span:last-child {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  min-width: 95px;
-  padding-right: 12px;
-  background: #fff;
-}
-
-.stage-progress__item small {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.stage-progress__item strong {
-  color: #526b66;
-  font-size: 13px;
-}
-
-.stage-progress__marker {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border: 1px solid #d8e3e0;
-  border-radius: 50%;
-  color: #748984;
-  background: #f6f9f8;
-  font-size: 12px;
-  font-weight: 750;
-}
-
-.stage-progress__marker svg {
-  width: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.stage-progress__item.is-current .stage-progress__marker,
-.stage-progress__item.is-complete .stage-progress__marker {
-  border-color: #176f60;
-  color: #fff;
-  background: #176f60;
-}
-
-.stage-progress__item.is-current strong,
-.stage-progress__item.is-complete strong {
-  color: #193f38;
-}
-
-.stage-progress__item.is-current small {
-  color: #16816d;
-}
-
-.stage-progress__item.is-complete:not(:last-child)::after {
-  background: #72ad9f;
-}
-
 .exam-notice {
   display: flex;
   align-items: center;
@@ -789,7 +686,7 @@ h1 {
 }
 
 .exam-notice svg,
-.stage-form__tip svg {
+.case-record-form__tip svg {
   flex: 0 0 auto;
   width: 18px;
   fill: none;
@@ -1349,6 +1246,38 @@ h1 {
   font-size: 11px;
 }
 
+.case-save-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.case-save-status.is-dirty b {
+  color: #8a641e;
+  background: #fff3d6;
+}
+
+.case-save-status.is-saving b {
+  color: #47635d;
+  background: #edf3f1;
+}
+
+.case-save-status.is-error b {
+  color: #a64034;
+  background: #fbe8e5;
+}
+
+.case-save-status button {
+  border: 0;
+  padding: 0;
+  color: #a64034;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .case-record-form {
   display: grid;
   gap: 12px;
@@ -1356,6 +1285,16 @@ h1 {
   padding: 16px;
   scrollbar-color: #c6d7d2 transparent;
   scrollbar-width: thin;
+}
+
+.case-save-error {
+  padding: 10px 12px;
+  border: 1px solid #f0cbc5;
+  border-radius: 10px;
+  color: #983c32;
+  background: #fff2f0;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .case-record-form h3,
@@ -1500,7 +1439,7 @@ h1 {
   background: #f2f6f5;
 }
 
-.stage-form__tip {
+.case-record-form__tip {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -1512,7 +1451,7 @@ h1 {
   line-height: 1.55;
 }
 
-.stage-form__tip svg {
+.case-record-form__tip svg {
   width: 16px;
   margin-top: 1px;
 }
@@ -1524,6 +1463,59 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+.case-submit-dialog__backdrop {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(9 35 31 / 56%);
+}
+
+.case-submit-dialog {
+  width: min(460px, 100%);
+  padding: 24px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgb(9 35 31 / 28%);
+}
+
+.case-submit-dialog > span {
+  color: #16816d;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.case-submit-dialog h2 {
+  margin: 5px 0 0;
+  color: #193f38;
+  font-size: 21px;
+}
+
+.case-submit-dialog p {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: #6d5c3e;
+  background: #fff7e3;
+  line-height: 1.65;
+}
+
+.case-submit-dialog small {
+  display: block;
+  margin-top: 10px;
+  color: #71857f;
+  line-height: 1.55;
+}
+
+.case-submit-dialog > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
 }
 
 .feedback-card .button {
@@ -1573,6 +1565,70 @@ h1 {
 .submission-records {
   display: grid;
   gap: 10px;
+}
+
+.case-record-review {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.case-record-review > article {
+  padding: 15px;
+  border: 1px solid #dfe9e6;
+  border-radius: 12px;
+  background: #fbfdfc;
+}
+
+.case-record-review h4,
+.case-record-review p {
+  margin: 0;
+}
+
+.case-record-review h4 {
+  color: #284640;
+  font-size: 13px;
+}
+
+.case-record-review p {
+  margin-top: 9px;
+  color: #36534d;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.case-record-review p.is-empty {
+  color: #8a9b97;
+}
+
+.case-record-review__identity {
+  grid-column: 1 / -1;
+}
+
+.case-record-review__identity dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.case-record-review__identity dl > div {
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: #f1f6f4;
+}
+
+.case-record-review__identity dt {
+  color: #7a8e89;
+  font-size: 10px;
+}
+
+.case-record-review__identity dd {
+  margin: 3px 0 0;
+  color: #284640;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .feedback-items article,
@@ -2554,6 +2610,11 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .case-record-review,
+  .case-record-review__identity dl {
+    grid-template-columns: 1fr;
+  }
+
   .form-grid__wide {
     grid-column: auto;
   }
@@ -2598,14 +2659,6 @@ h1 {
 
   .workbench-header h2 {
     white-space: normal;
-  }
-
-  .stage-progress {
-    padding: 14px 16px;
-  }
-
-  .stage-progress ol {
-    min-width: 570px;
   }
 
   .consultation-panel {

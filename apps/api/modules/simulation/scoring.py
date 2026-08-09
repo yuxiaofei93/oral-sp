@@ -58,21 +58,14 @@ def _contains(text: str, term: str) -> bool:
     return bool(normalized_term) and normalized_term in _normalized(text)
 
 
-def _submission_text(submission: StageSubmission | None) -> str:
+def _case_record_text(submission: StageSubmission | None, *fields: str) -> str:
     if submission is None:
         return ""
-
-    def strings(value):
-        if isinstance(value, str):
-            yield value
-        elif isinstance(value, dict):
-            for item in value.values():
-                yield from strings(item)
-        elif isinstance(value, list):
-            for item in value:
-                yield from strings(item)
-
-    return "\n".join(strings(submission.payload))
+    return "\n".join(
+        str(submission.payload.get(field, ""))
+        for field in fields
+        if str(submission.payload.get(field, "")).strip()
+    )
 
 
 def _decision(matched: int, total: int) -> str:
@@ -183,13 +176,8 @@ def _diagnosis_evaluation(item, session, config, submissions) -> Evaluation:
     if not rules or (diagnosis_names and len(rules) != len(set(diagnosis_names))):
         return _pending(item, "诊断评分项尚未配置有效的标准诊断。")
 
-    submission_type = (
-        SubmissionType.FINAL_REASONING
-        if item.dimension == ScoringDimension.FINAL_REASONING
-        else SubmissionType.INITIAL_REASONING
-    )
-    submission = submissions.get(submission_type)
-    text = _submission_text(submission)
+    submission = submissions.get(SubmissionType.CASE_RECORD)
+    text = _case_record_text(submission, "diagnosis")
     matched_rules = [
         rule
         for rule in rules
@@ -226,8 +214,8 @@ def _test_evaluation(item, session, config, submissions) -> Evaluation:
     if not tests or (test_codes and len(tests) != len(set(test_codes))):
         return _pending(item, "检查评分项尚未配置有效的标准检查。")
 
-    submission = submissions.get(SubmissionType.TEST_SELECTION)
-    text = _submission_text(submission)
+    submission = submissions.get(SubmissionType.CASE_RECORD)
+    text = _case_record_text(submission, "treatment")
     matched_tests = [
         test
         for test in tests
@@ -257,10 +245,31 @@ def _test_evaluation(item, session, config, submissions) -> Evaluation:
 def _keyword_evaluation(item, config, submissions) -> Evaluation:
     keywords = [str(keyword) for keyword in config.get("keywords", []) if str(keyword).strip()]
     submission_type = str(config.get("submission_type", ""))
-    if submission_type not in SubmissionType.values or not keywords:
-        return _pending(item, "关键词评分项尚未配置提交阶段和关键词。")
-    submission = submissions.get(submission_type)
-    text = _submission_text(submission)
+    fields_by_legacy_submission = {
+        "history_summary": (
+            "chief_complaint",
+            "present_illness",
+            "past_history",
+            "family_history",
+        ),
+        "initial_reasoning": ("diagnosis",),
+        "test_selection": ("treatment",),
+        "final_reasoning": ("diagnosis", "treatment", "medical_advice"),
+        "case_record": (
+            "chief_complaint",
+            "present_illness",
+            "past_history",
+            "family_history",
+            "diagnosis",
+            "treatment",
+            "medical_advice",
+        ),
+    }
+    fields = fields_by_legacy_submission.get(submission_type)
+    if fields is None or not keywords:
+        return _pending(item, "关键词评分项尚未配置病例字段映射和关键词。")
+    submission = submissions.get(SubmissionType.CASE_RECORD)
+    text = _case_record_text(submission, *fields)
     matched = [keyword for keyword in keywords if _contains(text, keyword)]
     mode = config.get("match", "all")
     matched_count = len(keywords) if mode == "any" and matched else len(matched)
@@ -305,13 +314,13 @@ def _physical_exam_evaluation(item, session) -> Evaluation:
         )[:2000]
         score = max_score
         decision = ScoreDecision.ACHIEVED
-        reason = "学生在问诊阶段主动申请并完成了口腔体格检查。"
+        reason = "学生在最终交卷前主动申请并完成了口腔体格检查。"
     else:
         message_ids = []
         evidence_excerpt = ""
         score = Decimal("0.00")
         decision = ScoreDecision.MISSED
-        reason = "学生未在问诊阶段主动申请口腔体格检查。"
+        reason = "学生未在最终交卷前主动申请口腔体格检查。"
     return Evaluation(
         scoring_item=item,
         code=item.code,

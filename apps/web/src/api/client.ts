@@ -178,9 +178,6 @@ export type StudentAssignment = {
 
 export type SessionStage =
   | 'interview'
-  | 'initial_reasoning'
-  | 'test_selection'
-  | 'final_reasoning'
   | 'completed'
 
 export type SessionMessage = {
@@ -205,10 +202,18 @@ export type PhysicalExamResult = {
   attachments: PhysicalExamAsset[]
 }
 
-export type StageSubmission = {
-  id: string
-  submission_type: string
-  payload: Record<string, unknown>
+export type StudentCaseDraft = {
+  chief_complaint: string
+  present_illness: string
+  past_history: string
+  family_history: string
+  diagnosis: string
+  treatment: string
+  medical_advice: string
+}
+
+export type StudentCaseRecord = StudentCaseDraft & {
+  specialty_exam: string
   submitted_at: string
 }
 
@@ -225,7 +230,9 @@ export type SimulationSession = {
   completed_at: string | null
   remaining_seconds: number
   messages: SessionMessage[]
-  submissions: StageSubmission[]
+  case_draft: StudentCaseDraft
+  case_draft_revision: number
+  case_record: StudentCaseRecord | null
   physical_exam_result: PhysicalExamResult | null
 }
 
@@ -786,11 +793,18 @@ export function askPatient(
   return mutate('POST', `/api/student/sessions/${sessionId}/messages/`, payload)
 }
 
-export function submitSessionStage(
+export function saveStudentCaseDraft(
   sessionId: string,
-  payload: { submission_type: string; payload: Record<string, unknown> },
-): Promise<StageSubmission> {
-  return mutate('POST', `/api/student/sessions/${sessionId}/submissions/`, payload)
+  payload: { expected_revision: number; case_draft: StudentCaseDraft },
+): Promise<{ case_draft: StudentCaseDraft; case_draft_revision: number }> {
+  return mutate('PATCH', `/api/student/sessions/${sessionId}/draft/`, payload)
+}
+
+export function completeStudentSession(
+  sessionId: string,
+  payload: { expected_revision: number; case_record: StudentCaseDraft },
+): Promise<{ reused: boolean; session: SimulationSession }> {
+  return mutate('POST', `/api/student/sessions/${sessionId}/complete/`, payload)
 }
 
 export async function getSessionFeedback(sessionId: string): Promise<SessionFeedback> {

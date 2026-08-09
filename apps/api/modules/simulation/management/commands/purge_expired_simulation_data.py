@@ -22,7 +22,7 @@ class Command(BaseCommand):
         self.stdout.write(f"可清理会话：{preview.deletable_sessions}")
         self.stdout.write(
             "关联记录："
-            f"消息 {preview.messages}，阶段提交 {preview.submissions}，"
+            f"消息 {preview.messages}，病例记录 {preview.submissions}，"
             f"模型调用 {preview.model_calls}，评分项 {preview.score_results}，"
             f"教师复核 {preview.teacher_reviews}，AI 评价运行 {preview.ai_evaluation_runs}，"
             f"AI 分项结果 {preview.ai_score_results}"

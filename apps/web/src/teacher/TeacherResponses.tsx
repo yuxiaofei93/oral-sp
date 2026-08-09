@@ -22,13 +22,6 @@ const attemptNames = {
   expired: '已超时',
 }
 
-const submissionNames: Record<string, string> = {
-  history_summary: '病史摘要',
-  initial_reasoning: '初步诊断与鉴别诊断',
-  test_selection: '检查计划',
-  final_reasoning: '最终诊断与处理原则',
-}
-
 const decisionNames = {
   achieved: '已完成',
   partial: '部分完成',
@@ -40,6 +33,24 @@ function elapsed(seconds: number | null) {
   if (seconds === null) return '—'
   const minutes = Math.floor(seconds / 60)
   return `${minutes} 分 ${seconds % 60} 秒`
+}
+
+function visitDate(startedAt: string) {
+  const date = new Date(startedAt)
+  if (Number.isNaN(date.getTime())) return startedAt.slice(0, 10)
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? ''
+  return `${value('year')}-${value('month')}-${value('day')}`
+}
+
+function recordNumber(sessionId: string) {
+  let hash = 0
+  for (const character of sessionId) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  return String(10_000_000 + (hash % 90_000_000))
 }
 
 export function TeacherResponses({
@@ -204,12 +215,30 @@ export function TeacherResponses({
         </section>
 
         <section className="record-section">
-          <h3>阶段提交</h3>
-          <div className="submission-records">
-            {record.submissions.map((submission) => (
-              <article key={submission.id}>
-                <strong>{submissionNames[submission.submission_type] ?? submission.submission_type}</strong>
-                <pre>{JSON.stringify(submission.payload, null, 2)}</pre>
+          <h3>病例记录</h3>
+          <div className="case-record-review">
+            <article className="case-record-review__identity">
+              <h4>基本信息</h4>
+              <dl>
+                <div><dt>患者化名</dt><dd>{record.patient_name}</dd></div>
+                <div><dt>科室</dt><dd>口腔粘膜科</dd></div>
+                <div><dt>就诊日期</dt><dd>{visitDate(record.started_at)}</dd></div>
+                <div><dt>流水号</dt><dd>{recordNumber(record.id)}</dd></div>
+              </dl>
+            </article>
+            {[
+              ['主诉', record.case_record?.chief_complaint ?? record.case_draft?.chief_complaint ?? ''],
+              ['现病史', record.case_record?.present_illness ?? record.case_draft?.present_illness ?? ''],
+              ['既往史', record.case_record?.past_history ?? record.case_draft?.past_history ?? ''],
+              ['家族史', record.case_record?.family_history ?? record.case_draft?.family_history ?? ''],
+              ['专科检查', record.case_record?.specialty_exam ?? record.physical_exam_result?.findings_text ?? ''],
+              ['诊断', record.case_record?.diagnosis ?? record.case_draft?.diagnosis ?? ''],
+              ['处理', record.case_record?.treatment ?? record.case_draft?.treatment ?? ''],
+              ['医嘱', record.case_record?.medical_advice ?? record.case_draft?.medical_advice ?? ''],
+            ].map(([label, value]) => (
+              <article key={label}>
+                <h4>{label}</h4>
+                <p className={value ? '' : 'is-empty'}>{value || '未填写'}</p>
               </article>
             ))}
           </div>
@@ -246,7 +275,7 @@ export function TeacherResponses({
           <section className="record-section ai-evaluation-panel">
             <div>
               <h3>AI 辅助评价</h3>
-              <p>由 DeepSeek 按病例评分标准分析问诊记录和阶段提交；最终成绩仍可由教师复核。</p>
+              <p>由 DeepSeek 按病例评分标准分析问诊记录和病例记录；最终成绩仍可由教师复核。</p>
             </div>
             {record.ai_evaluation ? (
               <div className={`ai-run-status ai-run-status--${record.ai_evaluation.status}`}>

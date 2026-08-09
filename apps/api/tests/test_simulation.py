@@ -52,12 +52,14 @@ from modules.simulation.reviews import create_teacher_review
 from modules.simulation.scoring import generate_assessment
 from modules.simulation.services import (
     AttemptAlreadyUsedError,
-    StageLockedError,
+    CaseDraftConflictError,
+    SessionLockedError,
     ask_patient,
     close_assignment,
+    complete_session,
     create_assignment,
+    save_case_draft,
     start_session,
-    submit_stage,
 )
 from modules.teaching.models import ClassGroup, ClassMembership
 
@@ -292,19 +294,12 @@ def test_session_start_resumes_active_but_never_grants_second_attempt():
     assert second.created is False
     assert second.session.id == first.session.id
 
-    flow = [
-        SubmissionType.HISTORY_SUMMARY,
-        SubmissionType.INITIAL_REASONING,
-        SubmissionType.TEST_SELECTION,
-        SubmissionType.FINAL_REASONING,
-    ]
-    for submission_type in flow:
-        submit_stage(
-            session=first.session,
-            student=student,
-            submission_type=submission_type,
-            payload={"text": submission_type},
-        )
+    complete_session(
+        session=first.session,
+        student=student,
+        case_record=case_record_payload(correct=True),
+        expected_revision=0,
+    )
 
     first.session.refresh_from_db()
     assert first.session.status == SessionStatus.COMPLETED
@@ -707,29 +702,45 @@ def test_physical_exam_asset_requires_the_authorized_session_release(
 
 
 @pytest.mark.django_db
-def test_stage_submission_is_ordered_and_locks_further_patient_questions():
+def test_case_draft_is_versioned_and_final_record_locks_further_patient_questions():
     _, student, assignment = make_exam_data(suffix="5")
     session = start_session(assignment=assignment, student=student).session
 
-    submission = submit_stage(
+    updated = save_case_draft(
         session=session,
         student=student,
-        submission_type=SubmissionType.HISTORY_SUMMARY,
-        payload={"summary": "牙龈疼痛三年"},
+        case_draft=case_record_payload(correct=True),
+        expected_revision=0,
+    )
+    assert updated.case_draft_revision == 1
+    with pytest.raises(CaseDraftConflictError):
+        save_case_draft(
+            session=session,
+            student=student,
+            case_draft=case_record_payload(correct=False),
+            expected_revision=0,
+        )
+
+    result = complete_session(
+        session=session,
+        student=student,
+        case_record=case_record_payload(correct=True),
+        expected_revision=1,
     )
     session.refresh_from_db()
-    assert session.stage == SessionStage.INITIAL_REASONING
+    assert session.stage == SessionStage.COMPLETED
+    assert result.submission.submission_type == SubmissionType.CASE_RECORD
 
-    with pytest.raises(StageLockedError):
+    with pytest.raises(SessionLockedError):
         ask_patient(
             session=session,
             student=student,
             content="还有别的不舒服吗？",
             client_message_id="question_0003",
         )
-    submission.payload = {"summary": "覆盖"}
+    result.submission.payload = {"summary": "覆盖"}
     with pytest.raises(ValidationError):
-        submission.save()
+        result.submission.save()
 
 
 @pytest.mark.django_db
@@ -829,6 +840,135 @@ def test_student_api_runs_idempotent_interview_exchange():
 
 
 @pytest.mark.django_db
+def test_student_draft_and_completion_api_are_versioned_and_idempotent():
+    _, student, assignment = make_exam_data(suffix="0")
+    session = start_session(assignment=assignment, student=student).session
+    client = APIClient()
+    client.force_authenticate(student)
+    draft_url = reverse("student-session-draft", kwargs={"session_id": session.id})
+    complete_url = reverse("student-session-complete", kwargs={"session_id": session.id})
+    payload = case_record_payload(correct=True)
+
+    saved = client.patch(
+        draft_url,
+        {"expected_revision": 0, "case_draft": payload},
+        format="json",
+    )
+    assert saved.status_code == 200
+    assert saved.json() == {"case_draft": payload, "case_draft_revision": 1}
+
+    conflict = client.patch(
+        draft_url,
+        {"expected_revision": 0, "case_draft": case_record_payload(correct=False)},
+        format="json",
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["code"] == "case_draft_conflict"
+
+    ask_patient(
+        session=session,
+        student=student,
+        content="请允许我检查一下您的口腔。",
+        client_message_id="complete_exam_request_01",
+    )
+    submitted_payload = {**payload, "specialty_exam": "客户端伪造的检查结果"}
+    completed = client.post(
+        complete_url,
+        {"expected_revision": 1, "case_record": submitted_payload},
+        format="json",
+    )
+    assert completed.status_code == 201
+    assert completed.json()["reused"] is False
+    record = completed.json()["session"]["case_record"]
+    assert record["specialty_exam"] == "全口牙龈红肿，探诊易出血。"
+    assert record["diagnosis"] == payload["diagnosis"]
+    assert completed.json()["session"]["case_draft_revision"] == 2
+
+    repeated = client.post(
+        complete_url,
+        {"expected_revision": 1, "case_record": submitted_payload},
+        format="json",
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["reused"] is True
+    session.refresh_from_db()
+    assert session.submissions.filter(submission_type=SubmissionType.CASE_RECORD).count() == 1
+
+    message = client.post(
+        reverse("student-session-message", kwargs={"session_id": session.id}),
+        {"content": "还能继续提问吗？", "client_message_id": "after_complete_01"},
+        format="json",
+    )
+    assert message.status_code == 409
+    assert message.json()["code"] == "session_locked"
+
+
+@pytest.mark.django_db
+def test_student_draft_api_enforces_owner_and_timeout():
+    _, student, assignment = make_exam_data(suffix="0")
+    session = start_session(assignment=assignment, student=student).session
+    draft_url = reverse("student-session-draft", kwargs={"session_id": session.id})
+    payload = {"expected_revision": 0, "case_draft": case_record_payload(correct=True)}
+    client = APIClient()
+
+    outsider = make_user("13888888880", RoleCode.STUDENT)
+    client.force_authenticate(outsider)
+    assert client.patch(draft_url, payload, format="json").status_code == 404
+
+    now = timezone.now()
+    type(session).objects.filter(pk=session.pk).update(
+        started_at=now - timedelta(minutes=2),
+        deadline_at=now - timedelta(minutes=1),
+    )
+    client.force_authenticate(student)
+    expired = client.patch(draft_url, payload, format="json")
+    assert expired.status_code == 409
+    assert expired.json()["code"] == "session_expired"
+    session.refresh_from_db()
+    assert session.status == SessionStatus.EXPIRED
+
+
+@pytest.mark.django_db
+def test_completion_api_waits_for_patient_answer():
+    _, student, assignment = make_exam_data(suffix="0")
+    session = start_session(assignment=assignment, student=student).session
+    Message.objects.create(
+        session=session,
+        sequence=1,
+        role=MessageRole.STUDENT,
+        content="仍在等待回答的问题",
+        client_message_id="api_processing_question_01",
+        response_status=ResponseStatus.PROCESSING,
+    )
+    client = APIClient()
+    client.force_authenticate(student)
+    response = client.post(
+        reverse("student-session-complete", kwargs={"session_id": session.id}),
+        {"expected_revision": 0, "case_record": case_record_payload(correct=True)},
+        format="json",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "session_locked"
+    assert "正在生成" in response.json()["detail"]
+    session.refresh_from_db()
+    assert session.status == SessionStatus.ACTIVE
+    assert session.submissions.count() == 0
+
+    session.messages.filter(role=MessageRole.STUDENT).update(
+        response_status=ResponseStatus.COMPLETED
+    )
+    blank_record = {field: "" for field in case_record_payload(correct=True)}
+    allowed = client.post(
+        reverse("student-session-complete", kwargs={"session_id": session.id}),
+        {"expected_revision": 0, "case_record": blank_record},
+        format="json",
+    )
+    assert allowed.status_code == 201
+    assert allowed.json()["session"]["case_record"]["diagnosis"] == ""
+
+
+@pytest.mark.django_db
 def test_assignment_options_only_include_teachers_published_cases_and_classes():
     teacher, _, assignment = make_exam_data(suffix="0")
     draft = assignment.case_version.case.versions.get(status=VersionStatus.DRAFT)
@@ -876,6 +1016,19 @@ def test_assignment_options_only_include_teachers_published_cases_and_classes():
     assert unavailable.json()["case_versions"] == []
 
 
+def case_record_payload(*, correct: bool):
+    answer = "未明确判断"
+    return {
+        "chief_complaint": "牙龈疼痛已有三年" if correct else answer,
+        "present_illness": "牙龈疼痛反复发作" if correct else answer,
+        "past_history": "无特殊" if correct else answer,
+        "family_history": "无特殊" if correct else answer,
+        "diagnosis": "考虑牙周组织疾病，最终诊断为慢性牙周炎" if correct else answer,
+        "treatment": "申请牙周探诊" if correct else answer,
+        "medical_advice": "定期复诊" if correct else answer,
+    }
+
+
 def complete_scored_session(*, session, student, correct: bool):
     if correct:
         ask_patient(
@@ -884,24 +1037,12 @@ def complete_scored_session(*, session, student, correct: bool):
             content="牙龈疼痛有多久了？",
             client_message_id="scoring_question_01",
         )
-    answers = {
-        SubmissionType.HISTORY_SUMMARY: "牙龈疼痛已有三年",
-        SubmissionType.INITIAL_REASONING: "考虑牙周组织疾病",
-        SubmissionType.TEST_SELECTION: "申请牙周探诊",
-        SubmissionType.FINAL_REASONING: "最终诊断为慢性牙周炎",
-    }
-    for submission_type in (
-        SubmissionType.HISTORY_SUMMARY,
-        SubmissionType.INITIAL_REASONING,
-        SubmissionType.TEST_SELECTION,
-        SubmissionType.FINAL_REASONING,
-    ):
-        submit_stage(
-            session=session,
-            student=student,
-            submission_type=submission_type,
-            payload={"text": answers[submission_type] if correct else "未明确判断"},
-        )
+    complete_session(
+        session=session,
+        student=student,
+        case_record=case_record_payload(correct=correct),
+        expected_revision=0,
+    )
 
 
 @pytest.mark.django_db
@@ -1069,7 +1210,7 @@ def test_missing_answers_generate_omissions_errors_and_teacher_record():
     assert record.status_code == 200
     assert record.json()["student_email"] == student.email
     assert len(record.json()["messages"]) == 0
-    assert len(record.json()["submissions"]) == 4
+    assert record.json()["case_record"]["chief_complaint"] == "未明确判断"
     assert len(record.json()["assessment"]["scoring_items"]) == 5
     assert record.json()["standard_diagnoses"][0]["name"] == "慢性牙周炎"
 
@@ -1381,7 +1522,7 @@ def test_retention_command_previews_then_deletes_only_safe_expired_data():
 
 
 @pytest.mark.django_db
-def test_interview_cannot_finish_while_patient_answer_is_processing():
+def test_session_cannot_finish_while_patient_answer_is_processing():
     _, student, assignment = make_exam_data(suffix="4")
     session = start_session(assignment=assignment, student=student).session
     Message.objects.create(
@@ -1393,10 +1534,10 @@ def test_interview_cannot_finish_while_patient_answer_is_processing():
         response_status=ResponseStatus.PROCESSING,
     )
 
-    with pytest.raises(StageLockedError, match="正在生成"):
-        submit_stage(
+    with pytest.raises(SessionLockedError, match="正在生成"):
+        complete_session(
             session=session,
             student=student,
-            submission_type=SubmissionType.HISTORY_SUMMARY,
-            payload={"text": "尝试提前结束"},
+            case_record=case_record_payload(correct=True),
+            expected_revision=0,
         )

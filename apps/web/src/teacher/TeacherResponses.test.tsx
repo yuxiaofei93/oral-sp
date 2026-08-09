@@ -127,7 +127,28 @@ describe('TeacherResponses', () => {
                 { id: 'm1', sequence: 1, role: 'student', content: '疼了多久？' },
                 { id: 'm2', sequence: 2, role: 'patient', content: '三年了。' },
               ],
-              submissions: [],
+              case_draft: {
+                chief_complaint: '牙龈疼痛约三年。',
+                present_illness: '三年前开始反复牙龈疼痛。',
+                past_history: '否认重大疾病史。',
+                family_history: '无相关家族史。',
+                diagnosis: '慢性牙周炎。',
+                treatment: '完善牙周探诊。',
+                medical_advice: '保持口腔卫生，按期复诊。',
+              },
+              case_draft_revision: 2,
+              case_record: {
+                chief_complaint: '牙龈疼痛约三年。',
+                present_illness: '三年前开始反复牙龈疼痛。',
+                past_history: '否认重大疾病史。',
+                family_history: '无相关家族史。',
+                specialty_exam: '牙龈红肿，探诊出血。',
+                diagnosis: '慢性牙周炎。',
+                treatment: '完善牙周探诊。',
+                medical_advice: '保持口腔卫生，按期复诊。',
+                submitted_at: '2026-08-04T00:10:00Z',
+              },
+              physical_exam_result: null,
               assessment: {
                 automatic_score: 8,
                 final_score: aiGenerated ? 8.75 : 8,
@@ -193,7 +214,10 @@ describe('TeacherResponses', () => {
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '学生甲的答卷' })).toBeInTheDocument())
     expect(screen.getByText(/学生：疼了多久/)).toBeInTheDocument()
-    expect(screen.getByText(/慢性牙周炎/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '病例记录' })).toBeInTheDocument()
+    expect(screen.getByText('牙龈疼痛约三年。')).toBeInTheDocument()
+    expect(screen.getByText('牙龈红肿，探诊出血。')).toBeInTheDocument()
+    expect(screen.getAllByText(/慢性牙周炎/).length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: '生成 AI 辅助评价' }))
     await waitFor(() => expect(screen.getByText('评价已生成')).toBeInTheDocument())
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/session-1/ai-evaluation/'))).toBe(true)
