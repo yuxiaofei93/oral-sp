@@ -1380,7 +1380,6 @@ h1 {
   cursor: default;
 }
 
-.case-record-section textarea::placeholder,
 .question-form input::placeholder {
   color: #91a29e;
 }
