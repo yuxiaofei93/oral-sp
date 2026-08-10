@@ -1,6 +1,4 @@
 import os
-import secrets
-import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -10,23 +8,19 @@ from django.utils import timezone
 
 from modules.accounts.models import RoleCode
 from modules.cases.models import DisclosureMode, PhysicalExam, VersionStatus
-from modules.cases.services import effective_patient_prompt, effective_patient_questions
+from modules.cases.services import effective_patient_prompt
 
 from .gateways import (
     PATIENT_ANSWER_PROMPT_VERSION,
-    PATIENT_INITIATIVE_QUESTION_PROMPT_VERSION,
-    PATIENT_INITIATIVE_RESPONSE_PROMPT_VERSION,
     PATIENT_ROUTE_PROMPT_VERSION,
     PHYSICAL_EXAM_INTENT,
     GatewayError,
     GatewayResult,
-    InitiativeResponseResult,
     PatientFact,
     PatientGateway,
     RoutingResult,
     answer_repeats_written_fact,
     get_patient_gateway,
-    initiative_request_hash,
     request_hash,
     spoken_patient_fallback,
 )
@@ -41,12 +35,6 @@ from .models import (
     MessageRole,
     ModelCall,
     ModelCallStatus,
-    PatientInitiativeSchedule,
-    PatientQuestionAttempt,
-    PatientQuestionAttemptKind,
-    PatientQuestionAttemptOutcome,
-    PatientQuestionState,
-    PatientQuestionStatus,
     PhysicalExamRelease,
     ResponseStatus,
     SessionStage,
@@ -69,8 +57,6 @@ from .reviews import (
 from .scoring import generate_assessment
 
 RETENTION_DAYS = 180
-PATIENT_INITIATIVE_IDLE_SECONDS = 30
-PATIENT_INITIATIVE_CLAIM_SECONDS = 45
 
 
 class SimulationError(Exception):
@@ -105,10 +91,6 @@ class FeedbackUnavailableError(SimulationError):
     code = "feedback_unavailable"
 
 
-class PatientInitiativeUnavailableError(SimulationError):
-    code = "patient_initiative_unavailable"
-
-
 @dataclass(frozen=True)
 class StartSessionResult:
     session: SimulationSession
@@ -121,12 +103,6 @@ class ExchangeResult:
     patient_message: Message | None
     reused: bool
     interaction_type: str
-
-
-@dataclass(frozen=True)
-class InitiativeTriggerResult:
-    patient_message: Message | None
-    reused: bool
 
 
 def create_assignment(
@@ -400,454 +376,6 @@ def _diagnosis_leaked(session: SimulationSession, answer: str) -> bool:
     return False
 
 
-def patient_initiative_payload(session: SimulationSession) -> dict:
-    configured = [
-        item
-        for item in effective_patient_questions(session.case_version)
-        if item.get("enabled")
-    ]
-    enabled = bool(session.case_version.patient_questions_enabled and configured)
-    schedule = PatientInitiativeSchedule.objects.filter(session=session).first()
-    if schedule is None:
-        return {
-            "enabled": enabled,
-            "phase": "inactive",
-            "activated_at": None,
-            "next_due_at": None,
-            "active_message_id": None,
-        }
-    states = list(PatientQuestionState.objects.filter(session=session))
-    pending = next(
-        (state for state in states if state.status == PatientQuestionStatus.PENDING),
-        None,
-    )
-    complete = bool(states) and all(
-        state.status == PatientQuestionStatus.ADDRESSED for state in states
-    )
-    return {
-        "enabled": enabled,
-        "phase": (
-            "complete"
-            if complete
-            else "awaiting_student"
-            if pending
-            else "idle"
-        ),
-        "activated_at": schedule.activated_at,
-        "next_due_at": schedule.next_due_at,
-        "active_message_id": (
-            str(pending.current_question_message_id)
-            if pending and pending.current_question_message_id
-            else None
-        ),
-    }
-
-
-def activate_patient_initiative(*, session: SimulationSession, student) -> SimulationSession:
-    require_active_session(session=session, student=student)
-    if not PhysicalExamRelease.objects.filter(session=session).exists():
-        raise PatientInitiativeUnavailableError("完成并关闭首次体格检查后才能激活患者主动提问。")
-    configured = [
-        dict(item)
-        for item in effective_patient_questions(session.case_version)
-        if item.get("enabled")
-    ]
-    if not session.case_version.patient_questions_enabled or not configured:
-        return session
-    now = timezone.now()
-    with transaction.atomic():
-        locked = (
-            SimulationSession.objects.select_for_update()
-            .select_related("assignment", "case_version")
-            .get(pk=session.pk)
-        )
-        if _expire_if_needed(locked, now=now):
-            raise SessionExpiredError("考试时间已经结束，当前内容已自动保存。")
-        schedule, created = PatientInitiativeSchedule.objects.get_or_create(
-            session=locked,
-            defaults={
-                "activated_at": now,
-                "next_due_at": now + timedelta(seconds=PATIENT_INITIATIVE_IDLE_SECONDS),
-            },
-        )
-        if created:
-            PatientQuestionState.objects.bulk_create(
-                [
-                    PatientQuestionState(
-                        session=locked,
-                        question_id=str(item["id"]),
-                        base_question=str(item["base_question"]),
-                        answer_criteria=str(item["answer_criteria"]),
-                    )
-                    for item in configured
-                ]
-            )
-        return locked
-
-
-def _patient_profile_payload(session: SimulationSession) -> dict:
-    profile = session.case_version.patient_profile
-    return {
-        "age": profile.age,
-        "sex": profile.sex,
-        "occupation": profile.occupation,
-        "education": profile.education,
-        "personality": profile.personality,
-        "emotion": profile.emotion,
-        "cooperation": profile.cooperation,
-        "medical_literacy": profile.medical_literacy,
-    }
-
-
-def _claim_due_patient_question(*, session: SimulationSession, now) -> dict | None:
-    with transaction.atomic():
-        locked_session = (
-            SimulationSession.objects.select_for_update()
-            .select_related("assignment", "case_version", "case_version__patient_profile")
-            .get(pk=session.pk)
-        )
-        if _expire_if_needed(locked_session, now=now):
-            raise SessionExpiredError("考试时间已经结束，当前内容已自动保存。")
-        if locked_session.status != SessionStatus.ACTIVE:
-            raise SessionLockedError("该问诊会话已经结束。")
-        schedule = PatientInitiativeSchedule.objects.select_for_update().filter(
-            session=locked_session
-        ).first()
-        if schedule is None:
-            raise PatientInitiativeUnavailableError("患者主动提问尚未激活。")
-        if schedule.generation_token:
-            claim_expired = bool(
-                schedule.generation_started_at is None
-                or schedule.generation_started_at
-                <= now - timedelta(seconds=PATIENT_INITIATIVE_CLAIM_SECONDS)
-            )
-            if not claim_expired:
-                return None
-            schedule.generation_token = ""
-            schedule.generation_started_at = None
-            schedule.next_due_at = schedule.next_due_at or now
-            schedule.save(
-                update_fields=[
-                    "generation_token",
-                    "generation_started_at",
-                    "next_due_at",
-                    "updated_at",
-                ]
-            )
-        if schedule.next_due_at is None or schedule.next_due_at > now:
-            return None
-        if Message.objects.filter(
-            session=locked_session,
-            role=MessageRole.STUDENT,
-            response_status=ResponseStatus.PROCESSING,
-        ).exists():
-            return None
-
-        pending = PatientQuestionState.objects.select_for_update().filter(
-            session=locked_session,
-            status=PatientQuestionStatus.PENDING,
-        ).first()
-        previous_attempt_id = None
-        reminder = False
-        if pending:
-            previous_attempt = pending.attempts.filter(
-                outcome=PatientQuestionAttemptOutcome.PENDING
-            ).order_by("-created_at").first()
-            if pending.reminder_count >= 1:
-                if previous_attempt:
-                    previous_attempt.outcome = PatientQuestionAttemptOutcome.SILENT
-                    previous_attempt.evaluated_at = now
-                    previous_attempt.reason = "患者提醒后 30 秒仍未收到学生回应。"
-                    previous_attempt.save(
-                        update_fields=["outcome", "evaluated_at", "reason"]
-                    )
-                pending.status = PatientQuestionStatus.DEFERRED
-                pending.reminder_count = 0
-                pending.current_question_message = None
-                pending.eligible_at = now + timedelta(
-                    seconds=PATIENT_INITIATIVE_IDLE_SECONDS
-                )
-                pending.save(
-                    update_fields=[
-                        "status",
-                        "reminder_count",
-                        "current_question_message",
-                        "eligible_at",
-                        "updated_at",
-                    ]
-                )
-                schedule.next_due_at = pending.eligible_at
-                schedule.generation_token = ""
-                schedule.generation_started_at = None
-                schedule.save(
-                    update_fields=[
-                        "next_due_at",
-                        "generation_token",
-                        "generation_started_at",
-                        "updated_at",
-                    ]
-                )
-                return None
-            reminder = True
-            state = pending
-            previous_attempt_id = previous_attempt.id if previous_attempt else None
-        else:
-            unasked = list(
-                PatientQuestionState.objects.select_for_update().filter(
-                    session=locked_session,
-                    status=PatientQuestionStatus.UNASKED,
-                )
-            )
-            candidates = unasked
-            if not candidates:
-                candidates = list(
-                    PatientQuestionState.objects.select_for_update().filter(
-                        session=locked_session,
-                        status=PatientQuestionStatus.DEFERRED,
-                    ).filter(Q(eligible_at__isnull=True) | Q(eligible_at__lte=now))
-                )
-            if not candidates:
-                incomplete = PatientQuestionState.objects.filter(
-                    session=locked_session
-                ).exclude(status=PatientQuestionStatus.ADDRESSED)
-                if not incomplete.exists():
-                    schedule.next_due_at = None
-                    schedule.save(update_fields=["next_due_at", "updated_at"])
-                else:
-                    earliest = incomplete.order_by("eligible_at").values_list(
-                        "eligible_at", flat=True
-                    ).first()
-                    schedule.next_due_at = earliest or (
-                        now + timedelta(seconds=PATIENT_INITIATIVE_IDLE_SECONDS)
-                    )
-                    schedule.save(update_fields=["next_due_at", "updated_at"])
-                return None
-            state = secrets.choice(candidates)
-
-        token = uuid.uuid4().hex
-        schedule.generation_token = token
-        schedule.generation_started_at = now
-        schedule.generation_anchor_sequence = locked_session.last_message_sequence
-        schedule.next_due_at = None
-        schedule.save(
-            update_fields=[
-                "generation_token",
-                "generation_started_at",
-                "generation_anchor_sequence",
-                "next_due_at",
-                "updated_at",
-            ]
-        )
-        return {
-            "session": locked_session,
-            "state_id": state.id,
-            "token": token,
-            "anchor_sequence": locked_session.last_message_sequence,
-            "reminder": reminder,
-            "previous_attempt_id": previous_attempt_id,
-            "base_question": state.base_question,
-            "patient_prompt": effective_patient_prompt(locked_session.case_version),
-            "patient_profile": _patient_profile_payload(locked_session),
-            "previous_phrasings": list(
-                state.attempts.exclude(patient_message__isnull=True)
-                .order_by("created_at")
-                .values_list("patient_message__content", flat=True)
-            ),
-        }
-
-
-def trigger_patient_initiative(
-    *,
-    session: SimulationSession,
-    student,
-    gateway: PatientGateway | None = None,
-) -> InitiativeTriggerResult:
-    require_active_session(session=session, student=student)
-    now = timezone.now()
-    claim = _claim_due_patient_question(session=session, now=now)
-    if claim is None:
-        pending = PatientQuestionState.objects.filter(
-            session=session,
-            status=PatientQuestionStatus.PENDING,
-        ).select_related("current_question_message").first()
-        return InitiativeTriggerResult(
-            patient_message=(pending.current_question_message if pending else None),
-            reused=True,
-        )
-
-    patient_gateway = gateway
-    generation_error = ""
-    payload = {
-        "base_question": claim["base_question"],
-        "patient_prompt": claim["patient_prompt"],
-        "patient_profile": claim["patient_profile"],
-        "previous_phrasings": claim["previous_phrasings"],
-        "reminder": claim["reminder"],
-    }
-    try:
-        patient_gateway = patient_gateway or get_patient_gateway()
-        generated = patient_gateway.generate_initiative_question(**payload)
-        content = generated.question
-        call_status = ModelCallStatus.SUCCEEDED
-    except GatewayError as error:
-        generation_error = error.code
-        content = claim["base_question"]
-        client = getattr(patient_gateway, "client", None)
-        from .gateways import InitiativeQuestionResult
-
-        generated = InitiativeQuestionResult(
-            question=content,
-            provider=(
-                getattr(client, "provider", "")
-                or os.environ.get("LLM_PROVIDER", "unavailable")
-            ),
-            model=(
-                getattr(client, "model", "")
-                or os.environ.get("LLM_MODEL", "unavailable")
-            ),
-            latency_ms=1,
-        )
-        call_status = ModelCallStatus.FAILED
-
-    saved_message = None
-    with transaction.atomic():
-        locked_session = SimulationSession.objects.select_for_update().get(pk=session.pk)
-        schedule = PatientInitiativeSchedule.objects.select_for_update().get(
-            session=locked_session
-        )
-        state = PatientQuestionState.objects.select_for_update().get(pk=claim["state_id"])
-        if (
-            schedule.generation_token != claim["token"]
-            or locked_session.last_message_sequence != claim["anchor_sequence"]
-            or locked_session.status != SessionStatus.ACTIVE
-        ):
-            if schedule.generation_token == claim["token"]:
-                schedule.generation_token = ""
-                schedule.generation_started_at = None
-                schedule.save(
-                    update_fields=[
-                        "generation_token",
-                        "generation_started_at",
-                        "updated_at",
-                    ]
-                )
-            ModelCall.objects.create(
-                session=locked_session,
-                provider=generated.provider,
-                model=generated.model,
-                prompt_version=PATIENT_INITIATIVE_QUESTION_PROMPT_VERSION,
-                request_hash=initiative_request_hash(payload),
-                matched_fact_codes=[],
-                status=ModelCallStatus.FAILED,
-                latency_ms=generated.latency_ms,
-                input_tokens=generated.input_tokens,
-                output_tokens=generated.output_tokens,
-                error_code="stale_generation",
-            )
-            return InitiativeTriggerResult(patient_message=None, reused=True)
-
-        locked_session.last_message_sequence += 1
-        locked_session.save(update_fields=["last_message_sequence", "updated_at"])
-        saved_message = Message.objects.create(
-            session=locked_session,
-            sequence=locked_session.last_message_sequence,
-            role=MessageRole.PATIENT,
-            kind=MessageKind.PATIENT_INITIATED_QUESTION,
-            content=content,
-        )
-        if claim["previous_attempt_id"]:
-            previous = PatientQuestionAttempt.objects.select_for_update().filter(
-                pk=claim["previous_attempt_id"],
-                outcome=PatientQuestionAttemptOutcome.PENDING,
-            ).first()
-            if previous:
-                previous.outcome = PatientQuestionAttemptOutcome.SILENT
-                previous.evaluated_at = now
-                previous.reason = "患者提问后 30 秒未收到学生回应。"
-                previous.save(update_fields=["outcome", "evaluated_at", "reason"])
-        PatientQuestionAttempt.objects.create(
-            state=state,
-            kind=(
-                PatientQuestionAttemptKind.REMINDER
-                if claim["reminder"]
-                else PatientQuestionAttemptKind.INITIAL
-            ),
-            patient_message=saved_message,
-        )
-        state.status = PatientQuestionStatus.PENDING
-        state.asked_count += 1
-        state.reminder_count = 1 if claim["reminder"] else 0
-        state.current_question_message = saved_message
-        state.eligible_at = None
-        state.save(
-            update_fields=[
-                "status",
-                "asked_count",
-                "reminder_count",
-                "current_question_message",
-                "eligible_at",
-                "updated_at",
-            ]
-        )
-        schedule.next_due_at = saved_message.created_at + timedelta(
-            seconds=PATIENT_INITIATIVE_IDLE_SECONDS
-        )
-        schedule.generation_token = ""
-        schedule.generation_started_at = None
-        schedule.save(
-            update_fields=[
-                "next_due_at",
-                "generation_token",
-                "generation_started_at",
-                "updated_at",
-            ]
-        )
-        ModelCall.objects.create(
-            session=locked_session,
-            patient_message=saved_message,
-            provider=generated.provider,
-            model=generated.model,
-            prompt_version=PATIENT_INITIATIVE_QUESTION_PROMPT_VERSION,
-            request_hash=initiative_request_hash(payload),
-            matched_fact_codes=[],
-            status=call_status,
-            latency_ms=generated.latency_ms,
-            input_tokens=generated.input_tokens,
-            output_tokens=generated.output_tokens,
-            error_code=generation_error,
-        )
-    return InitiativeTriggerResult(patient_message=saved_message, reused=False)
-
-
-def _reschedule_patient_initiative(*, session_id, anchor_time=None) -> None:
-    schedule = PatientInitiativeSchedule.objects.filter(session_id=session_id).first()
-    if schedule is None:
-        return
-    pending = PatientQuestionState.objects.filter(
-        session_id=session_id,
-        status=PatientQuestionStatus.PENDING,
-    ).exists()
-    incomplete = PatientQuestionState.objects.filter(session_id=session_id).exclude(
-        status=PatientQuestionStatus.ADDRESSED
-    ).exists()
-    schedule.generation_token = ""
-    schedule.generation_started_at = None
-    schedule.next_due_at = (
-        None
-        if pending or not incomplete
-        else (anchor_time or timezone.now())
-        + timedelta(seconds=PATIENT_INITIATIVE_IDLE_SECONDS)
-    )
-    schedule.save(
-        update_fields=[
-            "generation_token",
-            "generation_started_at",
-            "next_due_at",
-            "updated_at",
-        ]
-    )
-
-
 def _create_student_message(*, session: SimulationSession, content: str, client_message_id: str):
     with transaction.atomic():
         locked = SimulationSession.objects.select_for_update().select_related("assignment").get(
@@ -866,29 +394,6 @@ def _create_student_message(*, session: SimulationSession, content: str, client_
         if existing:
             return existing, True
 
-        pending_state = (
-            PatientQuestionState.objects.select_for_update()
-            .filter(session=locked, status=PatientQuestionStatus.PENDING)
-            .select_related("current_question_message")
-            .first()
-        )
-        reply_to = pending_state.current_question_message if pending_state else None
-        schedule = PatientInitiativeSchedule.objects.select_for_update().filter(
-            session=locked
-        ).first()
-        if schedule:
-            schedule.next_due_at = None
-            schedule.generation_token = ""
-            schedule.generation_started_at = None
-            schedule.save(
-                update_fields=[
-                    "next_due_at",
-                    "generation_token",
-                    "generation_started_at",
-                    "updated_at",
-                ]
-            )
-
         locked.last_message_sequence += 1
         locked.save(update_fields=["last_message_sequence", "updated_at"])
         try:
@@ -898,7 +403,6 @@ def _create_student_message(*, session: SimulationSession, content: str, client_
                 role=MessageRole.STUDENT,
                 content=content,
                 client_message_id=client_message_id,
-                reply_to=reply_to,
                 response_status=ResponseStatus.PROCESSING,
             )
         except IntegrityError:
@@ -977,10 +481,6 @@ def _save_patient_response(
             output_tokens=result.output_tokens,
             error_code=call_error,
         )
-        _reschedule_patient_initiative(
-            session_id=locked_session.id,
-            anchor_time=patient_message.created_at,
-        )
         return patient_message
 
 
@@ -1017,17 +517,6 @@ def _existing_interaction_type(student_message: Message) -> str:
     reply = Message.objects.filter(reply_to=student_message).first()
     if reply and reply.kind == MessageKind.PHYSICAL_EXAM_CONSENT:
         return "physical_exam_reopened"
-    if ModelCall.objects.filter(
-        student_message=student_message,
-        prompt_version=PATIENT_INITIATIVE_RESPONSE_PROMPT_VERSION,
-        routed_intent=PHYSICAL_EXAM_INTENT,
-    ).exists():
-        return "physical_exam_reopened"
-    if reply and reply.kind in (
-        MessageKind.PATIENT_INITIATED_QUESTION,
-        MessageKind.PATIENT_REACTION,
-    ):
-        return "patient_initiative_response"
     return "patient_answer"
 
 
@@ -1088,406 +577,7 @@ def _save_physical_exam_response(
         locked_student.response_status = ResponseStatus.COMPLETED
         locked_student.error_code = ""
         locked_student.save(update_fields=["response_status", "error_code"])
-        _reschedule_patient_initiative(
-            session_id=locked_session.id,
-            anchor_time=consent_message.created_at,
-        )
         return consent_message, interaction_type
-
-
-def _pending_initiative_attempt(student_message: Message):
-    if not student_message.reply_to_id:
-        return None
-    return (
-        PatientQuestionAttempt.objects.filter(
-            patient_message_id=student_message.reply_to_id,
-            outcome=PatientQuestionAttemptOutcome.PENDING,
-            state__status=PatientQuestionStatus.PENDING,
-        )
-        .select_related("state", "patient_message")
-        .first()
-    )
-
-
-def _initiative_gateway_failure(
-    *,
-    student_message: Message,
-    gateway,
-    prompt_version: str,
-    hashed_request: str,
-    error: GatewayError,
-) -> None:
-    student_message.response_status = ResponseStatus.FAILED
-    student_message.error_code = error.code
-    student_message.save(update_fields=["response_status", "error_code"])
-    client = getattr(gateway, "client", None)
-    ModelCall.objects.create(
-        session=student_message.session,
-        student_message=student_message,
-        provider=(
-            getattr(client, "provider", "")
-            or os.environ.get("LLM_PROVIDER", "unavailable")
-        ),
-        model=(
-            getattr(client, "model", "")
-            or os.environ.get("LLM_MODEL", "unavailable")
-        ),
-        prompt_version=prompt_version,
-        request_hash=hashed_request,
-        matched_fact_codes=[],
-        status=ModelCallStatus.FAILED,
-        error_code=error.code,
-    )
-    schedule = PatientInitiativeSchedule.objects.filter(
-        session=student_message.session
-    ).first()
-    if schedule:
-        schedule.next_due_at = timezone.now() + timedelta(
-            seconds=PATIENT_INITIATIVE_IDLE_SECONDS
-        )
-        schedule.save(update_fields=["next_due_at", "updated_at"])
-
-
-def _handle_initiative_response(
-    *,
-    session: SimulationSession,
-    student_message: Message,
-    attempt: PatientQuestionAttempt,
-    gateway: PatientGateway | None,
-) -> ExchangeResult:
-    facts = _patient_facts(session)
-    history = _recent_conversation(session=session, current_message=student_message)
-    fact_by_code = {fact.code: fact for fact in facts}
-    patient_gateway = gateway
-    try:
-        physical_exam_available = bool(
-            session.case_version.physical_exam.findings_text.strip()
-        )
-    except PhysicalExam.DoesNotExist:
-        physical_exam_available = False
-    evaluation_payload = {
-        "patient_question": attempt.patient_message.content,
-        "answer_criteria": attempt.state.answer_criteria,
-        "student_message": student_message.content,
-        "history": history,
-        "fact_codes": [fact.code for fact in facts],
-        "physical_exam_available": physical_exam_available,
-    }
-    evaluation_hash = initiative_request_hash(evaluation_payload)
-    try:
-        patient_gateway = patient_gateway or get_patient_gateway()
-        decision: InitiativeResponseResult = patient_gateway.evaluate_initiative_response(
-            patient_question=attempt.patient_message.content,
-            answer_criteria=attempt.state.answer_criteria,
-            student_message=student_message.content,
-            facts=facts,
-            history=history,
-            physical_exam_available=physical_exam_available,
-        )
-        if not set(decision.fact_codes).issubset(fact_by_code):
-            raise GatewayError(
-                "主动问题回应判定返回了未知事实。",
-                code="invalid_initiative_facts",
-            )
-        ModelCall.objects.create(
-            session=session,
-            student_message=student_message,
-            provider=decision.provider,
-            model=decision.model,
-            prompt_version=PATIENT_INITIATIVE_RESPONSE_PROMPT_VERSION,
-            request_hash=evaluation_hash,
-            matched_fact_codes=decision.fact_codes,
-            routed_intent=decision.intent,
-            route_confidence=decision.confidence,
-            status=ModelCallStatus.SUCCEEDED,
-            latency_ms=decision.latency_ms,
-            input_tokens=decision.input_tokens,
-            output_tokens=decision.output_tokens,
-        )
-    except GatewayError as error:
-        _initiative_gateway_failure(
-            student_message=student_message,
-            gateway=patient_gateway,
-            prompt_version=PATIENT_INITIATIVE_RESPONSE_PROMPT_VERSION,
-            hashed_request=evaluation_hash,
-            error=error,
-        )
-        raise ModelUnavailableError("患者语义理解模型暂时不可用，请稍后重试。") from error
-
-    selected_facts = [fact_by_code[code] for code in decision.fact_codes]
-    suffix = ""
-    answer_result = None
-    answer_status = ModelCallStatus.SUCCEEDED
-    answer_error = ""
-    interaction_type = "patient_initiative_response"
-    if decision.asks_patient_question:
-        if decision.intent == PHYSICAL_EXAM_INTENT:
-            suffix = "刚才已经检查过了，您可以再查看检查结果。"
-            interaction_type = "physical_exam_reopened"
-        elif not selected_facts:
-            suffix = "这个我不太清楚。要不我们还是聊聊我这次口腔不舒服的情况吧。"
-        else:
-            try:
-                answer_result = patient_gateway.answer(
-                    question=student_message.content,
-                    facts=selected_facts,
-                    history=history,
-                    patient_prompt=effective_patient_prompt(session.case_version),
-                )
-            except GatewayError as error:
-                answer_hash = request_hash(
-                    question=student_message.content,
-                    facts=selected_facts,
-                    history=history,
-                    patient_prompt=effective_patient_prompt(session.case_version),
-                )
-                _initiative_gateway_failure(
-                    student_message=student_message,
-                    gateway=patient_gateway,
-                    prompt_version=PATIENT_ANSWER_PROMPT_VERSION,
-                    hashed_request=answer_hash,
-                    error=error,
-                )
-                raise ModelUnavailableError("患者模型暂时不可用，请稍后重试。") from error
-            allowed_codes = {fact.code for fact in selected_facts}
-            invalid = (
-                not answer_result.fact_codes
-                or not set(answer_result.fact_codes).issubset(allowed_codes)
-                or _diagnosis_leaked(session, answer_result.answer)
-                or answer_repeats_written_fact(answer_result.answer, selected_facts)
-            )
-            if invalid:
-                answer_result = GatewayResult(
-                    answer=spoken_patient_fallback(
-                        selected_facts,
-                        question=student_message.content,
-                    ),
-                    fact_codes=[fact.code for fact in selected_facts],
-                    provider=answer_result.provider,
-                    model=answer_result.model,
-                    latency_ms=answer_result.latency_ms,
-                    input_tokens=answer_result.input_tokens,
-                    output_tokens=answer_result.output_tokens,
-                )
-                answer_status = ModelCallStatus.FAILED
-                answer_error = "response_validation_failed"
-            suffix = answer_result.answer
-
-    generation_result = None
-    generation_error = ""
-    if decision.addressed:
-        prefix = "好的，我明白了。"
-        next_status = PatientQuestionStatus.ADDRESSED
-    elif attempt.state.reminder_count == 0:
-        generation_payload = {
-            "base_question": attempt.state.base_question,
-            "patient_prompt": effective_patient_prompt(session.case_version),
-            "patient_profile": _patient_profile_payload(session),
-            "previous_phrasings": list(
-                attempt.state.attempts.exclude(patient_message__isnull=True)
-                .order_by("created_at")
-                .values_list("patient_message__content", flat=True)
-            ),
-            "reminder": True,
-        }
-        try:
-            generation_result = patient_gateway.generate_initiative_question(
-                **generation_payload
-            )
-            prefix = generation_result.question
-        except GatewayError as error:
-            generation_error = error.code
-            prefix = attempt.state.base_question
-        next_status = PatientQuestionStatus.PENDING
-    else:
-        prefix = "好吧，那我们先说别的，您方便时再告诉我。"
-        next_status = PatientQuestionStatus.DEFERRED
-
-    content = prefix if not suffix else f"{prefix.rstrip()} {suffix.lstrip()}"
-    now = timezone.now()
-    with transaction.atomic():
-        locked_session = SimulationSession.objects.select_for_update().get(pk=session.pk)
-        locked_student = Message.objects.select_for_update().get(pk=student_message.pk)
-        locked_attempt = (
-            PatientQuestionAttempt.objects.select_for_update()
-            .select_related("state")
-            .get(pk=attempt.pk)
-        )
-        existing = Message.objects.filter(reply_to=locked_student).first()
-        if existing:
-            return ExchangeResult(
-                locked_student,
-                existing,
-                True,
-                _existing_interaction_type(locked_student),
-            )
-        if (
-            locked_session.status != SessionStatus.ACTIVE
-            or locked_attempt.outcome != PatientQuestionAttemptOutcome.PENDING
-        ):
-            locked_student.response_status = ResponseStatus.FAILED
-            locked_student.error_code = "session_ended"
-            locked_student.save(update_fields=["response_status", "error_code"])
-            raise SessionExpiredError("会话已结束，本次患者回答未写入考试记录。")
-
-        locked_session.last_message_sequence += 1
-        locked_session.save(update_fields=["last_message_sequence", "updated_at"])
-        patient_message = Message.objects.create(
-            session=locked_session,
-            sequence=locked_session.last_message_sequence,
-            role=MessageRole.PATIENT,
-            kind=(
-                MessageKind.PATIENT_INITIATED_QUESTION
-                if next_status == PatientQuestionStatus.PENDING
-                else MessageKind.PATIENT_REACTION
-            ),
-            content=content,
-            reply_to=locked_student,
-        )
-        locked_student.response_status = ResponseStatus.COMPLETED
-        locked_student.error_code = answer_error
-        locked_student.save(update_fields=["response_status", "error_code"])
-        locked_attempt.student_message = locked_student
-        locked_attempt.reaction_message = patient_message
-        locked_attempt.outcome = (
-            PatientQuestionAttemptOutcome.ADDRESSED
-            if decision.addressed
-            else PatientQuestionAttemptOutcome.EVADED
-        )
-        locked_attempt.confidence = decision.confidence
-        locked_attempt.reason = decision.reason
-        locked_attempt.evaluated_at = now
-        locked_attempt.save(
-            update_fields=[
-                "student_message",
-                "reaction_message",
-                "outcome",
-                "confidence",
-                "reason",
-                "evaluated_at",
-            ]
-        )
-        state = PatientQuestionState.objects.select_for_update().get(
-            pk=locked_attempt.state_id
-        )
-        state.status = next_status
-        state.last_decision_confidence = decision.confidence
-        state.last_decision_reason = decision.reason
-        schedule = PatientInitiativeSchedule.objects.select_for_update().get(
-            session=locked_session
-        )
-        if next_status == PatientQuestionStatus.ADDRESSED:
-            state.current_question_message = None
-            state.addressed_by_message = locked_student
-            state.addressed_at = now
-            state.reminder_count = 0
-            state.eligible_at = None
-            remaining = PatientQuestionState.objects.filter(session=locked_session).exclude(
-                pk=state.pk
-            ).exclude(status=PatientQuestionStatus.ADDRESSED).exists()
-            schedule.next_due_at = (
-                patient_message.created_at
-                + timedelta(seconds=PATIENT_INITIATIVE_IDLE_SECONDS)
-                if remaining
-                else None
-            )
-        elif next_status == PatientQuestionStatus.PENDING:
-            state.current_question_message = patient_message
-            state.reminder_count = 1
-            state.eligible_at = None
-            PatientQuestionAttempt.objects.create(
-                state=state,
-                kind=PatientQuestionAttemptKind.REMINDER,
-                patient_message=patient_message,
-            )
-            schedule.next_due_at = patient_message.created_at + timedelta(
-                seconds=PATIENT_INITIATIVE_IDLE_SECONDS
-            )
-        else:
-            state.current_question_message = None
-            state.reminder_count = 0
-            state.eligible_at = patient_message.created_at + timedelta(
-                seconds=PATIENT_INITIATIVE_IDLE_SECONDS
-            )
-            schedule.next_due_at = state.eligible_at
-        state.save(
-            update_fields=[
-                "status",
-                "current_question_message",
-                "addressed_by_message",
-                "addressed_at",
-                "reminder_count",
-                "eligible_at",
-                "last_decision_confidence",
-                "last_decision_reason",
-                "updated_at",
-            ]
-        )
-        schedule.generation_token = ""
-        schedule.generation_started_at = None
-        schedule.save(
-            update_fields=[
-                "next_due_at",
-                "generation_token",
-                "generation_started_at",
-                "updated_at",
-            ]
-        )
-        if answer_result is not None:
-            ModelCall.objects.create(
-                session=locked_session,
-                student_message=locked_student,
-                patient_message=patient_message,
-                provider=answer_result.provider,
-                model=answer_result.model,
-                prompt_version=PATIENT_ANSWER_PROMPT_VERSION,
-                request_hash=request_hash(
-                    question=locked_student.content,
-                    facts=selected_facts,
-                    history=history,
-                    patient_prompt=effective_patient_prompt(session.case_version),
-                ),
-                matched_fact_codes=answer_result.fact_codes,
-                status=answer_status,
-                latency_ms=answer_result.latency_ms,
-                input_tokens=answer_result.input_tokens,
-                output_tokens=answer_result.output_tokens,
-                error_code=answer_error,
-            )
-        if generation_result is not None or generation_error:
-            ModelCall.objects.create(
-                session=locked_session,
-                student_message=locked_student,
-                patient_message=patient_message,
-                provider=(
-                    generation_result.provider
-                    if generation_result
-                    else os.environ.get("LLM_PROVIDER", "unavailable")
-                ),
-                model=(
-                    generation_result.model
-                    if generation_result
-                    else os.environ.get("LLM_MODEL", "unavailable")
-                ),
-                prompt_version=PATIENT_INITIATIVE_QUESTION_PROMPT_VERSION,
-                request_hash=initiative_request_hash(generation_payload),
-                matched_fact_codes=[],
-                status=(
-                    ModelCallStatus.SUCCEEDED
-                    if generation_result
-                    else ModelCallStatus.FAILED
-                ),
-                latency_ms=generation_result.latency_ms if generation_result else 1,
-                input_tokens=(generation_result.input_tokens if generation_result else None),
-                output_tokens=(generation_result.output_tokens if generation_result else None),
-                error_code=generation_error,
-            )
-    return ExchangeResult(
-        student_message,
-        patient_message,
-        False,
-        interaction_type,
-    )
 
 
 def ask_patient(
@@ -1518,15 +608,6 @@ def ask_patient(
             None,
             reused=True,
             interaction_type="patient_answer",
-        )
-
-    initiative_attempt = _pending_initiative_attempt(student_message)
-    if initiative_attempt:
-        return _handle_initiative_response(
-            session=session,
-            student_message=student_message,
-            attempt=initiative_attempt,
-            gateway=gateway,
         )
 
     facts = _patient_facts(session)
@@ -1584,10 +665,6 @@ def ask_patient(
             matched_fact_codes=[],
             status=ModelCallStatus.FAILED,
             error_code=error.code,
-        )
-        _reschedule_patient_initiative(
-            session_id=session.id,
-            anchor_time=timezone.now(),
         )
         raise ModelUnavailableError("患者语义理解模型暂时不可用，请稍后重试。") from error
 
@@ -1657,10 +734,6 @@ def ask_patient(
             matched_fact_codes=[fact.code for fact in selected_facts],
             status=ModelCallStatus.FAILED,
             error_code=error.code,
-        )
-        _reschedule_patient_initiative(
-            session_id=session.id,
-            anchor_time=timezone.now(),
         )
         raise ModelUnavailableError("患者模型暂时不可用，请稍后重试。") from error
 

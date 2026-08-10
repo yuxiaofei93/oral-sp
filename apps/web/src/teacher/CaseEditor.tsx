@@ -5,7 +5,6 @@ import {
   CaseDraft,
   CaseFact,
   CaseTest,
-  PatientQuestionItem,
   deletePhysicalExamAsset,
   DiagnosisRule,
   publishCase,
@@ -17,7 +16,6 @@ import {
 const editorSections = [
   { id: 'basic-info', label: '基础信息' },
   { id: 'patient-prompt', label: '患者提示词' },
-  { id: 'patient-questions', label: '患者主动提问' },
   { id: 'patient-facts', label: '病情信息' },
   { id: 'physical-exam', label: '口腔体格检查' },
   { id: 'case-tests', label: '辅助检查资料' },
@@ -26,13 +24,6 @@ const editorSections = [
 ]
 
 const AUTO_SAVE_DELAY_MS = 500
-
-const emptyPatientQuestion = (): PatientQuestionItem => ({
-  id: `question_${globalThis.crypto.randomUUID().replaceAll('-', '')}`,
-  base_question: '',
-  answer_criteria: '',
-  enabled: true,
-})
 
 type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error'
 
@@ -205,44 +196,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     }))
   }
 
-  function setPatientQuestionsMode(mode: CaseDraft['patient_questions_mode']) {
-    updateDraft((current) => ({
-      ...current,
-      patient_questions_mode: mode,
-      patient_questions: mode === 'custom'
-        ? current.default_patient_questions.map((item) => ({ ...item }))
-        : [],
-      effective_patient_questions: current.default_patient_questions.map((item) => ({ ...item })),
-    }))
-  }
-
-  function updatePatientQuestion(index: number, patch: Partial<PatientQuestionItem>) {
-    updateDraft((current) => {
-      const patientQuestions = current.patient_questions.map((item, itemIndex) => (
-        itemIndex === index ? { ...item, ...patch } : item
-      ))
-      return {
-        ...current,
-        patient_questions: patientQuestions,
-        effective_patient_questions: patientQuestions,
-      }
-    })
-  }
-
-  function movePatientQuestion(index: number, direction: -1 | 1) {
-    updateDraft((current) => {
-      const target = index + direction
-      if (target < 0 || target >= current.patient_questions.length) return current
-      const patientQuestions = [...current.patient_questions]
-      ;[patientQuestions[index], patientQuestions[target]] = [patientQuestions[target], patientQuestions[index]]
-      return {
-        ...current,
-        patient_questions: patientQuestions,
-        effective_patient_questions: patientQuestions,
-      }
-    })
-  }
-
   function draftPayload(source: CaseDraft): Partial<CaseDraft> {
     return {
       title_internal: source.title_internal,
@@ -252,9 +205,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
       enabled_stages: source.enabled_stages,
       patient_prompt_mode: source.patient_prompt_mode,
       patient_prompt: source.patient_prompt,
-      patient_questions_enabled: source.patient_questions_enabled,
-      patient_questions_mode: source.patient_questions_mode,
-      patient_questions: source.patient_questions,
       patient_profile: source.patient_profile,
       physical_exam: source.physical_exam,
       facts: source.facts.map((fact) => ({
@@ -550,113 +500,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                 </small>
               </label>
             </div>
-          </EditorCard>
-
-          <EditorCard id="patient-questions" title="患者主动提问">
-            <p className="section-help">
-              首次关闭体格检查结果后，学生连续 30 秒未发送消息时，患者会从未完成问题中主动提问。发布病例后会固化当前问题列表。
-            </p>
-            <div className="form-grid">
-              <label className="checkbox-field">
-                <input
-                  type="checkbox"
-                  checked={draft.patient_questions_enabled}
-                  onChange={(event) => setField('patient_questions_enabled', event.target.checked)}
-                />
-                启用患者主动提问
-              </label>
-              <label>
-                问题来源
-                <select
-                  value={draft.patient_questions_mode}
-                  disabled={!draft.patient_questions_enabled}
-                  onChange={(event) => setPatientQuestionsMode(event.target.value as CaseDraft['patient_questions_mode'])}
-                >
-                  <option value="default">系统默认列表</option>
-                  <option value="custom">当前病例自定义</option>
-                </select>
-              </label>
-            </div>
-            {draft.patient_questions_enabled && (
-              <>
-                <p className="section-help">
-                  {draft.patient_questions_mode === 'default'
-                    ? '当前草稿跟随系统默认列表；发布后保存快照。'
-                    : '自定义问题仅影响当前病例。'}
-                </p>
-                <div className="repeat-list">
-                  {(draft.patient_questions_mode === 'default'
-                    ? draft.default_patient_questions
-                    : draft.patient_questions).map((item, index, items) => (
-                    <article className="repeat-item" key={item.id}>
-                      <div className="repeat-item__header">
-                        <strong>主动问题 {index + 1}</strong>
-                        {draft.patient_questions_mode === 'custom' && (
-                          <div>
-                            <button className="text-button" type="button" disabled={index === 0} onClick={() => movePatientQuestion(index, -1)}>上移</button>
-                            <button className="text-button" type="button" disabled={index === items.length - 1} onClick={() => movePatientQuestion(index, 1)}>下移</button>
-                            <button
-                              className="text-button"
-                              type="button"
-                              disabled={items.length <= 1}
-                              onClick={() => updateDraft((current) => {
-                                const patientQuestions = current.patient_questions.filter((_, itemIndex) => itemIndex !== index)
-                                return { ...current, patient_questions: patientQuestions, effective_patient_questions: patientQuestions }
-                              })}
-                            >删除</button>
-                          </div>
-                        )}
-                      </div>
-                      <div className="form-grid">
-                        <label className="form-grid__wide">
-                          基础问法
-                          <input
-                            value={item.base_question}
-                            maxLength={300}
-                            readOnly={draft.patient_questions_mode === 'default'}
-                            onChange={(event) => updatePatientQuestion(index, { base_question: event.target.value })}
-                            required
-                          />
-                        </label>
-                        <label className="form-grid__wide">
-                          实质回应判定要点
-                          <textarea
-                            value={item.answer_criteria}
-                            maxLength={1000}
-                            rows={3}
-                            readOnly={draft.patient_questions_mode === 'default'}
-                            onChange={(event) => updatePatientQuestion(index, { answer_criteria: event.target.value })}
-                            required
-                          />
-                        </label>
-                        <label className="checkbox-field">
-                          <input
-                            type="checkbox"
-                            checked={item.enabled}
-                            disabled={draft.patient_questions_mode === 'default'}
-                            onChange={(event) => updatePatientQuestion(index, { enabled: event.target.checked })}
-                          />
-                          启用这个问题
-                        </label>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-                {draft.patient_questions_mode === 'custom' && (
-                  <button
-                    className="button button--secondary"
-                    type="button"
-                    disabled={draft.patient_questions.length >= 20}
-                    onClick={() => updateDraft((current) => {
-                      const patientQuestions = [...current.patient_questions, emptyPatientQuestion()]
-                      return { ...current, patient_questions: patientQuestions, effective_patient_questions: patientQuestions }
-                    })}
-                  >
-                    添加主动问题
-                  </button>
-                )}
-              </>
-            )}
           </EditorCard>
 
           <EditorCard id="patient-facts" title={`患者信息 [${draft.facts.length}点]`}>

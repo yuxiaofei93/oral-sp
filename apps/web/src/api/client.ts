@@ -126,11 +126,6 @@ export type CaseDraft = {
   patient_prompt: string
   effective_patient_prompt: string
   default_patient_prompt: string
-  patient_questions_enabled: boolean
-  patient_questions_mode: 'default' | 'custom'
-  patient_questions: PatientQuestionItem[]
-  effective_patient_questions: PatientQuestionItem[]
-  default_patient_questions: PatientQuestionItem[]
   created_at: string
   updated_at: string
   patient_profile: PatientProfile
@@ -145,21 +140,6 @@ export type PatientPromptTemplate = {
   id: number
   name: string
   content: string
-  updated_by_name: string
-  updated_at: string
-}
-
-export type PatientQuestionItem = {
-  id: string
-  base_question: string
-  answer_criteria: string
-  enabled: boolean
-}
-
-export type PatientQuestionTemplate = {
-  id: number
-  name: string
-  questions: PatientQuestionItem[]
   updated_by_name: string
   updated_at: string
 }
@@ -204,21 +184,13 @@ export type SessionMessage = {
   id: string
   sequence: number
   role: 'student' | 'patient' | 'system'
-  kind: 'chat' | 'physical_exam_consent' | 'physical_exam_result' | 'patient_initiated_question' | 'patient_reaction'
+  kind: 'chat' | 'physical_exam_consent' | 'physical_exam_result'
   content: string
   client_message_id: string
   reply_to_id: string | null
   response_status: 'processing' | 'completed' | 'failed' | 'not_applicable'
   error_code: string
   created_at: string
-}
-
-export type PatientInitiativeState = {
-  enabled: boolean
-  phase: 'inactive' | 'idle' | 'awaiting_student' | 'complete'
-  activated_at: string | null
-  next_due_at: string | null
-  active_message_id: string | null
 }
 
 export type PhysicalExamResult = {
@@ -262,7 +234,6 @@ export type SimulationSession = {
   case_draft_revision: number
   case_record: StudentCaseRecord | null
   physical_exam_result: PhysicalExamResult | null
-  patient_initiative: PatientInitiativeState
 }
 
 export type SessionFeedback = {
@@ -536,11 +507,6 @@ const validationFieldLabels: Record<string, string> = {
   enabled_stages: '病例阶段',
   patient_prompt_mode: '提示词来源',
   patient_prompt: '患者问诊提示词',
-  patient_questions_enabled: '患者主动提问开关',
-  patient_questions_mode: '主动问题来源',
-  patient_questions: '患者主动问题',
-  base_question: '基础问法',
-  answer_criteria: '实质回应判定要点',
   display_name: '化名',
   age: '年龄',
   sex: '性别',
@@ -744,23 +710,6 @@ export function savePatientPromptTemplate(content: string): Promise<PatientPromp
   )
 }
 
-export async function getPatientQuestionTemplate(): Promise<PatientQuestionTemplate> {
-  const response = await fetch('/api/teacher/cases/patient-question-template/', {
-    credentials: 'same-origin',
-  })
-  return parseResponse<PatientQuestionTemplate>(response)
-}
-
-export function savePatientQuestionTemplate(
-  questions: PatientQuestionItem[],
-): Promise<PatientQuestionTemplate> {
-  return mutate<PatientQuestionTemplate>(
-    'PATCH',
-    '/api/teacher/cases/patient-question-template/',
-    { questions },
-  )
-}
-
 export async function getCaseDraft(caseId: string): Promise<CaseDraft> {
   const response = await fetch(`/api/teacher/cases/${caseId}/draft/`, {
     credentials: 'same-origin',
@@ -839,25 +788,9 @@ export function askPatient(
   student_message: SessionMessage
   patient_message: SessionMessage | null
   reused: boolean
-  interaction_type: 'patient_answer' | 'physical_exam_released' | 'physical_exam_reopened' | 'patient_initiative_response'
+  interaction_type: 'patient_answer' | 'physical_exam_released' | 'physical_exam_reopened'
 }> {
   return mutate('POST', `/api/student/sessions/${sessionId}/messages/`, payload)
-}
-
-export function activatePatientInitiative(
-  sessionId: string,
-): Promise<{ patient_initiative: PatientInitiativeState }> {
-  return mutate('POST', `/api/student/sessions/${sessionId}/patient-initiative/activate/`)
-}
-
-export function triggerPatientInitiative(
-  sessionId: string,
-): Promise<{
-  patient_message: SessionMessage | null
-  reused: boolean
-  patient_initiative: PatientInitiativeState
-}> {
-  return mutate('POST', `/api/student/sessions/${sessionId}/patient-initiative/trigger/`)
 }
 
 export function saveStudentCaseDraft(

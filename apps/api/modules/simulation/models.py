@@ -171,8 +171,6 @@ class MessageKind(models.TextChoices):
     CHAT = "chat", "普通消息"
     PHYSICAL_EXAM_CONSENT = "physical_exam_consent", "体格检查同意"
     PHYSICAL_EXAM_RESULT = "physical_exam_result", "体格检查结果"
-    PATIENT_INITIATED_QUESTION = "patient_initiated_question", "患者主动提问"
-    PATIENT_REACTION = "patient_reaction", "患者反馈"
 
 
 class ResponseStatus(models.TextChoices):
@@ -281,139 +279,6 @@ class PhysicalExamRelease(models.Model):
     released_at = models.DateTimeField(auto_now_add=True)
 
 
-class PatientQuestionStatus(models.TextChoices):
-    UNASKED = "unasked", "未提问"
-    PENDING = "pending", "等待回应"
-    DEFERRED = "deferred", "暂缓"
-    ADDRESSED = "addressed", "已回应"
-
-
-class PatientQuestionAttemptKind(models.TextChoices):
-    INITIAL = "initial", "首次提问"
-    REMINDER = "reminder", "提醒追问"
-
-
-class PatientQuestionAttemptOutcome(models.TextChoices):
-    PENDING = "pending", "等待回应"
-    ADDRESSED = "addressed", "已正面回应"
-    EVADED = "evaded", "未正面回应"
-    SILENT = "silent", "未收到回应"
-    CANCELED = "canceled", "已取消"
-
-
-class PatientInitiativeSchedule(models.Model):
-    session = models.OneToOneField(
-        SimulationSession,
-        on_delete=models.CASCADE,
-        related_name="patient_initiative_schedule",
-    )
-    activated_at = models.DateTimeField()
-    next_due_at = models.DateTimeField(null=True, blank=True)
-    generation_token = models.CharField(max_length=64, blank=True)
-    generation_started_at = models.DateTimeField(null=True, blank=True)
-    generation_anchor_sequence = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-
-class PatientQuestionState(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    session = models.ForeignKey(
-        SimulationSession,
-        on_delete=models.CASCADE,
-        related_name="patient_question_states",
-    )
-    question_id = models.CharField(max_length=80)
-    base_question = models.CharField(max_length=300)
-    answer_criteria = models.TextField()
-    status = models.CharField(
-        max_length=16,
-        choices=PatientQuestionStatus.choices,
-        default=PatientQuestionStatus.UNASKED,
-    )
-    asked_count = models.PositiveSmallIntegerField(default=0)
-    reminder_count = models.PositiveSmallIntegerField(default=0)
-    eligible_at = models.DateTimeField(null=True, blank=True)
-    current_question_message = models.ForeignKey(
-        Message,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="current_patient_question_states",
-    )
-    addressed_by_message = models.ForeignKey(
-        Message,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="addressed_patient_question_states",
-    )
-    addressed_at = models.DateTimeField(null=True, blank=True)
-    last_decision_confidence = models.DecimalField(
-        max_digits=5,
-        decimal_places=4,
-        null=True,
-        blank=True,
-    )
-    last_decision_reason = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["created_at", "id"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["session", "question_id"],
-                name="unique_patient_question_session",
-            )
-        ]
-
-
-class PatientQuestionAttempt(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    state = models.ForeignKey(
-        PatientQuestionState,
-        on_delete=models.CASCADE,
-        related_name="attempts",
-    )
-    kind = models.CharField(max_length=16, choices=PatientQuestionAttemptKind.choices)
-    patient_message = models.OneToOneField(
-        Message,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="patient_question_attempt",
-    )
-    student_message = models.OneToOneField(
-        Message,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="answered_patient_question_attempt",
-    )
-    reaction_message = models.OneToOneField(
-        Message,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="patient_question_reaction_attempt",
-    )
-    outcome = models.CharField(
-        max_length=16,
-        choices=PatientQuestionAttemptOutcome.choices,
-        default=PatientQuestionAttemptOutcome.PENDING,
-    )
-    confidence = models.DecimalField(
-        max_digits=5,
-        decimal_places=4,
-        null=True,
-        blank=True,
-    )
-    reason = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    evaluated_at = models.DateTimeField(null=True, blank=True)
-
-
 class SubmissionType(models.TextChoices):
     CASE_RECORD = "case_record", "病例记录"
 
@@ -461,8 +326,6 @@ class ModelCall(models.Model):
     )
     student_message = models.ForeignKey(
         Message,
-        null=True,
-        blank=True,
         on_delete=models.PROTECT,
         related_name="model_calls",
     )

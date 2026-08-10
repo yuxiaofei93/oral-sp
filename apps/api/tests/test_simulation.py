@@ -39,10 +39,6 @@ from modules.simulation.models import (
     MessageKind,
     MessageRole,
     ModelCallStatus,
-    PatientInitiativeSchedule,
-    PatientQuestionAttempt,
-    PatientQuestionState,
-    PatientQuestionStatus,
     PhysicalExamRelease,
     ResponseStatus,
     ScoreDecision,
@@ -58,14 +54,12 @@ from modules.simulation.services import (
     AttemptAlreadyUsedError,
     CaseDraftConflictError,
     SessionLockedError,
-    activate_patient_initiative,
     ask_patient,
     close_assignment,
     complete_session,
     create_assignment,
     save_case_draft,
     start_session,
-    trigger_patient_initiative,
 )
 from modules.teaching.models import ClassGroup, ClassMembership
 
@@ -1020,95 +1014,6 @@ def test_assignment_options_only_include_teachers_published_cases_and_classes():
     unavailable = client.get(reverse("teacher-assignment-options"))
     assert unavailable.status_code == 200
     assert unavailable.json()["case_versions"] == []
-
-
-@pytest.mark.django_db
-def test_patient_initiative_activates_after_exam_and_never_repeats_addressed_question():
-    _, student, assignment = make_exam_data(suffix="4")
-    session = start_session(assignment=assignment, student=student).session
-    ask_patient(
-        session=session,
-        student=student,
-        content="可以让我检查一下您的口腔吗？",
-        client_message_id="initiative_exam_01",
-    )
-
-    activate_patient_initiative(session=session, student=student)
-    schedule = PatientInitiativeSchedule.objects.get(session=session)
-    assert schedule.next_due_at > schedule.activated_at
-    assert PatientQuestionState.objects.filter(session=session).count() == 3
-
-    PatientInitiativeSchedule.objects.filter(session=session).update(
-        next_due_at=timezone.now() - timedelta(seconds=1)
-    )
-    first = trigger_patient_initiative(session=session, student=student)
-    assert first.reused is False
-    assert first.patient_message.kind == MessageKind.PATIENT_INITIATED_QUESTION
-    state = PatientQuestionState.objects.get(current_question_message=first.patient_message)
-
-    exchange = ask_patient(
-        session=session,
-        student=student,
-        content="目前还不能确定，需要进一步检查后再判断。您的牙龈疼痛病程有多久？",
-        client_message_id="initiative_answer_01",
-    )
-    assert exchange.interaction_type == "patient_initiative_response"
-    assert "好的，我明白了" in exchange.patient_message.content
-    assert "三年" in exchange.patient_message.content
-    state.refresh_from_db()
-    assert state.status == PatientQuestionStatus.ADDRESSED
-    assert state.addressed_by_message_id == exchange.student_message.id
-    assert PatientQuestionAttempt.objects.filter(
-        state=state,
-        outcome="addressed",
-    ).exists()
-
-    PatientInitiativeSchedule.objects.filter(session=session).update(
-        next_due_at=timezone.now() - timedelta(seconds=1)
-    )
-    second = trigger_patient_initiative(session=session, student=student)
-    second_state = PatientQuestionState.objects.get(
-        current_question_message=second.patient_message
-    )
-    assert second_state.question_id != state.question_id
-
-
-@pytest.mark.django_db
-def test_patient_initiative_reminds_once_then_defers_after_silence():
-    _, student, assignment = make_exam_data(suffix="5")
-    session = start_session(assignment=assignment, student=student).session
-    ask_patient(
-        session=session,
-        student=student,
-        content="请允许我检查一下您的口腔。",
-        client_message_id="initiative_exam_02",
-    )
-    activate_patient_initiative(session=session, student=student)
-    PatientInitiativeSchedule.objects.filter(session=session).update(
-        next_due_at=None,
-        generation_token="interrupted-generation",
-        generation_started_at=timezone.now() - timedelta(seconds=60),
-    )
-    first = trigger_patient_initiative(session=session, student=student)
-    state = PatientQuestionState.objects.get(current_question_message=first.patient_message)
-
-    PatientInitiativeSchedule.objects.filter(session=session).update(
-        next_due_at=timezone.now() - timedelta(seconds=1)
-    )
-    reminder = trigger_patient_initiative(session=session, student=student)
-    assert reminder.patient_message.id != first.patient_message.id
-    state.refresh_from_db()
-    assert state.reminder_count == 1
-
-    PatientInitiativeSchedule.objects.filter(session=session).update(
-        next_due_at=timezone.now() - timedelta(seconds=1)
-    )
-    deferred = trigger_patient_initiative(session=session, student=student)
-    assert deferred.patient_message is None
-    state.refresh_from_db()
-    assert state.status == PatientQuestionStatus.DEFERRED
-    assert state.reminder_count == 0
-    assert state.eligible_at > timezone.now()
 
 
 def case_record_payload(*, correct: bool):

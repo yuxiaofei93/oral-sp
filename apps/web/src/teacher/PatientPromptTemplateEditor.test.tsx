@@ -11,19 +11,6 @@ const template = {
   updated_at: '2026-08-08T00:00:00Z',
 }
 
-const questionTemplate = {
-  id: 1,
-  name: '默认患者主动提问',
-  questions: [{
-    id: 'diagnosis',
-    base_question: '医生，我这是个什么病？',
-    answer_criteria: '给出诊断或说明判断下一步。',
-    enabled: true,
-  }],
-  updated_by_name: '',
-  updated_at: '2026-08-08T00:00:00Z',
-}
-
 describe('PatientPromptTemplateEditor', () => {
   afterEach(() => {
     cleanup()
@@ -36,9 +23,6 @@ describe('PatientPromptTemplateEditor', () => {
       const url = String(input)
       if (url.endsWith('/patient-prompt-template/') && !init?.method) {
         return Promise.resolve(new Response(JSON.stringify(template), { status: 200 }))
-      }
-      if (url.endsWith('/patient-question-template/') && !init?.method) {
-        return Promise.resolve(new Response(JSON.stringify(questionTemplate), { status: 200 }))
       }
       if (url.endsWith('/csrf/')) {
         return Promise.resolve(new Response('{"csrf_token":"prompt-csrf"}', { status: 200 }))
@@ -72,42 +56,5 @@ describe('PatientPromptTemplateEditor', () => {
     }))
     expect(await screen.findByText('默认提示词已保存。')).toBeInTheDocument()
     expect(screen.getByText('最近由 测试教师 更新')).toBeInTheDocument()
-  })
-
-  it('lets an administrator maintain the shared patient question list', async () => {
-    let savedQuestions: unknown = null
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
-      const url = String(input)
-      if (url.endsWith('/patient-prompt-template/') && !init?.method) {
-        return Promise.resolve(new Response(JSON.stringify(template), { status: 200 }))
-      }
-      if (url.endsWith('/patient-question-template/') && !init?.method) {
-        return Promise.resolve(new Response(JSON.stringify(questionTemplate), { status: 200 }))
-      }
-      if (url.endsWith('/csrf/')) {
-        return Promise.resolve(new Response('{"csrf_token":"question-csrf"}', { status: 200 }))
-      }
-      if (url.endsWith('/patient-question-template/') && init?.method === 'PATCH') {
-        const body = JSON.parse(String(init.body)) as { questions: unknown }
-        savedQuestions = body.questions
-        return Promise.resolve(new Response(JSON.stringify({
-          ...questionTemplate,
-          questions: body.questions,
-          updated_by_name: '系统管理员',
-        }), { status: 200 }))
-      }
-      return Promise.reject(new Error(`unexpected request: ${url}`))
-    })
-
-    render(<PatientPromptTemplateEditor isAdministrator />)
-    const questionInput = await screen.findByDisplayValue('医生，我这是个什么病？')
-    fireEvent.change(questionInput, { target: { value: '医生，我得的是什么病？' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存默认主动问题' }))
-
-    await waitFor(() => expect(savedQuestions).toEqual([{
-      ...questionTemplate.questions[0],
-      base_question: '医生，我得的是什么病？',
-    }]))
-    expect(await screen.findByText('默认主动问题已保存。')).toBeInTheDocument()
   })
 })

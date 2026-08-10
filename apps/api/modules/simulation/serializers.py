@@ -22,7 +22,7 @@ from .reviews import (
     review_overrides,
     score_summary,
 )
-from .services import patient_initiative_payload, remaining_seconds
+from .services import remaining_seconds
 
 
 class AssignmentCreateSerializer(serializers.Serializer):
@@ -199,7 +199,6 @@ class SessionSerializer(serializers.ModelSerializer):
     case_draft = serializers.SerializerMethodField()
     case_record = serializers.SerializerMethodField()
     physical_exam_result = serializers.SerializerMethodField()
-    patient_initiative = serializers.SerializerMethodField()
 
     class Meta:
         model = SimulationSession
@@ -220,7 +219,6 @@ class SessionSerializer(serializers.ModelSerializer):
             "case_draft_revision",
             "case_record",
             "physical_exam_result",
-            "patient_initiative",
         ]
 
     def get_remaining_seconds(self, session):
@@ -292,9 +290,6 @@ class SessionSerializer(serializers.ModelSerializer):
             "attachments": assets("attachment"),
         }
 
-    def get_patient_initiative(self, session):
-        return patient_initiative_payload(session)
-
 
 class AskPatientSerializer(serializers.Serializer):
     content = serializers.CharField(max_length=2000, trim_whitespace=True)
@@ -306,12 +301,7 @@ class ExchangeSerializer(serializers.Serializer):
     patient_message = MessageSerializer(allow_null=True)
     reused = serializers.BooleanField()
     interaction_type = serializers.ChoiceField(
-        choices=[
-            "patient_answer",
-            "physical_exam_released",
-            "physical_exam_reopened",
-            "patient_initiative_response",
-        ]
+        choices=["patient_answer", "physical_exam_released", "physical_exam_reopened"]
     )
 
 

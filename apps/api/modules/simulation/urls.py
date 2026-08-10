@@ -2,8 +2,6 @@ from django.urls import path
 
 from .views import (
     StudentAssignmentListView,
-    StudentPatientInitiativeActivateView,
-    StudentPatientInitiativeTriggerView,
     StudentPhysicalExamAssetContentView,
     StudentSessionCompleteView,
     StudentSessionDetailView,
@@ -99,16 +97,6 @@ urlpatterns = [
         "student/sessions/<uuid:session_id>/messages/",
         StudentSessionMessageView.as_view(),
         name="student-session-message",
-    ),
-    path(
-        "student/sessions/<uuid:session_id>/patient-initiative/activate/",
-        StudentPatientInitiativeActivateView.as_view(),
-        name="student-patient-initiative-activate",
-    ),
-    path(
-        "student/sessions/<uuid:session_id>/patient-initiative/trigger/",
-        StudentPatientInitiativeTriggerView.as_view(),
-        name="student-patient-initiative-trigger",
     ),
     path(
         "student/sessions/<uuid:session_id>/physical-exam/assets/<int:asset_id>/content/",

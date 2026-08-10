@@ -11,12 +11,7 @@ from django.core.validators import (
 from django.db import models
 from django.db.models import Q
 
-from .prompts import (
-    DEFAULT_PATIENT_PROMPT,
-    PATIENT_PROMPT_TEMPLATE_NAME,
-    PATIENT_QUESTION_TEMPLATE_NAME,
-    default_patient_questions,
-)
+from .prompts import DEFAULT_PATIENT_PROMPT, PATIENT_PROMPT_TEMPLATE_NAME
 
 
 def default_enabled_stages() -> list[str]:
@@ -98,23 +93,6 @@ class PatientPromptTemplate(models.Model):
         return self.name
 
 
-class PatientQuestionTemplate(models.Model):
-    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
-    name = models.CharField(max_length=80, default=PATIENT_QUESTION_TEMPLATE_NAME)
-    questions = models.JSONField(default=default_patient_questions)
-    updated_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="patient_question_templates_updated",
-    )
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self) -> str:
-        return self.name
-
-
 class CaseVersion(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     case = models.ForeignKey(Case, on_delete=models.PROTECT, related_name="versions")
@@ -138,13 +116,6 @@ class CaseVersion(models.Model):
         default=PatientPromptMode.DEFAULT,
     )
     patient_prompt = models.TextField(blank=True, validators=[MaxLengthValidator(8000)])
-    patient_questions_enabled = models.BooleanField(default=True)
-    patient_questions_mode = models.CharField(
-        max_length=16,
-        choices=PatientPromptMode.choices,
-        default=PatientPromptMode.DEFAULT,
-    )
-    patient_questions = models.JSONField(default=list, blank=True)
     based_on = models.ForeignKey(
         "self",
         null=True,

@@ -13,35 +13,3 @@ DEFAULT_PATIENT_PROMPT = (
 
 PATIENT_PROMPT_TEMPLATE_ID = 1
 PATIENT_PROMPT_TEMPLATE_NAME = "默认患者问诊模板"
-
-PATIENT_QUESTION_TEMPLATE_ID = 1
-PATIENT_QUESTION_TEMPLATE_NAME = "默认患者主动提问"
-
-
-def default_patient_questions() -> list[dict]:
-    return [
-        {
-            "id": "diagnosis",
-            "base_question": "医生，我这是个什么病？",
-            "answer_criteria": (
-                "给出可能、初步或明确诊断；或说明暂不能确定，同时提供理由和下一步判断动作。"
-            ),
-            "enabled": True,
-        },
-        {
-            "id": "treatment",
-            "base_question": "接下来要怎么治疗？",
-            "answer_criteria": (
-                "给出治疗或处置方向；或说明需等待结果，同时提供明确下一步。"
-            ),
-            "enabled": True,
-        },
-        {
-            "id": "examinations",
-            "base_question": "我需要做什么检查化验吗？",
-            "answer_criteria": (
-                "给出具体检查、化验方向；或明确无需检查并说明理由。"
-            ),
-            "enabled": True,
-        },
-    ]

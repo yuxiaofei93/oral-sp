@@ -7,7 +7,6 @@ from .models import (
     DiagnosisRule,
     PatientProfile,
     PatientPromptTemplate,
-    PatientQuestionTemplate,
     PhysicalExam,
     PhysicalExamAsset,
     ScoringItem,
@@ -25,5 +24,4 @@ admin.site.register(ScoringItem)
 admin.site.register(PatientPromptTemplate)
 admin.site.register(PhysicalExam)
 admin.site.register(PhysicalExamAsset)
-admin.site.register(PatientQuestionTemplate)
 admin.site.register(StoredAsset)

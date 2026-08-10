@@ -6,7 +6,6 @@ import {
   SimulationSession,
   StudentCaseDraft,
   StudentAssignment,
-  activatePatientInitiative,
   askPatient,
   completeStudentSession,
   getSessionFeedback,
@@ -14,7 +13,6 @@ import {
   listStudentAssignments,
   saveStudentCaseDraft,
   startStudentSession,
-  triggerPatientInitiative,
 } from '../api/client'
 import { PhysicalExamDialog } from '../PhysicalExamDialog'
 
@@ -26,13 +24,6 @@ const attemptNames = {
   expired: '已超时',
 }
 const AUTO_SAVE_DELAY_MS = 500
-const inactivePatientInitiative = {
-  enabled: false,
-  phase: 'inactive' as const,
-  activated_at: null,
-  next_due_at: null,
-  active_message_id: null,
-}
 const editableFieldNames: Array<[keyof CaseDraft, string]> = [
   ['chiefComplaint', '主诉'],
   ['presentIllness', '现病史'],
@@ -121,7 +112,6 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
   const [feedback, setFeedback] = useState<SessionFeedback | null>(null)
   const [physicalExamOpen, setPhysicalExamOpen] = useState(false)
   const [questionBusy, setQuestionBusy] = useState(false)
-  const [initiativeBusy, setInitiativeBusy] = useState(false)
   const [completionBusy, setCompletionBusy] = useState(false)
   const [feedbackBusy, setFeedbackBusy] = useState(false)
   const [error, setError] = useState('')
@@ -132,7 +122,6 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
   const serverRevisionRef = useRef(initialSession.case_draft_revision)
   const saveInFlightRef = useRef<Promise<boolean> | null>(null)
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const initiativeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   async function refreshSession() {
     const refreshed = await getStudentSession(session.id)
@@ -159,68 +148,6 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
     if (!conversation) return
     conversation.scrollTop = conversation.scrollHeight
   }, [session.messages.length, pendingQuestion])
-
-  const patientInitiative = session.patient_initiative ?? inactivePatientInitiative
-
-  async function requestDuePatientQuestion() {
-    if (initiativeBusy || questionBusy || physicalExamOpen || session.status !== 'active') return
-    setInitiativeBusy(true)
-    setError('')
-    try {
-      const result = await triggerPatientInitiative(session.id)
-      setSession((current) => ({ ...current, patient_initiative: result.patient_initiative }))
-      await refreshSession()
-    } catch (requestError: unknown) {
-      setError(requestError instanceof ApiError ? requestError.message : '患者主动提问加载失败。')
-    } finally {
-      setInitiativeBusy(false)
-    }
-  }
-
-  useEffect(() => {
-    if (initiativeTimerRef.current) globalThis.clearTimeout(initiativeTimerRef.current)
-    initiativeTimerRef.current = null
-    if (
-      session.status !== 'active'
-      || !patientInitiative.enabled
-      || !patientInitiative.next_due_at
-      || physicalExamOpen
-      || questionBusy
-      || initiativeBusy
-    ) return undefined
-    const dueAt = new Date(patientInitiative.next_due_at).getTime()
-    const delay = Math.max(0, dueAt - Date.now())
-    const timer = globalThis.setTimeout(() => {
-      initiativeTimerRef.current = null
-      void requestDuePatientQuestion()
-    }, delay)
-    initiativeTimerRef.current = timer
-    return () => {
-      globalThis.clearTimeout(timer)
-      if (initiativeTimerRef.current === timer) initiativeTimerRef.current = null
-    }
-  }, [
-    patientInitiative.enabled,
-    patientInitiative.next_due_at,
-    session.status,
-    physicalExamOpen,
-    questionBusy,
-    initiativeBusy,
-  ])
-
-  useEffect(() => {
-    if (session.status !== 'active') return undefined
-    function handleReturn() {
-      if (document.visibilityState === 'hidden') return
-      void refreshSession().catch(() => setError('无法同步患者对话状态，请刷新页面。'))
-    }
-    globalThis.addEventListener('focus', handleReturn)
-    document.addEventListener('visibilitychange', handleReturn)
-    return () => {
-      globalThis.removeEventListener('focus', handleReturn)
-      document.removeEventListener('visibilitychange', handleReturn)
-    }
-  }, [session.id, session.status])
 
   async function persistLatestDraft(): Promise<boolean> {
     if (session.status !== 'active') return true
@@ -326,10 +253,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
         client_message_id: outgoing.id,
       })
       await refreshSession()
-      if (
-        exchange.interaction_type === 'physical_exam_released'
-        || exchange.interaction_type === 'physical_exam_reopened'
-      ) setPhysicalExamOpen(true)
+      if (exchange.interaction_type !== 'patient_answer') setPhysicalExamOpen(true)
       setQuestion('')
       setPendingQuestion(null)
     } catch (requestError: unknown) {
@@ -340,24 +264,6 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
       )
     } finally {
       setQuestionBusy(false)
-    }
-  }
-
-  async function handlePhysicalExamClose() {
-    setPhysicalExamOpen(false)
-    const currentInitiative = session.patient_initiative ?? inactivePatientInitiative
-    if (
-      session.status === 'active'
-      && availablePhysicalExam
-      && currentInitiative.enabled
-      && currentInitiative.phase === 'inactive'
-    ) {
-      try {
-        const result = await activatePatientInitiative(session.id)
-        setSession((current) => ({ ...current, patient_initiative: result.patient_initiative }))
-      } catch (requestError: unknown) {
-        setError(requestError instanceof ApiError ? requestError.message : '患者主动提问未能激活。')
-      }
     }
   }
 
@@ -502,17 +408,11 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                 )}
               </>
             )}
-            {!pendingQuestion && initiativeBusy && (
-              <div className="patient-thinking" role="status">
-                <span /><span /><span />
-                <small>患者正在思考</small>
-              </div>
-            )}
           </div>
 
           {session.status === 'active' ? (
             <form className="question-form" onSubmit={handleQuestion}>
-              <label className="visually-hidden" htmlFor="patient-question">输入对话内容</label>
+              <label className="visually-hidden" htmlFor="patient-question">向患者提问</label>
               <div>
                 <input
                   id="patient-question"
@@ -522,17 +422,17 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                     setQuestion(event.target.value)
                     if (pendingQuestion?.content !== event.target.value.trim()) setPendingQuestion(null)
                   }}
-                  placeholder="输入你想说的话或向患者提出的问题…"
+                  placeholder="输入你想向患者了解的问题…"
                   maxLength={2000}
                   autoComplete="off"
                   required
                 />
-                <button className="button question-form__submit" type="submit" disabled={questionBusy} aria-label="发送消息">
+                <button className="button question-form__submit" type="submit" disabled={questionBusy} aria-label="发送问题">
                   <span>{questionBusy ? '发送中' : '发送'}</span>
                   <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 14-7-4.5 14-3-5.5L5 12Z" /><path d="m11.5 13.5 3-3" /></svg>
                 </button>
               </div>
-              <small>你可以回应患者，也可以继续提出问诊问题。</small>
+              <small>请一次询问一个清晰的问题，患者会根据病例信息作答。</small>
             </form>
           ) : null}
         </section>
@@ -758,7 +658,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
       <PhysicalExamDialog
         result={availablePhysicalExam}
         open={physicalExamOpen}
-        onClose={() => void handlePhysicalExamClose()}
+        onClose={() => setPhysicalExamOpen(false)}
       />
     </section>
   )

@@ -105,11 +105,7 @@ def _pending(item, reason: str) -> Evaluation:
 
 def _covered_facts(session):
     calls = (
-        ModelCall.objects.filter(
-            session=session,
-            student_message__isnull=False,
-            patient_message__isnull=False,
-        )
+        ModelCall.objects.filter(session=session, patient_message__isnull=False)
         .select_related("student_message", "patient_message")
         .order_by("created_at")
     )
