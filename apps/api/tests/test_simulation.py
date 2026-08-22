@@ -307,8 +307,8 @@ def test_local_router_matches_fact_content():
 
 
 class DiagnosisLeakingGateway(PatientGateway):
-    def answer(self, *, question, facts, history, patient_prompt):
-        del question, history, patient_prompt
+    def answer(self, *, question, facts, history, patient_style):
+        del question, history, patient_style
         return GatewayResult(
             answer="医生，我这就是慢性牙周炎。",
             fact_codes=[facts[0].code],
@@ -340,7 +340,7 @@ def test_diagnosis_leak_is_replaced_by_safe_fact_response_and_audited():
 class SemanticRoutingGateway(PatientGateway):
     def __init__(self):
         self.histories = []
-        self.patient_prompts = []
+        self.patient_styles = []
 
     def route(self, *, question, facts, history, physical_exam_available=False):
         assert question == "不舒服从什么时候开始的？"
@@ -356,10 +356,10 @@ class SemanticRoutingGateway(PatientGateway):
             output_tokens=8,
         )
 
-    def answer(self, *, question, facts, history, patient_prompt):
+    def answer(self, *, question, facts, history, patient_style):
         del question
         assert history == self.histories[-1]
-        self.patient_prompts.append(patient_prompt)
+        self.patient_styles.append(patient_style)
         return GatewayResult(
             answer="差不多有三年了。",
             fact_codes=[facts[0].code],
@@ -406,7 +406,7 @@ def test_semantic_router_maps_natural_question_without_teacher_keyword():
     )
 
     assert exchange.patient_message.content == "差不多有三年了。"
-    assert gateway.patient_prompts == ["请表现得有些紧张，只用一两句话回答。"]
+    assert gateway.patient_styles == ["请表现得有些紧张，只用一两句话回答。"]
     assert len(gateway.histories[0]) == 14
     assert gateway.histories[0][0]["content"] == "第 1 轮学生问题"
     assert gateway.histories[0][-1]["content"] == "第 7 轮患者回答"
@@ -418,8 +418,8 @@ def test_semantic_router_maps_natural_question_without_teacher_keyword():
 
 
 class WrittenFactRepeatingGateway(PatientGateway):
-    def answer(self, *, question, facts, history, patient_prompt):
-        del question, history, patient_prompt
+    def answer(self, *, question, facts, history, patient_style):
+        del question, history, patient_style
         return GatewayResult(
             answer=facts[0].patient_expression,
             fact_codes=[facts[0].code],
@@ -446,7 +446,7 @@ def test_written_fact_is_replaced_by_spoken_response_and_audited():
     call = session.model_calls.get(patient_message__isnull=False)
     assert call.status == ModelCallStatus.FAILED
     assert call.error_code == "response_not_conversational"
-    assert call.prompt_version == "patient-answer-v4"
+    assert call.prompt_version == "patient-answer-v5"
 
 
 @pytest.mark.django_db
@@ -539,8 +539,8 @@ def test_physical_exam_request_releases_once_reopens_and_is_traceably_scored():
                 latency_ms=1,
             )
 
-        def answer(self, *, question, facts, history, patient_prompt):
-            del question, history, patient_prompt
+        def answer(self, *, question, facts, history, patient_style):
+            del question, history, patient_style
             return GatewayResult(
                 answer="差不多三年了。",
                 fact_codes=[facts[0].code],

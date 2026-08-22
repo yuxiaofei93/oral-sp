@@ -5,7 +5,7 @@ import { PatientPromptTemplateEditor } from './PatientPromptTemplateEditor'
 
 const template = {
   id: 1,
-  name: '默认患者问诊模板',
+  name: '默认患者表达风格',
   content: '请用自然口语回答口腔问诊问题。',
   updated_by_name: '',
   updated_at: '2026-08-08T00:00:00Z',
@@ -17,7 +17,7 @@ describe('PatientPromptTemplateEditor', () => {
     vi.restoreAllMocks()
   })
 
-  it('loads and saves the shared default patient prompt', async () => {
+  it('loads and saves the shared default patient style', async () => {
     let savedBody: Record<string, unknown> | null = null
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
       const url = String(input)
@@ -41,20 +41,21 @@ describe('PatientPromptTemplateEditor', () => {
 
     render(<PatientPromptTemplateEditor />)
 
-    const promptInput = await screen.findByLabelText('默认患者问诊提示词')
+    const promptInput = await screen.findByLabelText('默认患者表达风格')
     expect(screen.getByRole('heading', { level: 2, name: '系统设置' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 3, name: '默认患者问诊模板' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 3, name: '默认患者表达风格' })).toBeInTheDocument()
     expect(promptInput).toHaveValue(template.content)
     expect(screen.queryByText('所有选择默认模板的病例草稿都会使用这里的内容。')).not.toBeInTheDocument()
-    expect(screen.getByText(/已发布病例保存的是发布当时的提示词/)).toBeInTheDocument()
+    expect(screen.getByText(/事实边界、安全规则和输出格式由系统固定管理/)).toBeInTheDocument()
+    expect(screen.getByText(/已发布病例保存的是发布当时的表达风格/)).toBeInTheDocument()
 
     fireEvent.change(promptInput, { target: { value: '请保持耐心，并用简短口语回答。' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存默认模板' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存默认风格' }))
 
     await waitFor(() => expect(savedBody).toEqual({
       content: '请保持耐心，并用简短口语回答。',
     }))
-    expect(await screen.findByText('默认提示词已保存。')).toBeInTheDocument()
+    expect(await screen.findByText('默认表达风格已保存。')).toBeInTheDocument()
     expect(screen.getByText('最近由 测试教师 更新')).toBeInTheDocument()
   })
 })

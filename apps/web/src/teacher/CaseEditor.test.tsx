@@ -17,8 +17,8 @@ const draft: CaseDraft = {
   enabled_stages: ['interview'],
   patient_prompt_mode: 'default',
   patient_prompt: '',
-  effective_patient_prompt: '默认患者问诊提示词。',
-  default_patient_prompt: '默认患者问诊提示词。',
+  effective_patient_prompt: '默认患者表达风格。',
+  default_patient_prompt: '默认患者表达风格。',
   created_at: '2026-08-04T00:00:00Z',
   updated_at: '2026-08-04T00:00:00Z',
   patient_profile: {
@@ -89,7 +89,7 @@ describe('CaseEditor', () => {
     expect(savedBodies).toHaveLength(0)
     expect(screen.getByText('已自动保存')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '基础信息' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'AI 患者提示词' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'AI 患者表达风格' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '教学设置' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '患者身份与表达方式' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '患者信息 [0点]' })).toBeInTheDocument()
@@ -100,7 +100,7 @@ describe('CaseEditor', () => {
     expect(screen.getByRole('heading', { name: '评分规则（0）' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '发布前检查' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /基础信息/ })).toHaveAttribute('href', '#basic-info')
-    expect(screen.getByRole('link', { name: /患者提示词/ })).toHaveAttribute('href', '#patient-prompt')
+    expect(screen.getByRole('link', { name: /患者表达风格/ })).toHaveAttribute('href', '#patient-prompt')
     expect(screen.getByRole('link', { name: /病情信息/ })).toHaveAttribute('href', '#patient-facts')
     expect(screen.getByRole('link', { name: /口腔体格检查/ })).toHaveAttribute('href', '#physical-exam')
     expect(screen.queryByRole('button', { name: '保存并继续' })).not.toBeInTheDocument()
@@ -112,13 +112,13 @@ describe('CaseEditor', () => {
     expect(screen.queryByLabelText('性格与配合程度')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('当前情绪')).not.toBeInTheDocument()
     expect(screen.getByLabelText('患者开场白(必填)')).toBeInTheDocument()
-    expect(screen.getByLabelText('提示词来源')).toHaveValue('default')
-    expect(screen.getByLabelText('患者问诊提示词')).toHaveValue('默认患者问诊提示词。')
-    expect(screen.getByLabelText('患者问诊提示词')).toHaveAttribute('readonly')
+    expect(screen.getByLabelText('表达风格来源')).toHaveValue('default')
+    expect(screen.getByLabelText('患者表达风格')).toHaveValue('默认患者表达风格。')
+    expect(screen.getByLabelText('患者表达风格')).toHaveAttribute('readonly')
 
-    fireEvent.change(screen.getByLabelText('提示词来源'), { target: { value: 'custom' } })
-    expect(screen.getByLabelText('患者问诊提示词')).not.toHaveAttribute('readonly')
-    fireEvent.change(screen.getByLabelText('患者问诊提示词'), {
+    fireEvent.change(screen.getByLabelText('表达风格来源'), { target: { value: 'custom' } })
+    expect(screen.getByLabelText('患者表达风格')).not.toHaveAttribute('readonly')
+    fireEvent.change(screen.getByLabelText('患者表达风格'), {
       target: { value: '请让患者回答得更简短。' },
     })
 

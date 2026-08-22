@@ -81,7 +81,7 @@ def test_teacher_can_create_and_update_structured_case_draft():
 
 
 @pytest.mark.django_db
-def test_teacher_can_edit_default_patient_prompt_and_override_it_per_case():
+def test_teacher_can_edit_default_patient_style_and_override_it_per_case():
     teacher = make_user("13800138105", RoleCode.TEACHER)
     client = APIClient()
     client.force_authenticate(teacher)
@@ -89,8 +89,9 @@ def test_teacher_can_edit_default_patient_prompt_and_override_it_per_case():
     template_url = reverse("teacher-patient-prompt-template")
     template = client.get(template_url)
     assert template.status_code == 200
-    assert template.json()["name"] == "默认患者问诊模板"
-    assert "口腔医学教学模拟" in template.json()["content"]
+    assert template.json()["name"] == "默认患者表达风格"
+    assert "自然的日常汉语" in template.json()["content"]
+    assert "certainty" not in template.json()["content"]
 
     updated_template = client.patch(
         template_url,

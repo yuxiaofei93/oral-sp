@@ -11,7 +11,7 @@ from django.core.validators import (
 from django.db import models
 from django.db.models import Q
 
-from .prompts import DEFAULT_PATIENT_PROMPT, PATIENT_PROMPT_TEMPLATE_NAME
+from .prompts import DEFAULT_PATIENT_STYLE, PATIENT_STYLE_TEMPLATE_NAME
 
 
 def default_enabled_stages() -> list[str]:
@@ -69,15 +69,15 @@ class Difficulty(models.TextChoices):
 
 
 class PatientPromptMode(models.TextChoices):
-    DEFAULT = "default", "默认模板"
-    CUSTOM = "custom", "自定义提示词"
+    DEFAULT = "default", "默认风格"
+    CUSTOM = "custom", "自定义表达风格"
 
 
 class PatientPromptTemplate(models.Model):
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
-    name = models.CharField(max_length=80, default=PATIENT_PROMPT_TEMPLATE_NAME)
+    name = models.CharField(max_length=80, default=PATIENT_STYLE_TEMPLATE_NAME)
     content = models.TextField(
-        default=DEFAULT_PATIENT_PROMPT,
+        default=DEFAULT_PATIENT_STYLE,
         validators=[MaxLengthValidator(8000)],
     )
     updated_by = models.ForeignKey(

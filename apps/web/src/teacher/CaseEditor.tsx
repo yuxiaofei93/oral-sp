@@ -15,7 +15,7 @@ import {
 
 const editorSections = [
   { id: 'basic-info', label: '基础信息' },
-  { id: 'patient-prompt', label: '患者提示词' },
+  { id: 'patient-prompt', label: '患者表达风格' },
   { id: 'patient-facts', label: '病情信息' },
   { id: 'physical-exam', label: '口腔体格检查' },
   { id: 'case-tests', label: '辅助检查资料' },
@@ -466,25 +466,25 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
             </div>
           </EditorCard>
 
-          <EditorCard id="patient-prompt" title="AI 患者提示词">
+          <EditorCard id="patient-prompt" title="AI 患者表达风格">
             <p className="section-help">
-              默认使用统一模板；如需调整患者的语气或回答方式，可为当前病例单独编辑。
+              这里只调整患者的语气、情绪、配合程度和回答习惯。事实边界、安全规则和输出格式由系统固定管理。
             </p>
             <div className="form-grid">
               <label>
-                提示词来源
+                表达风格来源
                 <select
                   value={draft.patient_prompt_mode}
                   onChange={(event) => setPatientPromptMode(event.target.value as CaseDraft['patient_prompt_mode'])}
                 >
-                  <option value="default">默认模板</option>
+                  <option value="default">默认风格</option>
                   <option value="custom">当前病例自定义</option>
                 </select>
               </label>
               <label className="form-grid__wide">
-                患者问诊提示词
+                患者表达风格
                 <textarea
-                  aria-label="患者问诊提示词"
+                  aria-label="患者表达风格"
                   rows={12}
                   maxLength={8000}
                   readOnly={draft.patient_prompt_mode === 'default'}
@@ -495,7 +495,7 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                 />
                 <small>
                   {draft.patient_prompt_mode === 'default'
-                    ? '当前病例跟随默认模板；默认模板更新后，草稿会使用新内容。'
+                    ? '当前病例跟随默认风格；默认风格更新后，草稿会使用新内容。'
                     : `${draft.patient_prompt.length} / 8000 字；仅影响当前病例。`}
                 </small>
               </label>

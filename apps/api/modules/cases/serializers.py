@@ -13,7 +13,7 @@ from .models import (
     ScoringItem,
     TestDefinition,
 )
-from .services import default_patient_prompt, effective_patient_prompt
+from .services import default_patient_style, effective_patient_style
 
 
 class StringListField(serializers.ListField):
@@ -153,7 +153,7 @@ class PatientPromptTemplateSerializer(serializers.ModelSerializer):
 
     def validate_content(self, value: str) -> str:
         if not value.strip():
-            raise serializers.ValidationError("默认提示词不能为空。")
+            raise serializers.ValidationError("默认表达风格不能为空。")
         return value.strip()
 
 
@@ -215,11 +215,11 @@ class CaseDraftSerializer(serializers.ModelSerializer):
         ]
 
     def get_effective_patient_prompt(self, version: CaseVersion) -> str:
-        return effective_patient_prompt(version)
+        return effective_patient_style(version)
 
     def get_default_patient_prompt(self, version: CaseVersion) -> str:
         del version
-        return default_patient_prompt()
+        return default_patient_style()
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -229,7 +229,7 @@ class CaseDraftSerializer(serializers.ModelSerializer):
         prompt = attrs.get("patient_prompt", current_prompt)
         if mode == PatientPromptMode.CUSTOM and not prompt.strip():
             raise serializers.ValidationError(
-                {"patient_prompt": "使用自定义提示词时，提示词不能为空。"}
+                {"patient_prompt": "使用自定义表达风格时，内容不能为空。"}
             )
         if mode == PatientPromptMode.DEFAULT and (
             "patient_prompt_mode" in attrs or "patient_prompt" in attrs

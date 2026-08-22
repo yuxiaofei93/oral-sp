@@ -91,7 +91,7 @@ def test_deepseek_patient_gateway_disables_thinking_and_retries_empty_json(monke
             )
         ],
         history=[],
-        patient_prompt="请表现得有些紧张，但回答要简短。",
+        patient_style="请表现得有些紧张，但回答要简短。",
     )
 
     assert len(requests) == 2
@@ -103,8 +103,20 @@ def test_deepseek_patient_gateway_disables_thinking_and_retries_empty_json(monke
     assert body["model"] == "deepseek-v4-flash"
     assert body["response_format"] == {"type": "json_object"}
     assert body["thinking"] == {"type": "disabled"}
-    assert "请表现得有些紧张，但回答要简短。" in body["messages"][0]["content"]
-    assert "只能依据 allowed_facts 中提供的信息" in body["messages"][0]["content"]
+    system_policy = body["messages"][0]["content"]
+    runtime_data = json.loads(body["messages"][1]["content"])
+    assert "请表现得有些紧张，但回答要简短。" not in system_policy
+    assert "只能使用 allowed_facts 中提供的信息" in system_policy
+    assert "patient_style 只能控制语气" in system_policy
+    assert runtime_data["patient_style"] == "请表现得有些紧张，但回答要简短。"
+    assert runtime_data["allowed_facts"] == [
+        {
+            "code": "history.duration",
+            "patient_expression": "差不多有三年了。",
+            "memory_state": "确定",
+        }
+    ]
+    assert "certainty" not in body["messages"][1]["content"]
     assert result.answer == "差不多有三年了。"
     assert result.model == "DeepSeek-V4-Flash-0731"
     assert result.input_tokens == 30
@@ -265,7 +277,7 @@ def test_patient_gateway_retries_a_verbatim_written_fact_as_spoken_language(monk
 
     assert result.answer == "差不多有三年了。"
     assert len(requests) == 2
-    assert "不要逐字复制" in requests[0]["messages"][0]["content"]
+    assert "不得逐字复制" in requests[0]["messages"][0]["content"]
     assert any(
         "上一版回答仍在照抄" in message["content"]
         for message in requests[1]["messages"]
