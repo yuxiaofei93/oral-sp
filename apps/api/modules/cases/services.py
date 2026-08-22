@@ -14,6 +14,8 @@ from .models import (
     CaseFact,
     CaseVersion,
     DiagnosisRule,
+    PatientFollowUpMode,
+    PatientFollowUpTemplate,
     PatientProfile,
     PatientPromptMode,
     PatientPromptTemplate,
@@ -24,7 +26,11 @@ from .models import (
     VersionStatus,
 )
 from .prompts import (
+    DEFAULT_PATIENT_FOLLOW_UP_CLOSING,
+    DEFAULT_PATIENT_FOLLOW_UP_QUESTIONS,
     DEFAULT_PATIENT_STYLE,
+    PATIENT_FOLLOW_UP_TEMPLATE_ID,
+    PATIENT_FOLLOW_UP_TEMPLATE_NAME,
     PATIENT_PROMPT_TEMPLATE_ID,
     PATIENT_STYLE_TEMPLATE_NAME,
 )
@@ -69,6 +75,41 @@ def effective_patient_style(version: CaseVersion) -> str:
     if version.status == VersionStatus.PUBLISHED and configured:
         return configured
     return default_patient_style()
+
+
+def get_patient_follow_up_template() -> PatientFollowUpTemplate:
+    template, _ = PatientFollowUpTemplate.objects.get_or_create(
+        pk=PATIENT_FOLLOW_UP_TEMPLATE_ID,
+        defaults={
+            "name": PATIENT_FOLLOW_UP_TEMPLATE_NAME,
+            "questions": list(DEFAULT_PATIENT_FOLLOW_UP_QUESTIONS),
+            "closing_text": DEFAULT_PATIENT_FOLLOW_UP_CLOSING,
+        },
+    )
+    return template
+
+
+def default_patient_follow_up() -> tuple[list[str], str]:
+    template = PatientFollowUpTemplate.objects.filter(
+        pk=PATIENT_FOLLOW_UP_TEMPLATE_ID
+    ).first()
+    if template and template.questions and template.closing_text.strip():
+        return list(template.questions), template.closing_text.strip()
+    return list(DEFAULT_PATIENT_FOLLOW_UP_QUESTIONS), DEFAULT_PATIENT_FOLLOW_UP_CLOSING
+
+
+def effective_patient_follow_up(version: CaseVersion) -> tuple[list[str], str]:
+    if version.patient_follow_up_mode == PatientFollowUpMode.DISABLED:
+        return [], ""
+    configured_questions = list(version.patient_follow_up_questions or [])
+    configured_closing = version.patient_follow_up_closing_text.strip()
+    if version.patient_follow_up_mode == PatientFollowUpMode.CUSTOM:
+        if configured_questions and configured_closing:
+            return configured_questions, configured_closing
+        return default_patient_follow_up()
+    if version.status == VersionStatus.PUBLISHED and configured_questions and configured_closing:
+        return configured_questions, configured_closing
+    return default_patient_follow_up()
 
 
 def create_case_with_draft(*, title_internal: str, user) -> Case:
@@ -162,6 +203,7 @@ def draft_content(draft: CaseVersion) -> dict:
         "time_limit_minutes",
         "enabled_stages",
         "patient_prompt_mode",
+        "patient_follow_up_mode",
     ]
     profile_fields = [
         "display_name",
@@ -198,6 +240,9 @@ def draft_content(draft: CaseVersion) -> dict:
     profile = draft.patient_profile
     content = {field: _json_value(getattr(draft, field)) for field in scalar_fields}
     content["patient_prompt"] = effective_patient_style(draft)
+    follow_up_questions, follow_up_closing = effective_patient_follow_up(draft)
+    content["patient_follow_up_questions"] = follow_up_questions
+    content["patient_follow_up_closing_text"] = follow_up_closing
     content["patient_profile"] = {
         field: _json_value(getattr(profile, field)) for field in profile_fields
     }
@@ -251,6 +296,9 @@ def publish_draft(*, draft: CaseVersion, user) -> PublishResult:
         content = draft_content(locked)
         digest = _content_hash(content)
         patient_prompt = effective_patient_style(locked)
+        patient_follow_up_questions, patient_follow_up_closing = (
+            effective_patient_follow_up(locked)
+        )
         latest = (
             CaseVersion.objects.filter(case=locked.case, status=VersionStatus.PUBLISHED)
             .order_by("-version_number")
@@ -273,6 +321,9 @@ def publish_draft(*, draft: CaseVersion, user) -> PublishResult:
             enabled_stages=locked.enabled_stages,
             patient_prompt_mode=locked.patient_prompt_mode,
             patient_prompt=patient_prompt,
+            patient_follow_up_mode=locked.patient_follow_up_mode,
+            patient_follow_up_questions=patient_follow_up_questions,
+            patient_follow_up_closing_text=patient_follow_up_closing,
             based_on=latest,
             created_by=user,
             published_at=timezone.now(),

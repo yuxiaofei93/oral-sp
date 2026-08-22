@@ -253,7 +253,10 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
         client_message_id: outgoing.id,
       })
       await refreshSession()
-      if (exchange.interaction_type !== 'patient_answer') setPhysicalExamOpen(true)
+      if (
+        exchange.interaction_type === 'physical_exam_released'
+        || exchange.interaction_type === 'physical_exam_reopened'
+      ) setPhysicalExamOpen(true)
       setQuestion('')
       setPendingQuestion(null)
     } catch (requestError: unknown) {
@@ -317,6 +320,8 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
   const availablePhysicalExam = session.physical_exam_result ?? feedback?.physical_exam_result ?? null
   const caseEditable = session.status === 'active'
   const specialtyExamText = session.case_record?.specialty_exam || availablePhysicalExam?.findings_text || ''
+  const awaitingPatientFollowUp = session.messages[session.messages.length - 1]?.kind
+    === 'patient_follow_up_question'
   const saveStatusText = session.status === 'completed'
     ? '已交卷'
     : session.status === 'expired'
@@ -412,7 +417,9 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
 
           {session.status === 'active' ? (
             <form className="question-form" onSubmit={handleQuestion}>
-              <label className="visually-hidden" htmlFor="patient-question">向患者提问</label>
+              <label className="visually-hidden" htmlFor="patient-question">
+                {awaitingPatientFollowUp ? '回复患者' : '向患者提问'}
+              </label>
               <div>
                 <input
                   id="patient-question"
@@ -422,12 +429,17 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                     setQuestion(event.target.value)
                     if (pendingQuestion?.content !== event.target.value.trim()) setPendingQuestion(null)
                   }}
-                  placeholder="输入你想向患者了解的问题…"
+                  placeholder={awaitingPatientFollowUp ? '回复患者…' : '输入你想向患者了解的问题…'}
                   maxLength={2000}
                   autoComplete="off"
                   required
                 />
-                <button className="button question-form__submit" type="submit" disabled={questionBusy} aria-label="发送问题">
+                <button
+                  className="button question-form__submit"
+                  type="submit"
+                  disabled={questionBusy}
+                  aria-label={awaitingPatientFollowUp ? '发送回复' : '发送问题'}
+                >
                   <span>{questionBusy ? '发送中' : '发送'}</span>
                   <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 14-7-4.5 14-3-5.5L5 12Z" /><path d="m11.5 13.5 3-3" /></svg>
                 </button>

@@ -171,6 +171,8 @@ class MessageKind(models.TextChoices):
     CHAT = "chat", "普通消息"
     PHYSICAL_EXAM_CONSENT = "physical_exam_consent", "体格检查同意"
     PHYSICAL_EXAM_RESULT = "physical_exam_result", "体格检查结果"
+    PATIENT_FOLLOW_UP_QUESTION = "patient_follow_up_question", "患者主动询问"
+    PATIENT_FOLLOW_UP_CLOSING = "patient_follow_up_closing", "患者主动问答收尾"
 
 
 class ResponseStatus(models.TextChoices):
@@ -277,6 +279,27 @@ class PhysicalExamRelease(models.Model):
         related_name="physical_exam_result_release",
     )
     released_at = models.DateTimeField(auto_now_add=True)
+
+
+class PatientFollowUpStatus(models.TextChoices):
+    AWAITING_ANSWER = "awaiting_answer", "等待学生回答"
+    COMPLETED = "completed", "已完成"
+
+
+class PatientFollowUpProgress(models.Model):
+    session = models.OneToOneField(
+        SimulationSession,
+        on_delete=models.CASCADE,
+        related_name="patient_follow_up_progress",
+    )
+    next_question_index = models.PositiveIntegerField(default=1)
+    status = models.CharField(
+        max_length=24,
+        choices=PatientFollowUpStatus.choices,
+        default=PatientFollowUpStatus.AWAITING_ANSWER,
+    )
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
 
 
 class SubmissionType(models.TextChoices):

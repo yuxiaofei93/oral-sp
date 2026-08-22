@@ -5,6 +5,8 @@ from .models import (
     CaseFact,
     CaseVersion,
     DiagnosisRule,
+    PatientFollowUpMode,
+    PatientFollowUpTemplate,
     PatientProfile,
     PatientPromptMode,
     PatientPromptTemplate,
@@ -13,11 +15,20 @@ from .models import (
     ScoringItem,
     TestDefinition,
 )
-from .services import default_patient_style, effective_patient_style
+from .services import (
+    default_patient_follow_up,
+    default_patient_style,
+    effective_patient_follow_up,
+    effective_patient_style,
+)
 
 
 class StringListField(serializers.ListField):
     child = serializers.CharField(max_length=160)
+
+
+class PatientFollowUpQuestionsField(serializers.ListField):
+    child = serializers.CharField(max_length=500)
 
 
 class PhysicalExamAssetUploadSerializer(serializers.Serializer):
@@ -157,6 +168,36 @@ class PatientPromptTemplateSerializer(serializers.ModelSerializer):
         return value.strip()
 
 
+class PatientFollowUpTemplateSerializer(serializers.ModelSerializer):
+    questions = PatientFollowUpQuestionsField(allow_empty=False)
+    closing_text = serializers.CharField(max_length=500)
+    updated_by_name = serializers.CharField(
+        source="updated_by.display_name",
+        read_only=True,
+        default="",
+    )
+
+    class Meta:
+        model = PatientFollowUpTemplate
+        fields = [
+            "id",
+            "name",
+            "questions",
+            "closing_text",
+            "updated_by_name",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "name", "updated_by_name", "updated_at"]
+
+    def validate_questions(self, value: list[str]) -> list[str]:
+        return [question.strip() for question in value]
+
+    def validate_closing_text(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError("主动问答收尾语不能为空。")
+        return value.strip()
+
+
 class CaseDraftSerializer(serializers.ModelSerializer):
     case_id = serializers.UUIDField(source="case.id", read_only=True)
     case_code = serializers.CharField(source="case.code", read_only=True)
@@ -174,6 +215,19 @@ class CaseDraftSerializer(serializers.ModelSerializer):
     )
     effective_patient_prompt = serializers.SerializerMethodField()
     default_patient_prompt = serializers.SerializerMethodField()
+    patient_follow_up_questions = PatientFollowUpQuestionsField(
+        required=False,
+        allow_empty=True,
+    )
+    patient_follow_up_closing_text = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=500,
+    )
+    effective_patient_follow_up_questions = serializers.SerializerMethodField()
+    effective_patient_follow_up_closing_text = serializers.SerializerMethodField()
+    default_patient_follow_up_questions = serializers.SerializerMethodField()
+    default_patient_follow_up_closing_text = serializers.SerializerMethodField()
     enabled_stages = StringListField(required=False)
     expected_updated_at = serializers.DateTimeField(write_only=True, required=False)
 
@@ -194,6 +248,13 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             "patient_prompt",
             "effective_patient_prompt",
             "default_patient_prompt",
+            "patient_follow_up_mode",
+            "patient_follow_up_questions",
+            "patient_follow_up_closing_text",
+            "effective_patient_follow_up_questions",
+            "effective_patient_follow_up_closing_text",
+            "default_patient_follow_up_questions",
+            "default_patient_follow_up_closing_text",
             "created_at",
             "updated_at",
             "expected_updated_at",
@@ -210,6 +271,10 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             "version_number",
             "effective_patient_prompt",
             "default_patient_prompt",
+            "effective_patient_follow_up_questions",
+            "effective_patient_follow_up_closing_text",
+            "default_patient_follow_up_questions",
+            "default_patient_follow_up_closing_text",
             "created_at",
             "updated_at",
         ]
@@ -220,6 +285,20 @@ class CaseDraftSerializer(serializers.ModelSerializer):
     def get_default_patient_prompt(self, version: CaseVersion) -> str:
         del version
         return default_patient_style()
+
+    def get_effective_patient_follow_up_questions(self, version: CaseVersion) -> list[str]:
+        return effective_patient_follow_up(version)[0]
+
+    def get_effective_patient_follow_up_closing_text(self, version: CaseVersion) -> str:
+        return effective_patient_follow_up(version)[1]
+
+    def get_default_patient_follow_up_questions(self, version: CaseVersion) -> list[str]:
+        del version
+        return default_patient_follow_up()[0]
+
+    def get_default_patient_follow_up_closing_text(self, version: CaseVersion) -> str:
+        del version
+        return default_patient_follow_up()[1]
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -237,6 +316,34 @@ class CaseDraftSerializer(serializers.ModelSerializer):
             attrs["patient_prompt"] = ""
         elif "patient_prompt" in attrs:
             attrs["patient_prompt"] = prompt.strip()
+
+        current_follow_up_mode = getattr(
+            self.instance,
+            "patient_follow_up_mode",
+            PatientFollowUpMode.DEFAULT,
+        )
+        current_questions = getattr(self.instance, "patient_follow_up_questions", [])
+        current_closing = getattr(self.instance, "patient_follow_up_closing_text", "")
+        follow_up_mode = attrs.get("patient_follow_up_mode", current_follow_up_mode)
+        questions = attrs.get("patient_follow_up_questions", current_questions)
+        closing = attrs.get("patient_follow_up_closing_text", current_closing)
+        if follow_up_mode == PatientFollowUpMode.CUSTOM:
+            errors = {}
+            if not questions:
+                errors["patient_follow_up_questions"] = "自定义主动询问至少需要一个问题。"
+            if not closing.strip():
+                errors["patient_follow_up_closing_text"] = "自定义主动问答收尾语不能为空。"
+            if errors:
+                raise serializers.ValidationError(errors)
+            attrs["patient_follow_up_questions"] = [item.strip() for item in questions]
+            attrs["patient_follow_up_closing_text"] = closing.strip()
+        elif (
+            "patient_follow_up_mode" in attrs
+            or "patient_follow_up_questions" in attrs
+            or "patient_follow_up_closing_text" in attrs
+        ):
+            attrs["patient_follow_up_questions"] = []
+            attrs["patient_follow_up_closing_text"] = ""
         return attrs
 
 

@@ -11,7 +11,12 @@ from django.core.validators import (
 from django.db import models
 from django.db.models import Q
 
-from .prompts import DEFAULT_PATIENT_STYLE, PATIENT_STYLE_TEMPLATE_NAME
+from .prompts import (
+    DEFAULT_PATIENT_FOLLOW_UP_CLOSING,
+    DEFAULT_PATIENT_STYLE,
+    PATIENT_FOLLOW_UP_TEMPLATE_NAME,
+    PATIENT_STYLE_TEMPLATE_NAME,
+)
 
 
 def default_enabled_stages() -> list[str]:
@@ -93,6 +98,33 @@ class PatientPromptTemplate(models.Model):
         return self.name
 
 
+class PatientFollowUpMode(models.TextChoices):
+    DEFAULT = "default", "跟随系统默认"
+    CUSTOM = "custom", "病例自定义"
+    DISABLED = "disabled", "关闭"
+
+
+class PatientFollowUpTemplate(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    name = models.CharField(max_length=80, default=PATIENT_FOLLOW_UP_TEMPLATE_NAME)
+    questions = models.JSONField(default=list)
+    closing_text = models.CharField(
+        max_length=500,
+        default=DEFAULT_PATIENT_FOLLOW_UP_CLOSING,
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="patient_follow_up_templates_updated",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class CaseVersion(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     case = models.ForeignKey(Case, on_delete=models.PROTECT, related_name="versions")
@@ -116,6 +148,13 @@ class CaseVersion(models.Model):
         default=PatientPromptMode.DEFAULT,
     )
     patient_prompt = models.TextField(blank=True, validators=[MaxLengthValidator(8000)])
+    patient_follow_up_mode = models.CharField(
+        max_length=16,
+        choices=PatientFollowUpMode.choices,
+        default=PatientFollowUpMode.DEFAULT,
+    )
+    patient_follow_up_questions = models.JSONField(default=list, blank=True)
+    patient_follow_up_closing_text = models.CharField(max_length=500, blank=True)
     based_on = models.ForeignKey(
         "self",
         null=True,

@@ -92,6 +92,16 @@ function commaList(value: string): string[] {
     .filter(Boolean)
 }
 
+function moveStringItem(items: string[], index: number, offset: number): string[] {
+  const target = index + offset
+  if (target < 0 || target >= items.length) return items
+  const updated = [...items]
+  const current = updated[index]
+  updated[index] = updated[target]
+  updated[target] = current
+  return updated
+}
+
 function DelimitedListInput({
   value,
   onChange,
@@ -196,6 +206,40 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
     }))
   }
 
+  function setPatientFollowUpMode(mode: CaseDraft['patient_follow_up_mode']) {
+    updateDraft((current) => {
+      const questions = mode === 'custom' ? [...current.default_patient_follow_up_questions] : []
+      const closingText = mode === 'custom' ? current.default_patient_follow_up_closing_text : ''
+      return {
+        ...current,
+        patient_follow_up_mode: mode,
+        patient_follow_up_questions: questions,
+        patient_follow_up_closing_text: closingText,
+        effective_patient_follow_up_questions: mode === 'disabled' ? [] : questions.length > 0
+          ? questions
+          : current.default_patient_follow_up_questions,
+        effective_patient_follow_up_closing_text: mode === 'disabled' ? '' : closingText
+          || current.default_patient_follow_up_closing_text,
+      }
+    })
+  }
+
+  function setPatientFollowUpQuestions(questions: string[]) {
+    updateDraft((current) => ({
+      ...current,
+      patient_follow_up_questions: questions,
+      effective_patient_follow_up_questions: questions,
+    }))
+  }
+
+  function setPatientFollowUpClosingText(value: string) {
+    updateDraft((current) => ({
+      ...current,
+      patient_follow_up_closing_text: value,
+      effective_patient_follow_up_closing_text: value,
+    }))
+  }
+
   function draftPayload(source: CaseDraft): Partial<CaseDraft> {
     return {
       title_internal: source.title_internal,
@@ -205,6 +249,9 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
       enabled_stages: source.enabled_stages,
       patient_prompt_mode: source.patient_prompt_mode,
       patient_prompt: source.patient_prompt,
+      patient_follow_up_mode: source.patient_follow_up_mode,
+      patient_follow_up_questions: source.patient_follow_up_questions,
+      patient_follow_up_closing_text: source.patient_follow_up_closing_text,
       patient_profile: source.patient_profile,
       physical_exam: source.physical_exam,
       facts: source.facts.map((fact) => ({
@@ -575,6 +622,83 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                   onChange={(event) => setPhysicalExam('consent_text', event.target.value)}
                 />
               </label>
+            </div>
+            <div className="physical-exam-follow-up">
+              <h4>检查后患者主动询问</h4>
+              <p className="section-help">
+                首次完成检查后，患者会一次询问一个问题；学生回答后再进入下一项。学生回答只保存为问诊记录，不做 AI 评分。
+              </p>
+              <div className="form-grid">
+                <label>
+                  主动询问来源
+                  <select
+                    value={draft.patient_follow_up_mode}
+                    onChange={(event) => setPatientFollowUpMode(
+                      event.target.value as CaseDraft['patient_follow_up_mode'],
+                    )}
+                  >
+                    <option value="default">跟随系统默认</option>
+                    <option value="custom">当前病例自定义</option>
+                    <option value="disabled">关闭</option>
+                  </select>
+                </label>
+              </div>
+              {draft.patient_follow_up_mode === 'default' && (
+                <div>
+                  <ol>
+                    {draft.default_patient_follow_up_questions.map((question, index) => (
+                      <li key={`default-follow-up-${index}`}>{question}</li>
+                    ))}
+                  </ol>
+                  <p><strong>收尾：</strong>{draft.default_patient_follow_up_closing_text}</p>
+                  <small>系统默认内容更新后，草稿会使用新内容；发布时保存当前快照。</small>
+                </div>
+              )}
+              {draft.patient_follow_up_mode === 'custom' && (
+                <>
+                  <div className="repeat-list">
+                    {draft.patient_follow_up_questions.map((question, index) => (
+                      <article className="repeat-item" key={`case-follow-up-${index}`}>
+                        <div className="repeat-item__header">
+                          <strong>主动询问 {index + 1}</strong>
+                          <div>
+                            <button type="button" disabled={index === 0} onClick={() => setPatientFollowUpQuestions(moveStringItem(draft.patient_follow_up_questions, index, -1))}>上移</button>
+                            <button type="button" disabled={index === draft.patient_follow_up_questions.length - 1} onClick={() => setPatientFollowUpQuestions(moveStringItem(draft.patient_follow_up_questions, index, 1))}>下移</button>
+                            <button type="button" disabled={draft.patient_follow_up_questions.length === 1} onClick={() => setPatientFollowUpQuestions(draft.patient_follow_up_questions.filter((_, itemIndex) => itemIndex !== index))}>删除</button>
+                          </div>
+                        </div>
+                        <input
+                          aria-label={`病例主动询问 ${index + 1}`}
+                          maxLength={500}
+                          value={question}
+                          onChange={(event) => setPatientFollowUpQuestions(
+                            draft.patient_follow_up_questions.map((item, itemIndex) => (
+                              itemIndex === index ? event.target.value : item
+                            )),
+                          )}
+                        />
+                      </article>
+                    ))}
+                  </div>
+                  <button className="button button--secondary" type="button" onClick={() => setPatientFollowUpQuestions([...draft.patient_follow_up_questions, ''])}>
+                    添加主动询问
+                  </button>
+                  <div className="form-grid">
+                    <label className="form-grid__wide">
+                      最后一项回答后的收尾语
+                      <input
+                        aria-label="病例主动问答收尾语"
+                        maxLength={500}
+                        value={draft.patient_follow_up_closing_text}
+                        onChange={(event) => setPatientFollowUpClosingText(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                </>
+              )}
+              {draft.patient_follow_up_mode === 'disabled' && (
+                <small>当前病例完成体格检查后，患者不会主动发起询问。</small>
+              )}
             </div>
             <div className="physical-exam-media">
               <label className="checkbox-field physical-exam-media__confirmation">

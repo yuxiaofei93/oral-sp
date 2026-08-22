@@ -869,6 +869,27 @@ h1 {
   border-top: 1px solid #dfe9e6;
 }
 
+.physical-exam-follow-up {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #dfe9e6;
+}
+
+.physical-exam-follow-up h4,
+.physical-exam-follow-up p,
+.physical-exam-follow-up ol {
+  margin: 0;
+}
+
+.physical-exam-follow-up ol {
+  display: grid;
+  gap: 7px;
+  padding-left: 24px;
+  color: #405f59;
+}
+
 .physical-exam-media__confirmation {
   justify-self: start;
 }

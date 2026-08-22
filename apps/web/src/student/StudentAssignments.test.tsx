@@ -390,6 +390,7 @@ describe('StudentAssignments', () => {
             { id: 'm1', sequence: 1, role: 'student', kind: 'chat', content: '可以检查一下您的口腔吗？', response_status: 'completed' },
             { id: 'm2', sequence: 2, role: 'patient', kind: 'physical_exam_consent', content: '可以，麻烦您检查吧。', response_status: 'not_applicable' },
             { id: 'm3', sequence: 3, role: 'system', kind: 'physical_exam_result', content: physicalExamResult.findings_text, response_status: 'not_applicable' },
+            { id: 'm4', sequence: 4, role: 'patient', kind: 'patient_follow_up_question', content: '医生，我这个是什么病啊？', response_status: 'not_applicable' },
           ],
         }), { status: 200 }))
       }
@@ -415,6 +416,9 @@ describe('StudentAssignments', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '关闭体格检查结果' }))
     expect(screen.queryByRole('dialog', { name: '口腔体格检查所见' })).not.toBeInTheDocument()
+    expect(screen.getByText('医生，我这个是什么病啊？')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('回复患者…')).toBeInTheDocument()
+    expect(screen.getByLabelText('回复患者')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '查看完整体格检查资料' }))
     expect(screen.getByRole('dialog', { name: '口腔体格检查所见' })).toBeInTheDocument()
   })

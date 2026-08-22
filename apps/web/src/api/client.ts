@@ -126,6 +126,13 @@ export type CaseDraft = {
   patient_prompt: string
   effective_patient_prompt: string
   default_patient_prompt: string
+  patient_follow_up_mode: 'default' | 'custom' | 'disabled'
+  patient_follow_up_questions: string[]
+  patient_follow_up_closing_text: string
+  effective_patient_follow_up_questions: string[]
+  effective_patient_follow_up_closing_text: string
+  default_patient_follow_up_questions: string[]
+  default_patient_follow_up_closing_text: string
   created_at: string
   updated_at: string
   patient_profile: PatientProfile
@@ -140,6 +147,15 @@ export type PatientPromptTemplate = {
   id: number
   name: string
   content: string
+  updated_by_name: string
+  updated_at: string
+}
+
+export type PatientFollowUpTemplate = {
+  id: number
+  name: string
+  questions: string[]
+  closing_text: string
   updated_by_name: string
   updated_at: string
 }
@@ -184,7 +200,12 @@ export type SessionMessage = {
   id: string
   sequence: number
   role: 'student' | 'patient' | 'system'
-  kind: 'chat' | 'physical_exam_consent' | 'physical_exam_result'
+  kind:
+    | 'chat'
+    | 'physical_exam_consent'
+    | 'physical_exam_result'
+    | 'patient_follow_up_question'
+    | 'patient_follow_up_closing'
   content: string
   client_message_id: string
   reply_to_id: string | null
@@ -466,6 +487,9 @@ const validationFieldLabels: Record<string, string> = {
   enabled_stages: '病例阶段',
   patient_prompt_mode: '表达风格来源',
   patient_prompt: '患者表达风格',
+  patient_follow_up_mode: '主动询问来源',
+  patient_follow_up_questions: '患者主动询问',
+  patient_follow_up_closing_text: '主动问答收尾语',
   display_name: '化名',
   age: '年龄',
   sex: '性别',
@@ -669,6 +693,24 @@ export function savePatientPromptTemplate(content: string): Promise<PatientPromp
   )
 }
 
+export async function getPatientFollowUpTemplate(): Promise<PatientFollowUpTemplate> {
+  const response = await fetch('/api/teacher/cases/patient-follow-up-template/', {
+    credentials: 'same-origin',
+  })
+  return parseResponse<PatientFollowUpTemplate>(response)
+}
+
+export function savePatientFollowUpTemplate(
+  questions: string[],
+  closingText: string,
+): Promise<PatientFollowUpTemplate> {
+  return mutate<PatientFollowUpTemplate>(
+    'PATCH',
+    '/api/teacher/cases/patient-follow-up-template/',
+    { questions, closing_text: closingText },
+  )
+}
+
 export async function getCaseDraft(caseId: string): Promise<CaseDraft> {
   const response = await fetch(`/api/teacher/cases/${caseId}/draft/`, {
     credentials: 'same-origin',
@@ -747,7 +789,11 @@ export function askPatient(
   student_message: SessionMessage
   patient_message: SessionMessage | null
   reused: boolean
-  interaction_type: 'patient_answer' | 'physical_exam_released' | 'physical_exam_reopened'
+  interaction_type:
+    | 'patient_answer'
+    | 'physical_exam_released'
+    | 'physical_exam_reopened'
+    | 'patient_follow_up'
 }> {
   return mutate('POST', `/api/student/sessions/${sessionId}/messages/`, payload)
 }

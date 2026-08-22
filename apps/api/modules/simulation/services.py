@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from modules.accounts.models import RoleCode
 from modules.cases.models import DisclosureMode, PhysicalExam, VersionStatus
-from modules.cases.services import effective_patient_style
+from modules.cases.services import effective_patient_follow_up, effective_patient_style
 
 from .gateways import (
     PATIENT_ANSWER_PROMPT_VERSION,
@@ -33,6 +33,8 @@ from .models import (
     MessageRole,
     ModelCall,
     ModelCallStatus,
+    PatientFollowUpProgress,
+    PatientFollowUpStatus,
     PhysicalExamRelease,
     ResponseStatus,
     SessionStage,
@@ -508,7 +510,114 @@ def _existing_interaction_type(student_message: Message) -> str:
     reply = Message.objects.filter(reply_to=student_message).first()
     if reply and reply.kind == MessageKind.PHYSICAL_EXAM_CONSENT:
         return "physical_exam_reopened"
+    if reply and reply.kind in (
+        MessageKind.PATIENT_FOLLOW_UP_QUESTION,
+        MessageKind.PATIENT_FOLLOW_UP_CLOSING,
+    ):
+        return "patient_follow_up"
     return "patient_answer"
+
+
+def _patient_follow_up_exchange(
+    *,
+    session: SimulationSession,
+    content: str,
+    client_message_id: str,
+) -> ExchangeResult | None:
+    with transaction.atomic():
+        locked_session = SimulationSession.objects.select_for_update().get(
+            pk=session.pk
+        )
+        locked_student = (
+            Message.objects.select_for_update()
+            .filter(
+                session=locked_session,
+                client_message_id=client_message_id,
+                role=MessageRole.STUDENT,
+            )
+            .first()
+        )
+        if locked_student:
+            existing_reply = Message.objects.filter(reply_to=locked_student).first()
+            if existing_reply:
+                if existing_reply.kind in (
+                    MessageKind.PATIENT_FOLLOW_UP_QUESTION,
+                    MessageKind.PATIENT_FOLLOW_UP_CLOSING,
+                ):
+                    return ExchangeResult(
+                        locked_student,
+                        existing_reply,
+                        True,
+                        "patient_follow_up",
+                    )
+                return None
+            if locked_student.response_status != ResponseStatus.PROCESSING:
+                return None
+        progress = (
+            PatientFollowUpProgress.objects.select_for_update()
+            .filter(
+                session=locked_session,
+                status=PatientFollowUpStatus.AWAITING_ANSWER,
+            )
+            .first()
+        )
+        if progress is None:
+            return None
+        if (
+            locked_session.status != SessionStatus.ACTIVE
+            or locked_session.stage != SessionStage.INTERVIEW
+        ):
+            if locked_student:
+                locked_student.response_status = ResponseStatus.FAILED
+                locked_student.error_code = "session_ended"
+                locked_student.save(update_fields=["response_status", "error_code"])
+            raise SessionExpiredError("会话已结束，本次患者主动问答未写入考试记录。")
+
+        reused = locked_student is not None
+        if locked_student is None:
+            locked_session.last_message_sequence += 1
+            locked_student = Message.objects.create(
+                session=locked_session,
+                sequence=locked_session.last_message_sequence,
+                role=MessageRole.STUDENT,
+                content=content,
+                client_message_id=client_message_id,
+                response_status=ResponseStatus.PROCESSING,
+            )
+
+        questions, closing_text = effective_patient_follow_up(locked_session.case_version)
+        if progress.next_question_index < len(questions):
+            content = questions[progress.next_question_index]
+            kind = MessageKind.PATIENT_FOLLOW_UP_QUESTION
+            progress.next_question_index += 1
+            progress_fields = ["next_question_index"]
+        else:
+            content = closing_text
+            kind = MessageKind.PATIENT_FOLLOW_UP_CLOSING
+            progress.status = PatientFollowUpStatus.COMPLETED
+            progress.completed_at = timezone.now()
+            progress_fields = ["status", "completed_at"]
+
+        locked_session.last_message_sequence += 1
+        patient_message = Message.objects.create(
+            session=locked_session,
+            sequence=locked_session.last_message_sequence,
+            role=MessageRole.PATIENT,
+            kind=kind,
+            content=content,
+            reply_to=locked_student,
+        )
+        locked_session.save(update_fields=["last_message_sequence", "updated_at"])
+        progress.save(update_fields=progress_fields)
+        locked_student.response_status = ResponseStatus.COMPLETED
+        locked_student.error_code = ""
+        locked_student.save(update_fields=["response_status", "error_code"])
+        return ExchangeResult(
+            locked_student,
+            patient_message,
+            reused,
+            "patient_follow_up",
+        )
 
 
 def _save_physical_exam_response(
@@ -563,6 +672,20 @@ def _save_physical_exam_response(
                 consent_message=consent_message,
                 result_message=result_message,
             )
+            questions, _ = effective_patient_follow_up(locked_session.case_version)
+            if questions:
+                locked_session.last_message_sequence += 1
+                Message.objects.create(
+                    session=locked_session,
+                    sequence=locked_session.last_message_sequence,
+                    role=MessageRole.PATIENT,
+                    kind=MessageKind.PATIENT_FOLLOW_UP_QUESTION,
+                    content=questions[0],
+                )
+                PatientFollowUpProgress.objects.create(
+                    session=locked_session,
+                    next_question_index=1,
+                )
             interaction_type = "physical_exam_released"
         locked_session.save(update_fields=["last_message_sequence", "updated_at"])
         locked_student.response_status = ResponseStatus.COMPLETED
@@ -580,6 +703,13 @@ def ask_patient(
     gateway: PatientGateway | None = None,
 ) -> ExchangeResult:
     require_active_session(session=session, student=student)
+    follow_up_exchange = _patient_follow_up_exchange(
+        session=session,
+        content=content.strip(),
+        client_message_id=client_message_id,
+    )
+    if follow_up_exchange:
+        return follow_up_exchange
     student_message, reused = _create_student_message(
         session=session,
         content=content.strip(),

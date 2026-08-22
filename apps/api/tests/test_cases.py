@@ -33,6 +33,7 @@ def test_students_cannot_access_teacher_case_api():
 
     assert client.get(reverse("teacher-case-list")).status_code == 403
     assert client.get(reverse("teacher-patient-prompt-template")).status_code == 403
+    assert client.get(reverse("teacher-patient-follow-up-template")).status_code == 403
 
 
 @pytest.mark.django_db
@@ -128,6 +129,92 @@ def test_teacher_can_edit_default_patient_style_and_override_it_per_case():
 
 
 @pytest.mark.django_db
+def test_teacher_configures_default_and_case_patient_follow_up():
+    teacher = make_user("13800138115", RoleCode.TEACHER)
+    client = APIClient()
+    client.force_authenticate(teacher)
+    template_url = reverse("teacher-patient-follow-up-template")
+
+    template = client.get(template_url)
+    assert template.status_code == 200
+    assert template.json()["questions"] == [
+        "医生，我这个是什么病啊？",
+        "那接下来要怎么治疗呢？",
+        "我还需要做什么化验或者检查吗？",
+    ]
+    updated_template = client.patch(
+        template_url,
+        {
+            "questions": ["我得的是什么病？", "接下来怎么办？"],
+            "closing_text": "好的，谢谢医生。",
+        },
+        format="json",
+    )
+    assert updated_template.status_code == 200
+    assert updated_template.json()["updated_by_name"] == teacher.display_name
+
+    assert client.patch(template_url, {"questions": []}, format="json").status_code == 400
+    assert client.patch(
+        template_url,
+        {"questions": ["  "]},
+        format="json",
+    ).status_code == 400
+    assert client.patch(
+        template_url,
+        {"questions": ["问" * 501]},
+        format="json",
+    ).status_code == 400
+    assert client.patch(
+        template_url,
+        {"closing_text": "谢" * 501},
+        format="json",
+    ).status_code == 400
+
+    created = client.post(reverse("teacher-case-list"), {}, format="json")
+    assert created.status_code == 201
+    assert created.json()["patient_follow_up_mode"] == "default"
+    assert created.json()["patient_follow_up_questions"] == []
+    assert created.json()["effective_patient_follow_up_questions"] == [
+        "我得的是什么病？",
+        "接下来怎么办？",
+    ]
+
+    draft_url = reverse(
+        "teacher-case-draft",
+        kwargs={"case_id": created.json()["case_id"]},
+    )
+    customized = client.patch(
+        draft_url,
+        {
+            "patient_follow_up_mode": "custom",
+            "patient_follow_up_questions": ["这是怎么引起的？"],
+            "patient_follow_up_closing_text": "我知道了，谢谢。",
+        },
+        format="json",
+    )
+    assert customized.status_code == 200
+    assert customized.json()["effective_patient_follow_up_questions"] == [
+        "这是怎么引起的？"
+    ]
+
+    disabled = client.patch(
+        draft_url,
+        {"patient_follow_up_mode": "disabled"},
+        format="json",
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["patient_follow_up_questions"] == []
+    assert disabled.json()["effective_patient_follow_up_questions"] == []
+
+    invalid_custom = client.patch(
+        draft_url,
+        {"patient_follow_up_mode": "custom"},
+        format="json",
+    )
+    assert invalid_custom.status_code == 400
+
+
+@pytest.mark.django_db
 def test_published_case_snapshots_default_patient_prompt():
     teacher = make_user("13800138106", RoleCode.TEACHER)
     client = APIClient()
@@ -163,6 +250,48 @@ def test_published_case_snapshots_default_patient_prompt():
     second_version = CaseVersion.objects.get(pk=second.json()["version"]["id"])
     assert second_version.version_number == 2
     assert second_version.patient_prompt == "默认模板第二版。"
+
+
+@pytest.mark.django_db
+def test_published_case_snapshots_default_patient_follow_up():
+    teacher = make_user("13800138116", RoleCode.TEACHER)
+    client = APIClient()
+    client.force_authenticate(teacher)
+    template_url = reverse("teacher-patient-follow-up-template")
+    client.patch(
+        template_url,
+        {"questions": ["第一版问题。"], "closing_text": "第一版收尾。"},
+        format="json",
+    )
+
+    created = client.post(reverse("teacher-case-list"), {}, format="json")
+    case_id = created.json()["case_id"]
+    draft_url = reverse("teacher-case-draft", kwargs={"case_id": case_id})
+    client.patch(
+        draft_url,
+        {
+            "patient_profile": {"opening_statement": "医生您好，我牙龈疼。"},
+            "physical_exam": {"findings_text": "牙龈局部红肿。"},
+            "facts": [{"code": "pain", "standard_fact": "牙龈疼痛三天"}],
+        },
+        format="json",
+    )
+
+    first = client.post(reverse("teacher-case-publish", kwargs={"case_id": case_id}))
+    assert first.status_code == 201
+    first_version = CaseVersion.objects.get(pk=first.json()["version"]["id"])
+    assert first_version.patient_follow_up_questions == ["第一版问题。"]
+    assert first_version.patient_follow_up_closing_text == "第一版收尾。"
+
+    client.patch(
+        template_url,
+        {"questions": ["第二版问题。"], "closing_text": "第二版收尾。"},
+        format="json",
+    )
+    first_version.refresh_from_db()
+    assert first_version.patient_follow_up_questions == ["第一版问题。"]
+    draft = client.get(draft_url).json()
+    assert draft["effective_patient_follow_up_questions"] == ["第二版问题。"]
 
 
 @pytest.mark.django_db

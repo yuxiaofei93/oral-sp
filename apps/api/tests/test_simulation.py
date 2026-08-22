@@ -30,6 +30,8 @@ from modules.simulation.models import (
     MessageKind,
     MessageRole,
     ModelCallStatus,
+    PatientFollowUpProgress,
+    PatientFollowUpStatus,
     PhysicalExamRelease,
     ResponseStatus,
     ScoreDecision,
@@ -89,7 +91,7 @@ def make_user(identifier: str, role_code: str):
     return user
 
 
-def make_exam_data(*, suffix="1", patient_prompt=""):
+def make_exam_data(*, suffix="1", patient_prompt="", patient_follow_up_mode="disabled"):
     teacher = make_user(f"1390000000{suffix}", RoleCode.TEACHER)
     student = make_user(f"1380000000{suffix}", RoleCode.STUDENT)
     case = create_case_with_draft(
@@ -102,6 +104,7 @@ def make_exam_data(*, suffix="1", patient_prompt=""):
         data={
             "patient_prompt_mode": "custom" if patient_prompt else "default",
             "patient_prompt": patient_prompt,
+            "patient_follow_up_mode": patient_follow_up_mode,
             "patient_profile": {
                 "display_name": "陈女士",
                 "opening_statement": "医生您好，我的牙龈总是疼。",
@@ -500,7 +503,7 @@ def test_physical_exam_request_releases_once_reopens_and_is_traceably_scored():
     route_call = session.model_calls.get(prompt_version="patient-route-v2")
     assert route_call.routed_intent == "physical_exam_request"
     assert float(route_call.route_confidence) == 1.0
-    assert session.model_calls.filter(prompt_version="patient-answer-v4").count() == 0
+    assert session.model_calls.filter(prompt_version="patient-answer-v5").count() == 0
 
     visible = client.get(reverse("student-session-detail", kwargs={"session_id": session.id}))
     assert visible.json()["physical_exam_result"]["access_reason"] == "triggered"
@@ -581,6 +584,132 @@ def test_physical_exam_request_releases_once_reopens_and_is_traceably_scored():
         str(release.consent_message_id),
         str(release.result_message_id),
     ]
+
+
+class FollowUpTrackingGateway(PatientGateway):
+    def __init__(self):
+        self.route_histories = []
+        self.answer_calls = 0
+
+    def route(self, *, question, facts, history, physical_exam_available=False):
+        del question, facts, physical_exam_available
+        self.route_histories.append(history)
+        return RoutingResult(
+            fact_codes=["history.duration"],
+            confidence=1.0,
+            provider="test-provider",
+            model="tracking-router",
+            latency_ms=1,
+        )
+
+    def answer(self, *, question, facts, history, patient_style):
+        del question, history, patient_style
+        self.answer_calls += 1
+        return GatewayResult(
+            answer="差不多有三年了。",
+            fact_codes=[facts[0].code],
+            provider="test-provider",
+            model="tracking-patient",
+            latency_ms=1,
+        )
+
+
+@pytest.mark.django_db
+def test_patient_follow_up_advances_one_answer_at_a_time_without_model_calls():
+    _, student, assignment = make_exam_data(
+        suffix="7",
+        patient_follow_up_mode="default",
+    )
+    session = start_session(assignment=assignment, student=student).session
+    released = ask_patient(
+        session=session,
+        student=student,
+        content="可以检查一下您的口腔吗？",
+        client_message_id="follow_up_exam_request_01",
+    )
+    assert released.interaction_type == "physical_exam_released"
+    messages = list(session.messages.order_by("sequence"))
+    assert [message.kind for message in messages] == [
+        MessageKind.CHAT,
+        MessageKind.PHYSICAL_EXAM_CONSENT,
+        MessageKind.PHYSICAL_EXAM_RESULT,
+        MessageKind.PATIENT_FOLLOW_UP_QUESTION,
+    ]
+    assert messages[-1].content == "医生，我这个是什么病啊？"
+    model_call_count_after_release = session.model_calls.count()
+
+    gateway = FollowUpTrackingGateway()
+    first_answer = ask_patient(
+        session=session,
+        student=student,
+        content="初步考虑是牙周方面的问题。",
+        client_message_id="follow_up_answer_01",
+        gateway=gateway,
+    )
+    assert first_answer.interaction_type == "patient_follow_up"
+    assert first_answer.patient_message.content == "那接下来要怎么治疗呢？"
+    assert gateway.route_histories == []
+    assert gateway.answer_calls == 0
+    assert session.model_calls.count() == model_call_count_after_release
+
+    repeated = ask_patient(
+        session=session,
+        student=student,
+        content="初步考虑是牙周方面的问题。",
+        client_message_id="follow_up_answer_01",
+        gateway=gateway,
+    )
+    assert repeated.reused is True
+    assert repeated.patient_message.id == first_answer.patient_message.id
+    assert session.messages.filter(
+        kind=MessageKind.PATIENT_FOLLOW_UP_QUESTION,
+        content="那接下来要怎么治疗呢？",
+    ).count() == 1
+
+    second_answer = ask_patient(
+        session=session,
+        student=student,
+        content="需要根据检查结果制定治疗方案。",
+        client_message_id="follow_up_answer_02",
+        gateway=gateway,
+    )
+    assert second_answer.patient_message.content == "我还需要做什么化验或者检查吗？"
+    final_answer = ask_patient(
+        session=session,
+        student=student,
+        content="还需要进一步完善辅助检查。",
+        client_message_id="follow_up_answer_03",
+        gateway=gateway,
+    )
+    assert final_answer.patient_message.kind == MessageKind.PATIENT_FOLLOW_UP_CLOSING
+    assert final_answer.patient_message.content == "好的，我明白了，谢谢医生。"
+    progress = PatientFollowUpProgress.objects.get(session=session)
+    assert progress.status == PatientFollowUpStatus.COMPLETED
+    assert gateway.route_histories == []
+    assert gateway.answer_calls == 0
+    assert session.model_calls.count() == model_call_count_after_release
+
+    normal_exchange = ask_patient(
+        session=session,
+        student=student,
+        content="您的牙龈疼了多久？",
+        client_message_id="follow_up_normal_question_01",
+        gateway=gateway,
+    )
+    assert normal_exchange.interaction_type == "patient_answer"
+    assert gateway.answer_calls == 1
+    flattened_history = [item["content"] for item in gateway.route_histories[0]]
+    assert "医生，我这个是什么病啊？" in flattened_history
+    assert "还需要进一步完善辅助检查。" in flattened_history
+
+    reopened = ask_patient(
+        session=session,
+        student=student,
+        content="我想再检查一下您的口腔。",
+        client_message_id="follow_up_exam_request_02",
+    )
+    assert reopened.interaction_type == "physical_exam_reopened"
+    assert session.messages.filter(kind=MessageKind.PATIENT_FOLLOW_UP_QUESTION).count() == 3
 
 
 @pytest.mark.django_db

@@ -4,6 +4,7 @@ from .views import (
     TeacherCaseDraftView,
     TeacherCaseListCreateView,
     TeacherCasePublishView,
+    TeacherPatientFollowUpTemplateView,
     TeacherPatientPromptTemplateView,
     TeacherPhysicalExamAssetContentView,
     TeacherPhysicalExamAssetDeleteView,
@@ -16,6 +17,11 @@ urlpatterns = [
         "patient-prompt-template/",
         TeacherPatientPromptTemplateView.as_view(),
         name="teacher-patient-prompt-template",
+    ),
+    path(
+        "patient-follow-up-template/",
+        TeacherPatientFollowUpTemplateView.as_view(),
+        name="teacher-patient-follow-up-template",
     ),
     path("<uuid:case_id>/draft/", TeacherCaseDraftView.as_view(), name="teacher-case-draft"),
     path(

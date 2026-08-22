@@ -19,5 +19,14 @@ DEFAULT_PATIENT_STYLE = (
     "可以自然使用“大概”“好像”“我记得”等词，不使用病历书写口吻。"
 )
 
+DEFAULT_PATIENT_FOLLOW_UP_QUESTIONS = [
+    "医生，我这个是什么病啊？",
+    "那接下来要怎么治疗呢？",
+    "我还需要做什么化验或者检查吗？",
+]
+DEFAULT_PATIENT_FOLLOW_UP_CLOSING = "好的，我明白了，谢谢医生。"
+
 PATIENT_PROMPT_TEMPLATE_ID = 1
 PATIENT_STYLE_TEMPLATE_NAME = "默认患者表达风格"
+PATIENT_FOLLOW_UP_TEMPLATE_ID = 1
+PATIENT_FOLLOW_UP_TEMPLATE_NAME = "默认体格检查后患者主动询问"

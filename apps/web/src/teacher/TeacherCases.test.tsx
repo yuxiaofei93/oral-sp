@@ -18,6 +18,21 @@ const createdDraft = {
   patient_prompt: '',
   effective_patient_prompt: '默认患者问诊提示词。',
   default_patient_prompt: '默认患者问诊提示词。',
+  patient_follow_up_mode: 'default',
+  patient_follow_up_questions: [],
+  patient_follow_up_closing_text: '',
+  effective_patient_follow_up_questions: [
+    '医生，我这个是什么病啊？',
+    '那接下来要怎么治疗呢？',
+    '我还需要做什么化验或者检查吗？',
+  ],
+  effective_patient_follow_up_closing_text: '好的，我明白了，谢谢医生。',
+  default_patient_follow_up_questions: [
+    '医生，我这个是什么病啊？',
+    '那接下来要怎么治疗呢？',
+    '我还需要做什么化验或者检查吗？',
+  ],
+  default_patient_follow_up_closing_text: '好的，我明白了，谢谢医生。',
   created_at: '2026-08-08T00:00:00Z',
   updated_at: '2026-08-08T00:00:00Z',
   patient_profile: {

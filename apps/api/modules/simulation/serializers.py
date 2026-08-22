@@ -293,7 +293,12 @@ class ExchangeSerializer(serializers.Serializer):
     patient_message = MessageSerializer(allow_null=True)
     reused = serializers.BooleanField()
     interaction_type = serializers.ChoiceField(
-        choices=["patient_answer", "physical_exam_released", "physical_exam_reopened"]
+        choices=[
+            "patient_answer",
+            "physical_exam_released",
+            "physical_exam_reopened",
+            "patient_follow_up",
+        ]
     )
 
 

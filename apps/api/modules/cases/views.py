@@ -18,6 +18,7 @@ from .serializers import (
     CaseCreateSerializer,
     CaseDraftSerializer,
     CaseListSerializer,
+    PatientFollowUpTemplateSerializer,
     PatientPromptTemplateSerializer,
     PhysicalExamAssetDeleteSerializer,
     PhysicalExamAssetUploadSerializer,
@@ -27,6 +28,7 @@ from .services import (
     DraftConflictError,
     PublishValidationError,
     create_case_with_draft,
+    get_patient_follow_up_template,
     get_patient_prompt_template,
     publish_draft,
     update_draft,
@@ -66,6 +68,25 @@ class TeacherPatientPromptTemplateView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save(updated_by=request.user)
         return Response(PatientPromptTemplateSerializer(template).data)
+
+
+class TeacherPatientFollowUpTemplateView(APIView):
+    permission_classes = [IsTeacherOrAdministrator]
+
+    def get(self, request):
+        template = get_patient_follow_up_template()
+        return Response(PatientFollowUpTemplateSerializer(template).data)
+
+    def patch(self, request):
+        template = get_patient_follow_up_template()
+        serializer = PatientFollowUpTemplateSerializer(
+            template,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(updated_by=request.user)
+        return Response(PatientFollowUpTemplateSerializer(template).data)
 
 
 class TeacherCaseDraftView(APIView):
