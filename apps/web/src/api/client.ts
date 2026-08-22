@@ -254,7 +254,6 @@ export type SessionFeedback = {
   omissions: FeedbackIssue[]
   errors: FeedbackIssue[]
   feedback_summary: string
-  ai_feedback: string | null
   teacher_comment: string
   physical_exam_result: PhysicalExamResult | null
 }
@@ -281,11 +280,6 @@ export type ScoreResult = {
   dimension: string
   evaluation_method?: string
   automatic_score: number | null
-  ai_score: number | null
-  ai_confidence: number | null
-  ai_reason: string
-  ai_feedback: string
-  ai_evidence_excerpt: string
   teacher_score: number | null
   effective_score: number | null
   adjustment_reason: string
@@ -300,14 +294,12 @@ export type ScoreResult = {
   reason: string
   is_student_visible?: boolean
   rule_version?: string
-  model_version?: string
 }
 
 export type SessionAssessment = AssessmentScore & {
   omissions: FeedbackIssue[]
   errors: FeedbackIssue[]
   feedback_summary: string
-  ai_feedback: string
   scoring_version: string
   generated_at: string
   scoring_items: ScoreResult[]
@@ -365,45 +357,12 @@ export type TeacherReview = {
   created_at: string
 }
 
-export type AIEvaluationRun = {
-  id: string
-  status: 'running' | 'succeeded' | 'failed'
-  requested_by_id: string
-  requested_by_name: string
-  provider: string
-  model: string
-  resolved_model: string
-  prompt_version: string
-  scoring_item_codes: string[]
-  feedback_summary: string
-  latency_ms: number
-  input_tokens: number | null
-  output_tokens: number | null
-  error_code: string
-  created_at: string
-  completed_at: string | null
-  results: Array<{
-    code: string
-    label: string
-    score: number
-    max_score: number
-    decision: 'achieved' | 'partial' | 'missed'
-    confidence: number
-    evidence_message_ids: string[]
-    evidence_submission_ids: string[]
-    evidence_excerpt: string
-    reason: string
-    feedback: string
-  }>
-}
-
 export type TeacherSessionRecord = SimulationSession & {
   student_id: string
   student_name: string
   student_email: string
   assessment: SessionAssessment | null
   latest_review: TeacherReview | null
-  ai_evaluation: AIEvaluationRun | null
   standard_diagnoses: SessionFeedback['standard_diagnoses']
   standard_tests: SessionFeedback['standard_tests']
 }
@@ -943,11 +902,4 @@ export function saveTeacherReview(
   },
 ): Promise<TeacherReview> {
   return mutate('POST', `/api/teacher/sessions/${sessionId}/reviews/`, payload)
-}
-
-export function runTeacherAIEvaluation(
-  sessionId: string,
-  force = false,
-): Promise<AIEvaluationRun> {
-  return mutate('POST', `/api/teacher/sessions/${sessionId}/ai-evaluation/`, { force })
 }

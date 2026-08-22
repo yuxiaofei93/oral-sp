@@ -683,7 +683,6 @@ export function CaseEditor({ initialDraft, onClose }: Props) {
                       评价方式
                       <select value={item.evaluation_method} onChange={(event) => setField('scoring_items', draft.scoring_items.map((score, itemIndex) => itemIndex === index ? { ...score, evaluation_method: event.target.value } : score))}>
                         <option value="rule">确定性规则</option>
-                        <option value="ai">AI 辅助评价</option>
                         <option value="teacher">教师评价（暂标记待评价）</option>
                       </select>
                     </label>

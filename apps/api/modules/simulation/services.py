@@ -25,8 +25,6 @@ from .gateways import (
     spoken_patient_fallback,
 )
 from .models import (
-    AIEvaluationRun,
-    AIEvaluationStatus,
     AssignmentStatus,
     AssignmentStudent,
     CaseAssignment,
@@ -45,10 +43,8 @@ from .models import (
     SubmissionType,
 )
 from .reviews import (
-    ai_results_by_code,
     effective_decision,
     effective_score,
-    latest_ai_run,
     latest_review,
     review_overrides,
     score_summary,
@@ -207,11 +203,6 @@ def release_feedback(*, assignment: CaseAssignment) -> CaseAssignment:
         locked = CaseAssignment.objects.select_for_update().get(pk=assignment.pk)
         if locked.status != AssignmentStatus.CLOSED:
             raise FeedbackUnavailableError("必须先结束任务，才能统一发布反馈。")
-        if AIEvaluationRun.objects.filter(
-            session__assignment=locked,
-            status=AIEvaluationStatus.RUNNING,
-        ).exists():
-            raise FeedbackUnavailableError("仍有 AI 评价正在生成，请完成后再发布反馈。")
         if locked.feedback_released_at is None:
             locked.feedback_released_at = timezone.now()
             locked.save(update_fields=["feedback_released_at", "updated_at"])
@@ -355,15 +346,15 @@ def _patient_facts(session: SimulationSession) -> list[PatientFact]:
     ]
 
 
-def _recent_conversation(*, session: SimulationSession, current_message: Message) -> list[dict]:
-    recent = list(
+def _conversation_history(*, session: SimulationSession, current_message: Message) -> list[dict]:
+    messages = list(
         session.messages.exclude(pk=current_message.pk)
         .exclude(role=MessageRole.SYSTEM)
-        .order_by("-sequence")[:12]
+        .order_by("sequence")
     )
     return [
         {"role": message.role, "content": message.content}
-        for message in reversed(recent)
+        for message in messages
     ]
 
 
@@ -611,7 +602,7 @@ def ask_patient(
         )
 
     facts = _patient_facts(session)
-    history = _recent_conversation(session=session, current_message=student_message)
+    history = _conversation_history(session=session, current_message=student_message)
     patient_gateway = gateway
     try:
         physical_exam_available = bool(
@@ -903,15 +894,11 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
     assessment = generate_assessment(session)
     visible_results = list(session.score_results.filter(is_student_visible=True))
     review = latest_review(session)
-    ai_run = latest_ai_run(session)
-    ai_results = ai_results_by_code(ai_run)
     overrides = review_overrides(review)
     effective_by_code = {
         result.code: effective_score(
             result,
             review,
-            ai_run=ai_run,
-            ai_results=ai_results,
         )
         for result in visible_results
     }
@@ -968,27 +955,6 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
                     and overrides[result.code].get("score") not in (None, "")
                     else None
                 ),
-                "ai_score": (
-                    float(ai_results[result.code].score)
-                    if result.code in ai_results
-                    else None
-                ),
-                "ai_confidence": (
-                    float(ai_results[result.code].confidence)
-                    if result.code in ai_results
-                    else None
-                ),
-                "ai_reason": (
-                    ai_results[result.code].reason if result.code in ai_results else ""
-                ),
-                "ai_feedback": (
-                    ai_results[result.code].feedback if result.code in ai_results else ""
-                ),
-                "ai_evidence_excerpt": (
-                    ai_results[result.code].evidence_excerpt
-                    if result.code in ai_results
-                    else ""
-                ),
                 "effective_score": (
                     float(effective_by_code[result.code])
                     if effective_by_code[result.code] is not None
@@ -1004,8 +970,6 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
                 "effective_decision": effective_decision(
                     result,
                     review,
-                    ai_run=ai_run,
-                    ai_results=ai_results,
                 ),
                 "reason": result.reason,
                 "evidence_excerpt": result.evidence_excerpt,
@@ -1019,11 +983,6 @@ def feedback_for_session(*, session: SimulationSession, student) -> dict:
             f"当前反馈包含 {len(visible_results)} 个可见评分项；"
             f"发现 {len(visible_omissions)} 个遗漏项和 "
             f"{len(visible_errors)} 个需关注项。"
-        ),
-        "ai_feedback": (
-            ai_run.feedback_summary
-            if ai_run and any(result.code in ai_results for result in visible_results)
-            else None
         ),
         "teacher_comment": review.comment if review else "",
     }

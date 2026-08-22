@@ -2168,50 +2168,6 @@ h1 {
   background: #fff4d9;
 }
 
-.ai-evaluation-panel {
-  align-items: start;
-}
-
-.ai-evaluation-panel > div:first-child {
-  display: grid;
-  gap: 6px;
-}
-
-.ai-evaluation-panel .button {
-  justify-self: start;
-}
-
-.ai-run-status,
-.ai-score-evidence {
-  display: grid;
-  gap: 7px;
-  border-left: 4px solid #91a8a2;
-  border-radius: 8px;
-  padding: 12px 14px;
-  background: #f3f8f6;
-}
-
-.ai-run-status--succeeded {
-  border-left-color: #16816d;
-}
-
-.ai-run-status--failed {
-  border-left-color: #b4584d;
-  background: #fff5f3;
-}
-
-.ai-run-status span,
-.ai-score-evidence small,
-.muted-copy {
-  color: #647a75;
-  font-size: 13px;
-}
-
-.ai-run-status p,
-.ai-score-evidence p {
-  margin: 0;
-}
-
 .response-table-wrap {
   overflow-x: auto;
   border: 1px solid #dbe7e3;

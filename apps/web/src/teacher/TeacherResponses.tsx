@@ -9,7 +9,6 @@ import {
   getTeacherSessionRecord,
   getTeacherAssignmentStatistics,
   listTeacherResponses,
-  runTeacherAIEvaluation,
   saveTeacherReview,
   teacherAssignmentCsvUrl,
 } from '../api/client'
@@ -64,7 +63,6 @@ export function TeacherResponses({
   const [statistics, setStatistics] = useState<AssignmentStatistics | null>(null)
   const [record, setRecord] = useState<TeacherSessionRecord | null>(null)
   const [loading, setLoading] = useState(true)
-  const [evaluatingAI, setEvaluatingAI] = useState(false)
   const [savingReview, setSavingReview] = useState(false)
   const [error, setError] = useState('')
   const [reviewScores, setReviewScores] = useState<Record<string, string>>({})
@@ -121,7 +119,7 @@ export function TeacherResponses({
       const rawValue = reviewScores[item.code]?.trim() ?? ''
       const parsedValue = rawValue === '' ? null : Number(rawValue)
       const hadOverride = Boolean(record.latest_review?.score_overrides[item.code])
-      const baseScore = item.ai_score ?? item.automatic_score
+      const baseScore = item.automatic_score
       const differsFromBase = parsedValue !== baseScore
       if (!hadOverride && !differsFromBase) continue
       const reason = reviewReasons[item.code]?.trim() ?? ''
@@ -148,31 +146,6 @@ export function TeacherResponses({
       setError(requestError instanceof ApiError ? requestError.message : '教师复核保存失败。')
     } finally {
       setSavingReview(false)
-    }
-  }
-
-  async function evaluateWithAI() {
-    if (!record) return
-    const hasSuccessfulAI = record.assessment?.scoring_items.some((item) => item.ai_score !== null)
-    const force = record.ai_evaluation?.status === 'succeeded' || Boolean(hasSuccessfulAI)
-    if (force && !globalThis.confirm('将重新调用 DeepSeek 并生成一版新的 AI 辅助评价，是否继续？')) return
-    setEvaluatingAI(true)
-    setError('')
-    try {
-      await runTeacherAIEvaluation(record.id, force)
-      const [nextRecord, nextRows, nextStatistics] = await Promise.all([
-        getTeacherSessionRecord(record.id),
-        listTeacherResponses(assignment.id),
-        getTeacherAssignmentStatistics(assignment.id),
-      ])
-      setRecord(nextRecord)
-      setRows(nextRows)
-      setStatistics(nextStatistics)
-      loadReviewDraft(nextRecord)
-    } catch (requestError: unknown) {
-      setError(requestError instanceof ApiError ? requestError.message : 'AI 辅助评价生成失败。')
-    } finally {
-      setEvaluatingAI(false)
     }
   }
 
@@ -252,61 +225,14 @@ export function TeacherResponses({
               {record.assessment.scoring_items.map((item) => (
                 <article key={item.code}>
                   <header><div><strong>{item.label}</strong><span>{decisionNames[item.effective_decision]}</span></div><b>{item.effective_score === null ? '—' : item.effective_score} / {item.max_score}</b></header>
-                  {item.teacher_score !== null && <small>评价基准 {item.ai_score ?? item.automatic_score ?? '待评价'}；教师复核 {item.teacher_score}</small>}
+                  {item.teacher_score !== null && <small>评价基准 {item.automatic_score ?? '待评价'}；教师复核 {item.teacher_score}</small>}
                   {item.adjustment_reason && <p>复核理由：{item.adjustment_reason}</p>}
                   <p>{item.reason}</p>
                   {item.evidence_excerpt && <pre>{item.evidence_excerpt}</pre>}
-                  {item.ai_score !== null && (
-                    <div className="ai-score-evidence">
-                      <small>AI 辅助评分：{item.ai_score} / {item.max_score} · 置信度 {Math.round((item.ai_confidence ?? 0) * 100)}%</small>
-                      {item.ai_reason && <p>AI 评分理由：{item.ai_reason}</p>}
-                      {item.ai_evidence_excerpt && <pre>{item.ai_evidence_excerpt}</pre>}
-                      {item.ai_feedback && <p>AI 改进建议：{item.ai_feedback}</p>}
-                    </div>
-                  )}
                   {item.standard_answer && <small>标准答案：{item.standard_answer}</small>}
                 </article>
               ))}
             </div>
-          </section>
-        )}
-
-        {record.assessment?.scoring_items.some((item) => item.evaluation_method === 'ai') && (
-          <section className="record-section ai-evaluation-panel">
-            <div>
-              <h3>AI 辅助评价</h3>
-              <p>由 DeepSeek 按病例评分标准分析问诊记录和病例记录；最终成绩仍可由教师复核。</p>
-            </div>
-            {record.ai_evaluation ? (
-              <div className={`ai-run-status ai-run-status--${record.ai_evaluation.status}`}>
-                <strong>{record.ai_evaluation.status === 'succeeded' ? '评价已生成' : record.ai_evaluation.status === 'running' ? '正在评价' : '最近一次评价失败'}</strong>
-                <span>{record.ai_evaluation.provider} / {record.ai_evaluation.resolved_model || record.ai_evaluation.model}</span>
-                <span>触发教师：{record.ai_evaluation.requested_by_name}</span>
-                {record.ai_evaluation.status === 'succeeded' && <span>耗时 {record.ai_evaluation.latency_ms} ms · 输入 {record.ai_evaluation.input_tokens ?? '—'} / 输出 {record.ai_evaluation.output_tokens ?? '—'} tokens</span>}
-                {record.ai_evaluation.feedback_summary && <p>{record.ai_evaluation.feedback_summary}</p>}
-                {record.ai_evaluation.error_code && <span>错误代码：{record.ai_evaluation.error_code}</span>}
-              </div>
-            ) : (
-              <p className="muted-copy">尚未生成 AI 辅助评价。</p>
-            )}
-            {assignment.feedback_released_at ? (
-              <p className="review-frozen">反馈已发布，AI 评价已经冻结。</p>
-            ) : (
-              <button
-                className="button button--secondary"
-                type="button"
-                disabled={evaluatingAI || record.ai_evaluation?.status === 'running'}
-                onClick={evaluateWithAI}
-              >
-                {evaluatingAI
-                  ? 'DeepSeek 评价中…'
-                  : record.assessment.scoring_items.some((item) => item.ai_score !== null)
-                    ? '重新生成 AI 评价'
-                    : record.ai_evaluation?.status === 'failed'
-                      ? '重试 AI 评价'
-                      : '生成 AI 辅助评价'}
-              </button>
-            )}
           </section>
         )}
 
@@ -321,7 +247,7 @@ export function TeacherResponses({
                 <div className="review-score-grid">
                   {record.assessment.scoring_items.map((item) => (
                     <article key={item.code}>
-                      <div><strong>{item.label}</strong><small>{item.ai_score !== null ? 'AI 辅助' : '规则评分'}：{item.ai_score ?? item.automatic_score ?? '待评价'} / {item.max_score}</small></div>
+                      <div><strong>{item.label}</strong><small>{item.evaluation_method === 'teacher' ? '教师评价' : '规则评分'}：{item.automatic_score ?? '待评价'} / {item.max_score}</small></div>
                       <label>
                         复核分数
                         <input

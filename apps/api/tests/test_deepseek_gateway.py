@@ -1,6 +1,5 @@
 import json
 
-from modules.simulation.ai_evaluation import OpenAICompatibleAIEvaluationGateway
 from modules.simulation.gateways import (
     OpenAICompatiblePatientGateway,
     PatientFact,
@@ -271,33 +270,3 @@ def test_patient_gateway_retries_a_verbatim_written_fact_as_spoken_language(monk
         "上一版回答仍在照抄" in message["content"]
         for message in requests[1]["messages"]
     )
-
-
-def test_deepseek_ai_evaluation_uses_low_reasoning_effort(monkeypatch):
-    configure_deepseek(monkeypatch)
-    captured = {}
-
-    def fake_urlopen(request, timeout):
-        captured["body"] = json.loads(request.data.decode("utf-8"))
-        captured["timeout"] = timeout
-        return JsonResponse(
-            {
-                "model": "DeepSeek-V4-Flash-0731",
-                "choices": [
-                    {
-                        "finish_reason": "stop",
-                        "message": {"content": '{"summary":"完成","items":[]}'},
-                    }
-                ],
-            }
-        )
-
-    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    result = OpenAICompatibleAIEvaluationGateway(provider="deepseek").evaluate(
-        payload={"rubrics": [], "conversation": [], "submissions": []}
-    )
-
-    assert captured["body"]["thinking"] == {"type": "enabled"}
-    assert captured["body"]["reasoning_effort"] == "low"
-    assert captured["body"]["response_format"] == {"type": "json_object"}
-    assert result.model == "DeepSeek-V4-Flash-0731"

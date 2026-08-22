@@ -343,8 +343,7 @@ def _physical_exam_evaluation(item, session) -> Evaluation:
 
 def _evaluate_item(item, session, submissions, covered_calls) -> Evaluation:
     if item.evaluation_method != EvaluationMethod.RULE:
-        label = "AI 辅助评价" if item.evaluation_method == EvaluationMethod.AI else "教师评价"
-        return _pending(item, f"该评分项需要{label}，不计入当前自动得分。")
+        return _pending(item, "该评分项需要教师评价，不计入当前自动得分。")
     config = item.matching_config or {}
     source = config.get("source")
     if source == "history_facts" or (not source and item.dimension == ScoringDimension.HISTORY):

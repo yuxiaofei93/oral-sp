@@ -17,7 +17,6 @@ from .views import (
     TeacherAssignmentResponseListView,
     TeacherAssignmentStatisticsView,
     TeacherPhysicalExamAssetContentView,
-    TeacherSessionAIEvaluationView,
     TeacherSessionRecordView,
     TeacherSessionReviewView,
 )
@@ -72,11 +71,6 @@ urlpatterns = [
         "teacher/sessions/<uuid:session_id>/reviews/",
         TeacherSessionReviewView.as_view(),
         name="teacher-session-review",
-    ),
-    path(
-        "teacher/sessions/<uuid:session_id>/ai-evaluation/",
-        TeacherSessionAIEvaluationView.as_view(),
-        name="teacher-session-ai-evaluation",
     ),
     path(
         "student/assignments/",

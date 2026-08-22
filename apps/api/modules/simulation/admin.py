@@ -1,8 +1,6 @@
 from django.contrib import admin
 
 from .models import (
-    AIEvaluationRun,
-    AIScoreResult,
     CaseAssignment,
     ModelCall,
     PhysicalExamRelease,
@@ -80,45 +78,6 @@ class ScoreResultAdmin(admin.ModelAdmin):
 class TeacherReviewAdmin(admin.ModelAdmin):
     list_display = ("session", "revision", "reviewer", "final_score", "created_at")
     readonly_fields = [field.name for field in TeacherReview._meta.fields]
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
-@admin.register(AIEvaluationRun)
-class AIEvaluationRunAdmin(admin.ModelAdmin):
-    list_display = (
-        "session",
-        "status",
-        "requested_by",
-        "provider",
-        "model",
-        "latency_ms",
-        "created_at",
-    )
-    list_filter = ("status", "provider", "model")
-    readonly_fields = [field.name for field in AIEvaluationRun._meta.fields]
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
-@admin.register(AIScoreResult)
-class AIScoreResultAdmin(admin.ModelAdmin):
-    list_display = ("run", "score_result", "score", "decision", "confidence")
-    readonly_fields = [field.name for field in AIScoreResult._meta.fields]
 
     def has_add_permission(self, request):
         return False

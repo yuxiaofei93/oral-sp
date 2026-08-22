@@ -69,7 +69,6 @@ def assignment_report(assignment) -> dict:
         for session in assignment.sessions.select_related("assessment").prefetch_related(
             "score_results",
             "teacher_reviews__reviewer",
-            "ai_evaluation_runs__results__score_result",
         )
     }
     rows = []

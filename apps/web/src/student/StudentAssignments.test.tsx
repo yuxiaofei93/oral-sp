@@ -455,7 +455,6 @@ describe('StudentAssignments', () => {
               omissions: [{ code: 'score.final', label: '最终诊断', reason: '未命中标准诊断。', standard_answer: '慢性牙周炎' }],
               errors: [],
               feedback_summary: '发现 1 个遗漏项。',
-              ai_feedback: null,
               teacher_comment: '建议补充诊断依据。',
               standard_diagnoses: [{ type: 'final', name: '慢性牙周炎', supporting_evidence: [] }],
               standard_tests: [{ code: 'probe', name: '牙周探诊', result: '探诊深度增加', interpretation: '支持诊断' }],

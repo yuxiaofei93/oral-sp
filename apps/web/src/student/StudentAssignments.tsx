@@ -593,7 +593,7 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
               <div className="feedback-score">
                 <strong>{feedback.score.final_score}</strong>
                 <span>/ {feedback.score.scored_maximum} 当前得分</span>
-                {feedback.score.final_score !== feedback.score.automatic_score && <small>规则得分 {feedback.score.automatic_score}，当前得分还包含 AI 辅助评价或教师复核</small>}
+                {feedback.score.final_score !== feedback.score.automatic_score && <small>规则得分 {feedback.score.automatic_score}，当前得分包含教师复核</small>}
                 {feedback.score.provisional && <small>总分 {feedback.score.maximum_score}，仍有待评价项</small>}
               </div>
               <p>{feedback.feedback_summary}</p>
@@ -610,10 +610,6 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
                     {item.adjustment_reason && <small>教师复核：{item.adjustment_reason}</small>}
                     <p>{item.reason}</p>
                     {item.evidence_excerpt && <small>证据：{item.evidence_excerpt}</small>}
-                    {item.ai_score !== null && <small>AI 辅助评分：{item.ai_score} / {item.max_score}（置信度 {Math.round((item.ai_confidence ?? 0) * 100)}%）</small>}
-                    {item.ai_reason && <p>AI 评分理由：{item.ai_reason}</p>}
-                    {item.ai_evidence_excerpt && <small>AI 引用证据：{item.ai_evidence_excerpt}</small>}
-                    {item.ai_feedback && <small>AI 改进建议：{item.ai_feedback}</small>}
                     {item.standard_answer && <small>标准答案：{item.standard_answer}</small>}
                   </article>
                 ))}
@@ -624,7 +620,6 @@ function Workbench({ initialSession, onExit }: { initialSession: SimulationSessi
               {feedback.standard_diagnoses.map((diagnosis) => <p key={`${diagnosis.type}-${diagnosis.name}`}>{diagnosis.name}</p>)}
               <h4>标准检查</h4>
               {feedback.standard_tests.map((test) => <p key={test.code}>{test.name}：{test.result}</p>)}
-              {feedback.ai_feedback && <><h4>AI 辅助评语</h4><p>{feedback.ai_feedback}</p></>}
               {feedback.teacher_comment && <><h4>教师评语</h4><p>{feedback.teacher_comment}</p></>}
             </div>
           )}

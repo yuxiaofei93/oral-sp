@@ -4,8 +4,6 @@ from modules.cases.models import CaseVersion, PhysicalExam, VersionStatus
 from modules.teaching.models import ClassGroup
 
 from .models import (
-    AIEvaluationRun,
-    AIScoreResult,
     CaseAssignment,
     Message,
     PhysicalExamRelease,
@@ -15,13 +13,7 @@ from .models import (
     SubmissionType,
     TeacherReview,
 )
-from .reviews import (
-    ai_results_by_code,
-    effective_decision,
-    effective_score,
-    review_overrides,
-    score_summary,
-)
+from .reviews import effective_decision, effective_score, review_overrides, score_summary
 from .services import remaining_seconds
 
 
@@ -314,7 +306,6 @@ class FeedbackSerializer(serializers.Serializer):
     omissions = serializers.ListField(child=serializers.DictField())
     errors = serializers.ListField(child=serializers.DictField())
     feedback_summary = serializers.CharField()
-    ai_feedback = serializers.CharField(allow_null=True, allow_blank=True)
     teacher_comment = serializers.CharField(allow_blank=True)
     physical_exam_result = serializers.DictField(allow_null=True, required=False)
 
@@ -327,11 +318,6 @@ class ScoreResultSerializer(serializers.ModelSerializer):
     effective_score = serializers.SerializerMethodField()
     effective_decision = serializers.SerializerMethodField()
     adjustment_reason = serializers.SerializerMethodField()
-    ai_score = serializers.SerializerMethodField()
-    ai_confidence = serializers.SerializerMethodField()
-    ai_reason = serializers.SerializerMethodField()
-    ai_feedback = serializers.SerializerMethodField()
-    ai_evidence_excerpt = serializers.SerializerMethodField()
 
     def _override(self, result):
         return review_overrides(self.context.get("review")).get(result.code)
@@ -342,45 +328,12 @@ class ScoreResultSerializer(serializers.ModelSerializer):
             return None
         return float(override["score"])
 
-    def _ai_result(self, result):
-        return self.context.get("ai_results", {}).get(result.code)
-
-    def get_ai_score(self, result):
-        ai_result = self._ai_result(result)
-        return float(ai_result.score) if ai_result else None
-
-    def get_ai_confidence(self, result):
-        ai_result = self._ai_result(result)
-        return float(ai_result.confidence) if ai_result else None
-
-    def get_ai_reason(self, result):
-        ai_result = self._ai_result(result)
-        return ai_result.reason if ai_result else ""
-
-    def get_ai_feedback(self, result):
-        ai_result = self._ai_result(result)
-        return ai_result.feedback if ai_result else ""
-
-    def get_ai_evidence_excerpt(self, result):
-        ai_result = self._ai_result(result)
-        return ai_result.evidence_excerpt if ai_result else ""
-
     def get_effective_score(self, result):
-        score = effective_score(
-            result,
-            self.context.get("review"),
-            ai_run=self.context.get("ai_run"),
-            ai_results=self.context.get("ai_results", {}),
-        )
+        score = effective_score(result, self.context.get("review"))
         return float(score) if score is not None else None
 
     def get_effective_decision(self, result):
-        return effective_decision(
-            result,
-            self.context.get("review"),
-            ai_run=self.context.get("ai_run"),
-            ai_results=self.context.get("ai_results", {}),
-        )
+        return effective_decision(result, self.context.get("review"))
 
     def get_adjustment_reason(self, result):
         override = self._override(result)
@@ -395,11 +348,6 @@ class ScoreResultSerializer(serializers.ModelSerializer):
             "dimension",
             "evaluation_method",
             "automatic_score",
-            "ai_score",
-            "ai_confidence",
-            "ai_reason",
-            "ai_feedback",
-            "ai_evidence_excerpt",
             "teacher_score",
             "effective_score",
             "effective_decision",
@@ -414,7 +362,6 @@ class ScoreResultSerializer(serializers.ModelSerializer):
             "reason",
             "is_student_visible",
             "rule_version",
-            "model_version",
         ]
 
 
@@ -463,7 +410,6 @@ class AssessmentSerializer(serializers.ModelSerializer):
             "omissions",
             "errors",
             "feedback_summary",
-            "ai_feedback",
             "scoring_version",
             "generated_at",
             "scoring_items",
@@ -476,70 +422,8 @@ class AssessmentSerializer(serializers.ModelSerializer):
         return ScoreResultSerializer(
             results,
             many=True,
-            context={
-                "review": self.context.get("review"),
-                "ai_run": self.context.get("ai_run"),
-                "ai_results": self.context.get("ai_results", {}),
-            },
+            context={"review": self.context.get("review")},
         ).data
-
-
-class AIScoreResultSerializer(serializers.ModelSerializer):
-    code = serializers.CharField(source="score_result.code", read_only=True)
-    label = serializers.CharField(source="score_result.label", read_only=True)
-    score = serializers.FloatField()
-    max_score = serializers.FloatField(source="score_result.max_score", read_only=True)
-    confidence = serializers.FloatField()
-
-    class Meta:
-        model = AIScoreResult
-        fields = [
-            "code",
-            "label",
-            "score",
-            "max_score",
-            "decision",
-            "confidence",
-            "evidence_message_ids",
-            "evidence_submission_ids",
-            "evidence_excerpt",
-            "reason",
-            "feedback",
-        ]
-
-
-class AIEvaluationRunSerializer(serializers.ModelSerializer):
-    results = AIScoreResultSerializer(many=True, read_only=True)
-    requested_by_name = serializers.CharField(
-        source="requested_by.display_name",
-        read_only=True,
-    )
-
-    class Meta:
-        model = AIEvaluationRun
-        fields = [
-            "id",
-            "status",
-            "requested_by_id",
-            "requested_by_name",
-            "provider",
-            "model",
-            "resolved_model",
-            "prompt_version",
-            "scoring_item_codes",
-            "feedback_summary",
-            "latency_ms",
-            "input_tokens",
-            "output_tokens",
-            "error_code",
-            "created_at",
-            "completed_at",
-            "results",
-        ]
-
-
-class AIEvaluationCreateSerializer(serializers.Serializer):
-    force = serializers.BooleanField(required=False, default=False)
 
 
 class TeacherReviewSerializer(serializers.ModelSerializer):
@@ -630,7 +514,6 @@ class TeacherSessionRecordSerializer(SessionSerializer):
     student_email = serializers.EmailField(source="student.email", read_only=True)
     assessment = serializers.SerializerMethodField()
     latest_review = serializers.SerializerMethodField()
-    ai_evaluation = serializers.SerializerMethodField()
     standard_diagnoses = serializers.SerializerMethodField()
     standard_tests = serializers.SerializerMethodField()
 
@@ -642,7 +525,6 @@ class TeacherSessionRecordSerializer(SessionSerializer):
             "student_email",
             "assessment",
             "latest_review",
-            "ai_evaluation",
             "standard_diagnoses",
             "standard_tests",
         ]
@@ -654,20 +536,12 @@ class TeacherSessionRecordSerializer(SessionSerializer):
             return None
         return AssessmentSerializer(
             assessment,
-            context={
-                "review": self.context.get("review"),
-                "ai_run": self.context.get("ai_run"),
-                "ai_results": ai_results_by_code(self.context.get("ai_run")),
-            },
+            context={"review": self.context.get("review")},
         ).data
 
     def get_latest_review(self, session):
         review = self.context.get("review")
         return TeacherReviewSerializer(review).data if review else None
-
-    def get_ai_evaluation(self, session):
-        run = self.context.get("latest_ai_attempt")
-        return AIEvaluationRunSerializer(run).data if run else None
 
     def get_standard_diagnoses(self, session):
         return [

@@ -19,21 +19,12 @@ from modules.cases.models import (
     VersionStatus,
 )
 from modules.cases.services import create_case_with_draft, publish_draft, update_draft
-from modules.simulation.ai_evaluation import (
-    AIEvaluationError,
-    AIEvaluationGateway,
-    AIGatewayResponse,
-    run_ai_evaluation,
-)
 from modules.simulation.gateways import (
     GatewayResult,
     PatientGateway,
     RoutingResult,
 )
 from modules.simulation.models import (
-    AIEvaluationRun,
-    AIEvaluationStatus,
-    AIScoreResult,
     AssignmentStudent,
     Message,
     MessageKind,
@@ -86,43 +77,6 @@ def test_local_router_only_recognizes_an_explicit_oral_examination_request():
     assert request.intent == "physical_exam_request"
     assert request.confidence == 1.0
     assert symptom_question.intent == "patient_question"
-
-
-class StaticAIEvaluationGateway(AIEvaluationGateway):
-    provider = "deepseek"
-    model = "deepseek-v4-flash"
-
-    def __init__(self, *, invalid_evidence: bool = False):
-        self.invalid_evidence = invalid_evidence
-        self.payloads = []
-
-    def evaluate(self, *, payload: dict) -> AIGatewayResponse:
-        self.payloads.append(payload)
-        evidence_ref = (
-            "message:does-not-exist"
-            if self.invalid_evidence
-            else payload["conversation"][0]["ref"]
-        )
-        return AIGatewayResponse(
-            data={
-                "summary": "问诊表达清楚，可进一步使用开放式提问。",
-                "items": [
-                    {
-                        "code": "score.communication",
-                        "score": 0.75,
-                        "confidence": 0.82,
-                        "evidence_refs": [evidence_ref],
-                        "reason": "提问简洁，并围绕病程获取了有效信息。",
-                        "feedback": "可以先开放询问，再针对病程追问。",
-                    }
-                ],
-            },
-            provider=self.provider,
-            model="DeepSeek-V4-Flash-0731",
-            latency_ms=321,
-            input_tokens=120,
-            output_tokens=80,
-        )
 
 
 def make_user(identifier: str, role_code: str):
@@ -230,7 +184,7 @@ def make_exam_data(*, suffix="1", patient_prompt=""):
                     "dimension": "communication",
                     "label": "沟通质量",
                     "max_score": "1.00",
-                    "evaluation_method": "ai",
+                    "evaluation_method": "teacher",
                     "matching_config": {},
                     "is_student_visible": False,
                 },
@@ -424,6 +378,23 @@ def test_semantic_router_maps_natural_question_without_teacher_keyword():
         patient_prompt="请表现得有些紧张，只用一两句话回答。",
     )
     session = start_session(assignment=assignment, student=student).session
+    Message.objects.bulk_create(
+        [
+            Message(
+                session=session,
+                sequence=index * 2 + offset,
+                role=role,
+                content=f"第 {index + 1} 轮{content}",
+            )
+            for index in range(7)
+            for offset, role, content in (
+                (1, MessageRole.STUDENT, "学生问题"),
+                (2, MessageRole.PATIENT, "患者回答"),
+            )
+        ]
+    )
+    session.last_message_sequence = 14
+    session.save(update_fields=["last_message_sequence", "updated_at"])
 
     gateway = SemanticRoutingGateway()
     exchange = ask_patient(
@@ -436,6 +407,9 @@ def test_semantic_router_maps_natural_question_without_teacher_keyword():
 
     assert exchange.patient_message.content == "差不多有三年了。"
     assert gateway.patient_prompts == ["请表现得有些紧张，只用一两句话回答。"]
+    assert len(gateway.histories[0]) == 14
+    assert gateway.histories[0][0]["content"] == "第 1 轮学生问题"
+    assert gateway.histories[0][-1]["content"] == "第 7 轮患者回答"
     route_call = session.model_calls.get(prompt_version="patient-route-v2")
     assert route_call.provider == "deepseek"
     assert route_call.matched_fact_codes == ["history.duration"]
@@ -1071,121 +1045,6 @@ def test_rule_scoring_is_traceable_and_marks_non_rule_items_pending():
 
 
 @pytest.mark.django_db
-def test_deepseek_ai_evaluation_is_traceable_idempotent_and_teacher_overridable(monkeypatch):
-    teacher, student, assignment = make_exam_data(suffix="0")
-    session = start_session(assignment=assignment, student=student).session
-    complete_scored_session(session=session, student=student, correct=True)
-    gateway = StaticAIEvaluationGateway()
-    monkeypatch.setattr(
-        "modules.simulation.ai_evaluation.get_ai_evaluation_gateway",
-        lambda: gateway,
-    )
-    client = APIClient()
-    client.force_authenticate(teacher)
-    evaluation_url = reverse(
-        "teacher-session-ai-evaluation",
-        kwargs={"session_id": session.id},
-    )
-
-    created = client.post(evaluation_url, {}, format="json")
-    assert created.status_code == 201
-    assert created.json()["requested_by_id"] == str(teacher.id)
-    assert created.json()["requested_by_name"] == teacher.display_name
-    assert created.json()["provider"] == "deepseek"
-    assert created.json()["model"] == "deepseek-v4-flash"
-    assert created.json()["resolved_model"] == "DeepSeek-V4-Flash-0731"
-    assert created.json()["results"][0]["score"] == 0.75
-    assert created.json()["results"][0]["confidence"] == 0.82
-    assert "牙龈疼痛有多久了" in created.json()["results"][0]["evidence_excerpt"]
-    assert "student" not in gateway.payloads[0]
-    assert student.email not in str(gateway.payloads[0])
-
-    reused = client.post(evaluation_url, {}, format="json")
-    assert reused.status_code == 200
-    assert AIEvaluationRun.objects.filter(session=session).count() == 1
-    assert len(gateway.payloads) == 1
-
-    regenerated = client.post(evaluation_url, {"force": True}, format="json")
-    assert regenerated.status_code == 201
-    assert AIEvaluationRun.objects.filter(session=session).count() == 2
-    assert AIScoreResult.objects.filter(run__session=session).count() == 2
-
-    record_url = reverse("teacher-session-record", kwargs={"session_id": session.id})
-    record = client.get(record_url)
-    assert record.status_code == 200
-    assert record.json()["assessment"]["final_score"] == 8.75
-    assert record.json()["assessment"]["scored_maximum"] == 9.0
-    assert record.json()["assessment"]["provisional"] is False
-    communication = next(
-        item
-        for item in record.json()["assessment"]["scoring_items"]
-        if item["code"] == "score.communication"
-    )
-    assert communication["ai_score"] == 0.75
-    assert communication["effective_score"] == 0.75
-
-    reviewed = client.post(
-        reverse("teacher-session-review", kwargs={"session_id": session.id}),
-        {
-            "comment": "已人工核对沟通表现。",
-            "scores": [
-                {
-                    "code": "score.communication",
-                    "score": "0.50",
-                    "reason": "开放式提问仍可加强。",
-                }
-            ],
-        },
-        format="json",
-    )
-    assert reviewed.status_code == 201
-    assert reviewed.json()["final_score"] == 8.5
-
-    client.post(reverse("teacher-assignment-close", kwargs={"assignment_id": assignment.id}))
-    released = client.post(
-        reverse(
-            "teacher-assignment-release-feedback",
-            kwargs={"assignment_id": assignment.id},
-        )
-    )
-    assert released.status_code == 200
-    frozen = client.post(evaluation_url, {"force": True}, format="json")
-    assert frozen.status_code == 409
-    assert frozen.json()["code"] == "feedback_frozen"
-
-    client.force_authenticate(student)
-    feedback = client.get(
-        reverse("student-session-feedback", kwargs={"session_id": session.id})
-    )
-    assert feedback.status_code == 200
-    assert "score.communication" not in {
-        item["code"] for item in feedback.json()["scoring_items"]
-    }
-    assert feedback.json()["ai_feedback"] is None
-
-
-@pytest.mark.django_db
-def test_ai_evaluation_rejects_invented_evidence_without_partial_scores():
-    teacher, student, assignment = make_exam_data(suffix="4")
-    session = start_session(assignment=assignment, student=student).session
-    complete_scored_session(session=session, student=student, correct=True)
-    session.refresh_from_db()
-
-    with pytest.raises(AIEvaluationError) as captured:
-        run_ai_evaluation(
-            session=session,
-            requested_by=teacher,
-            gateway=StaticAIEvaluationGateway(invalid_evidence=True),
-        )
-
-    assert captured.value.code == "invalid_ai_evidence"
-    failed = AIEvaluationRun.objects.get(session=session)
-    assert failed.status == AIEvaluationStatus.FAILED
-    assert failed.error_code == "invalid_ai_evidence"
-    assert not AIScoreResult.objects.filter(run=failed).exists()
-
-
-@pytest.mark.django_db
 def test_missing_answers_generate_omissions_errors_and_teacher_record():
     teacher, student, assignment = make_exam_data(suffix="2")
     session = start_session(assignment=assignment, student=student).session
@@ -1258,7 +1117,6 @@ def test_student_feedback_contains_only_visible_scoring_details_after_release():
     codes = [item["code"] for item in feedback.json()["scoring_items"]]
     assert "score.communication" not in codes
     assert "score.final" in codes
-    assert feedback.json()["ai_feedback"] is None
 
 
 @pytest.mark.django_db
@@ -1480,11 +1338,6 @@ def test_retention_command_previews_then_deletes_only_safe_expired_data():
         comment="清理测试评语",
         scores=[],
     )
-    ai_run = run_ai_evaluation(
-        session=completed,
-        requested_by=teacher,
-        gateway=StaticAIEvaluationGateway(),
-    ).run
     now = timezone.now()
     type(assignment).objects.filter(pk=assignment.pk).update(deadline_at=now - timedelta(seconds=1))
     type(completed).objects.filter(pk=completed.pk).update(
@@ -1514,8 +1367,6 @@ def test_retention_command_previews_then_deletes_only_safe_expired_data():
     assert "已删除会话 1 个" in execute_output.getvalue()
     assert not type(completed).objects.filter(pk=completed.pk).exists()
     assert not TeacherReview.objects.filter(session_id=completed.id).exists()
-    assert not AIEvaluationRun.objects.filter(pk=ai_run.pk).exists()
-    assert not AIScoreResult.objects.filter(run_id=ai_run.pk).exists()
     stale.refresh_from_db()
     assert stale.status == SessionStatus.EXPIRED
     assert stale.retention_expires_at == stale.completed_at + timedelta(days=180)

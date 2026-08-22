@@ -418,7 +418,6 @@ class ScoringDimension(models.TextChoices):
 
 class EvaluationMethod(models.TextChoices):
     RULE = "rule", "规则评分"
-    AI = "ai", "AI 辅助评价"
     TEACHER = "teacher", "教师评价"
 
 
